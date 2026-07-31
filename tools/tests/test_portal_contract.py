@@ -754,7 +754,7 @@ def test_task7_secret_redaction_and_confirmations():
     assert "provision_config_redact_status" in source
     assert "provision_config_merge_preserving_secrets" in source
     assert "provision_store_save_atomic" in source
-    assert "provision_store_load(readback)" in source
+    assert "provision_store_load(existing)" in source
     assert "PORTAL_HTTP_CONFIRM_REPLACE \"REPLACE ENROLLMENT\"" in header
     assert "PORTAL_HTTP_CONFIRM_RESET_PROVISIONING \"RESET PROVISIONING\"" in header
     assert "PORTAL_HTTP_CONFIRM_RESET_ALL_DATA \"RESET ALL DATA\"" in header
@@ -789,16 +789,27 @@ def test_task7_secret_redaction_and_confirmations():
         assert secret_fragment not in status_block
 
 
-def test_task7_uses_heap_for_large_http_objects_and_rolls_back_partial_start():
+def test_task7_reuses_large_config_buffers_and_rolls_back_partial_start():
     source = read("components/portal_http/portal_http.c")
+    store = read("components/provision_store/provision_store.c")
 
     assert "calloc(1, sizeof(*update))" in source
     assert "calloc(1, sizeof(*existing))" in source
-    assert "calloc(1, sizeof(*merged))" in source
-    assert "calloc(1, sizeof(*readback))" in source
+    assert "calloc(1, sizeof(*merged))" not in source
+    assert "calloc(1, sizeof(*readback))" not in source
+    assert "provision_config_merge_preserving_secrets(existing, update, update)" in source
+    assert "provision_store_load(existing)" in source
     assert "calloc(PORTAL_HTTP_SCAN_LIMIT, sizeof(*records))" in source
     assert "cJSON_PrintUnformatted" in source
     assert "register_all_routes" in source
+
+    nvs_reader = store[
+        store.index("static esp_err_t read_best_nvs_slot"):
+        store.index("esp_err_t provision_store_load")
+    ]
+    assert "provision_config_t *scratch" in nvs_reader
+    assert "calloc(" not in nvs_reader
+
     init_block = source[source.index("esp_err_t portal_http_init"):
                         source.index("esp_err_t portal_http_stop")]
     assert "httpd_stop(server)" in init_block
