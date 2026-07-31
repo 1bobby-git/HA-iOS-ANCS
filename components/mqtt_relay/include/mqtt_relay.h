@@ -71,6 +71,20 @@ esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
                                              const char *availability_topic,
                                              char *out,
                                              size_t out_size);
+size_t mqtt_relay_discovery_field_count(void);
+const char *mqtt_relay_discovery_field_key(size_t field_index);
+esp_err_t mqtt_relay_build_field_discovery_topic(
+    const provision_config_t *config,
+    size_t field_index,
+    char *out,
+    size_t out_size);
+esp_err_t mqtt_relay_build_field_discovery_payload(
+    const provision_config_t *config,
+    const char *notification_topic,
+    const char *availability_topic,
+    size_t field_index,
+    char *out,
+    size_t out_size);
 esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
                                          bool connected,
                                          char *out,

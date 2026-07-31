@@ -5,6 +5,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/ancs_protocol"
     "${CMAKE_CURRENT_LIST_DIR}/../components/ancs_state"
     "${CMAKE_CURRENT_LIST_DIR}/../components/notification_sink"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/platform_identity"
     "${CMAKE_CURRENT_LIST_DIR}/../components/relay_policy"
     "${CMAKE_CURRENT_LIST_DIR}/../components/provision_store"
     "${CMAKE_CURRENT_LIST_DIR}/../components/provisioning"
