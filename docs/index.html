@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0d0c">
+    <meta
+      name="description"
+      content="ESP32-C6 iOS ANCS MQTT 브리지 펌웨어를 브라우저에서 USB로 설치합니다."
+    >
+    <title>ANCS Flash Station</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+    <script
+      type="module"
+      src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+    ></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#board-catalog">보드 목록으로 건너뛰기</a>
+
+    <header class="site-header">
+      <a class="wordmark" href="./" aria-label="ANCS Flash Station 홈">
+        <span class="wordmark-mark" aria-hidden="true">A//</span>
+        <span>ANCS FLASH STATION</span>
+      </a>
+      <nav class="header-links" aria-label="주요 링크">
+        <span class="release-chip"><i></i> C6 READY</span>
+        <a href="https://github.com/1bobby-git/ios-ancs">SOURCE ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">BROWSER-BASED ESP FIRMWARE DEPOT · 001</p>
+          <h1 id="hero-title">
+            USB 한 번으로,<br>
+            <span>iPhone 알림 브리지를 굽습니다.</span>
+          </h1>
+          <p class="hero-lede">
+            개발 도구 설치 없이 ESP 보드를 연결하고, 모델을 고르고, 펌웨어를 설치하세요.
+            첫 번째 검증 대상은 ESP32-C6입니다.
+          </p>
+          <a class="jump-link" href="#board-catalog">
+            설치할 보드 선택
+            <span aria-hidden="true">↓</span>
+          </a>
+        </div>
+
+        <div class="hero-instrument" aria-label="설치 환경 상태">
+          <div class="instrument-top">
+            <span>LIVE TERMINAL</span>
+            <span id="clock">--:--:-- KST</span>
+          </div>
+          <div class="signal-field" aria-hidden="true">
+            <div class="signal-orbit orbit-one"></div>
+            <div class="signal-orbit orbit-two"></div>
+            <div class="signal-core">
+              <span>C6</span>
+              <small>ANCS</small>
+            </div>
+            <i class="signal-dot dot-one"></i>
+            <i class="signal-dot dot-two"></i>
+            <i class="signal-dot dot-three"></i>
+          </div>
+          <dl class="instrument-stats">
+            <div>
+              <dt>BUILD</dt>
+              <dd>v0.1.0</dd>
+            </div>
+            <div>
+              <dt>FLASH</dt>
+              <dd>8 MB</dd>
+            </div>
+            <div>
+              <dt>PIPE</dt>
+              <dd>ANCS → MQTT</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="runtime-strip" aria-label="브라우저 설치 조건">
+        <div class="runtime-item">
+          <span class="status-lamp" id="secure-lamp"></span>
+          <span>SECURE CONTEXT</span>
+          <strong id="secure-status">검사 중</strong>
+        </div>
+        <div class="runtime-item">
+          <span class="status-lamp" id="serial-lamp"></span>
+          <span>WEB SERIAL</span>
+          <strong id="serial-status">검사 중</strong>
+        </div>
+        <div class="runtime-item">
+          <span class="status-lamp ready"></span>
+          <span>VERIFIED TARGET</span>
+          <strong>ESP32-C6 / COM9</strong>
+        </div>
+      </section>
+
+      <section class="catalog-section" id="board-catalog" aria-labelledby="catalog-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">HARDWARE CATALOG</p>
+            <h2 id="catalog-title">보드를 선택하세요.</h2>
+          </div>
+          <p>
+            모델별 펌웨어는 독립된 매니페스트로 관리됩니다.<br>
+            <strong>보드 이름을 반드시 확인한 뒤 설치하세요.</strong>
+          </p>
+        </div>
+        <div class="board-grid" id="board-grid"></div>
+      </section>
+
+      <section class="procedure-section" aria-labelledby="procedure-title">
+        <div class="procedure-copy">
+          <p class="eyebrow">FIELD PROCEDURE</p>
+          <h2 id="procedure-title">설치 후 바로 설정까지.</h2>
+          <p>
+            설치는 데스크톱에서, 네트워크 설정은 iPhone 또는 컴퓨터에서 진행할 수 있습니다.
+            Wi-Fi가 저장되지 않은 C6는 부팅 즉시 설정용 AP를 엽니다.
+          </p>
+          <aside class="compatibility-note">
+            <span aria-hidden="true">!</span>
+            <div>
+              <strong>USB 데이터 케이블이 필요합니다.</strong>
+              충전 전용 케이블은 전원만 공급하고 보드를 브라우저에 표시하지 않습니다.
+            </div>
+          </aside>
+        </div>
+
+        <ol class="procedure-list">
+          <li>
+            <span>01</span>
+            <div>
+              <h3>USB로 보드 연결</h3>
+              <p>Windows의 Chrome 또는 Edge에서 이 페이지를 열고 ESP 보드를 연결합니다.</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <h3>펌웨어 설치</h3>
+              <p>보드 카드의 설치 버튼을 누르고 브라우저의 직렬 포트 선택 창에서 ESP 포트를 고릅니다.</p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <h3>Wi-Fi · MQTT 등록</h3>
+              <p><code>IOS-ANCS-SETUP-XXXXXX</code> AP에 연결한 뒤 <code>192.168.4.1</code>에서 설정합니다.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="safety-section" aria-labelledby="safety-title">
+        <p class="eyebrow">BEFORE YOU FLASH</p>
+        <h2 id="safety-title">작은 확인이 보드를 지킵니다.</h2>
+        <div class="safety-grid">
+          <article>
+            <span>01 / MATCH</span>
+            <h3>칩 모델 일치</h3>
+            <p>C6 펌웨어는 ESP32-C6에만 설치하세요. WROOM-D32와 C3는 준비 중입니다.</p>
+          </article>
+          <article>
+            <span>02 / ERASE</span>
+            <h3>초기화 선택 주의</h3>
+            <p>전체 삭제를 선택하면 저장된 Wi-Fi, MQTT, iPhone 등록 정보가 사라집니다.</p>
+          </article>
+          <article>
+            <span>03 / POWER</span>
+            <h3>설치 중 연결 유지</h3>
+            <p>진행률이 끝날 때까지 USB 케이블을 뽑거나 브라우저 창을 닫지 마세요.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div>
+        <span class="wordmark-mark" aria-hidden="true">A//</span>
+        <p>Open firmware for a quieter, local-first notification bridge.</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/1bobby-git/ios-ancs">GitHub</a>
+        <a href="https://github.com/1bobby-git/ios-ancs/blob/main/README.md">설정 문서</a>
+        <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
+      </div>
+    </footer>
+
+    <noscript>
+      <div class="noscript">이 설치 페이지를 사용하려면 JavaScript를 켜주세요.</div>
+    </noscript>
+  </body>
+</html>

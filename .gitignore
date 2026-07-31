@@ -1,0 +1,15 @@
+/build*/
+/b7_task7/
+/test_app/build*/
+/test_app/ba/
+/managed_components/
+/artifacts/
+/output/
+/.omx/
+/.playwright-cli/
+/.pytest_cache/
+/**/__pycache__/
+/**/*.py[cod]
+/sdkconfig.old
+/test_app/sdkconfig.old
+*.log

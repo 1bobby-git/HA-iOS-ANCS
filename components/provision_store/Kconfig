@@ -1,0 +1,10 @@
+menu "Provision store"
+
+config PROVISION_STORE_TEST_BACKEND
+    bool "Enable provision_store test backend"
+    default n
+    help
+        Enables in-memory fault injection hooks for Unity tests. Keep disabled
+        in production firmware so runtime code cannot switch away from NVS.
+
+endmenu

@@ -1,0 +1,31 @@
+alias: Relay iOS ANCS C6 notifications to 1bobby
+id: ios_ancs_c6_relay_to_1bobby
+description: Forward newly received, complete C6 ANCS notifications.
+trigger:
+  - platform: state
+    entity_id: sensor.ios_ancs_c6_2b20_ios_ancs_c6_2b20_last_notification
+condition:
+  - condition: template
+    value_template: >-
+      {{ trigger.from_state is not none and trigger.to_state is not none
+         and trigger.from_state.state != trigger.to_state.state }}
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.state not in ['unknown', 'unavailable'] }}
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.attributes.get('complete', false) | bool(false) }}
+  - condition: template
+    value_template: >-
+      {{ not (trigger.to_state.attributes.get('pre_existing', true) | bool(true)) }}
+action:
+  - service: notify.mobile_app_1bobby
+    data:
+      title: "[C6\u2192HA] {{ trigger.to_state.attributes.get('title') or trigger.to_state.attributes.get('app_id') }}"
+      message: >-
+        {{ trigger.to_state.attributes.get('message')
+           or trigger.to_state.attributes.get('subtitle')
+           or trigger.to_state.attributes.get('app_id')
+              ~ ' (' ~ (trigger.to_state.attributes.get('category') or 'unknown') ~ ')' }}
+mode: queued
+max: 10
