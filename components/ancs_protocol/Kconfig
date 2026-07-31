@@ -1,0 +1,33 @@
+menu "ANCS protocol limits"
+
+config ANCS_APP_ID_MAX
+    int "Maximum app identifier bytes"
+    default 256
+    range 32 1024
+
+config ANCS_TITLE_MAX
+    int "Maximum title bytes"
+    default 512
+    range 32 4096
+
+config ANCS_SUBTITLE_MAX
+    int "Maximum subtitle bytes"
+    default 512
+    range 32 4096
+
+config ANCS_MESSAGE_MAX
+    int "Maximum message bytes"
+    default 4096
+    range 128 16384
+
+config ANCS_DATE_MAX
+    int "Maximum date bytes"
+    default 32
+    range 16 128
+
+config ANCS_REQUEST_QUEUE_CAPACITY
+    int "Pending notification request capacity"
+    default 16
+    range 2 64
+
+endmenu

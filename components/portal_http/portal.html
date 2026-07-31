@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f8">
+  <title>iOS 알림 브리지 설정</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <p class="eyebrow">ESP32-C6 · iOS ANCS</p>
+      <h1>알림 브리지 설정</h1>
+      <p class="hero-copy">iPhone 알림을 MQTT로 Home Assistant에 전달합니다.</p>
+      <div class="device-line">
+        <span class="device-mark" aria-hidden="true"></span>
+        <span id="device-name">기기 정보를 불러오는 중</span>
+      </div>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+    </header>
+
+    <section class="panel status-panel" aria-labelledby="status-title">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">현재 상태</p>
+          <h2 id="status-title">연결 준비도</h2>
+        </div>
+        <button class="button button-quiet button-compact" id="refresh-status" type="button">새로고침</button>
+      </div>
+
+      <div id="status" class="status-grid" aria-live="polite">
+        <article class="status-tile" id="status-wifi" data-state="neutral">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <span class="status-label">Wi-Fi</span>
+            <strong id="status-wifi-value">확인 중</strong>
+            <small id="status-wifi-detail">네트워크 상태를 읽고 있습니다</small>
+          </div>
+        </article>
+        <article class="status-tile" id="status-mqtt" data-state="neutral">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <span class="status-label">MQTT 브로커</span>
+            <strong id="status-mqtt-value">확인 중</strong>
+            <small id="status-mqtt-detail">브로커 상태를 읽고 있습니다</small>
+          </div>
+        </article>
+        <article class="status-tile" id="status-ble" data-state="neutral">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <span class="status-label">iPhone</span>
+            <strong id="status-ble-value">확인 중</strong>
+            <small id="status-ble-detail">Bluetooth 상태를 읽고 있습니다</small>
+          </div>
+        </article>
+        <article class="status-tile" id="status-relay" data-state="neutral">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <span class="status-label">알림 전달</span>
+            <strong id="status-relay-value">0건 전송</strong>
+            <small id="status-relay-detail">새 알림을 기다리고 있습니다</small>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <form id="mqtt-config" class="panel setup-form">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">필수 설정</p>
+          <h2>네트워크와 MQTT</h2>
+        </div>
+        <span class="step-badge">한 번에 저장</span>
+      </div>
+
+      <section id="wifi-config" class="form-section" aria-labelledby="wifi-title">
+        <div class="form-section-heading">
+          <span class="step-number" aria-hidden="true">1</span>
+          <div>
+            <h3 id="wifi-title">Wi-Fi 선택</h3>
+            <p>연결할 2.4 GHz Wi-Fi를 선택하세요.</p>
+          </div>
+        </div>
+
+        <div class="scan-row">
+          <div class="field">
+            <label for="wifi-ssid">검색된 네트워크</label>
+            <select id="wifi-ssid">
+              <option value="">먼저 Wi-Fi를 검색하세요</option>
+            </select>
+          </div>
+          <button class="button button-secondary scan-button" type="button" id="scan-wifi">Wi-Fi 검색</button>
+        </div>
+
+        <div class="field">
+          <label for="wifi-ssid-manual">직접 입력 <span class="optional">선택</span></label>
+          <input id="wifi-ssid-manual" maxlength="32" placeholder="목록에 없을 때 SSID 입력" autocomplete="off">
+          <small>직접 입력하면 검색 목록보다 우선 적용됩니다.</small>
+        </div>
+
+        <div class="field">
+          <label for="wifi-password">Wi-Fi 비밀번호</label>
+          <input id="wifi-password" type="password" maxlength="64" autocomplete="new-password" placeholder="비밀번호 입력">
+          <small id="wifi-password-help">암호가 없는 네트워크는 비워 두세요.</small>
+        </div>
+      </section>
+
+      <section class="form-section" aria-labelledby="mqtt-title">
+        <div class="form-section-heading">
+          <span class="step-number" aria-hidden="true">2</span>
+          <div>
+            <h3 id="mqtt-title">MQTT 브로커</h3>
+            <p>Home Assistant에서 사용하는 MQTT 서버 정보를 입력하세요.</p>
+          </div>
+        </div>
+
+        <div class="field-grid host-grid">
+          <div class="field">
+            <label for="mqtt-host">서버 주소</label>
+            <input id="mqtt-host" required maxlength="128" placeholder="예: 192.168.0.10" inputmode="url" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="mqtt-port">포트</label>
+            <input id="mqtt-port" type="number" min="1" max="65535" value="1883" inputmode="numeric">
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="mqtt-username">사용자 이름 <span class="optional">선택</span></label>
+            <input id="mqtt-username" maxlength="128" autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="mqtt-password">비밀번호 <span class="optional">선택</span></label>
+            <input id="mqtt-password" type="password" maxlength="256" autocomplete="new-password">
+            <small id="mqtt-password-help">브로커에 비밀번호가 없으면 비워 두세요.</small>
+          </div>
+        </div>
+
+        <details id="advanced-mqtt" class="disclosure">
+          <summary>
+            <span>
+              <strong>고급 MQTT 설정</strong>
+              <small>권장값이 자동으로 적용됩니다</small>
+            </span>
+            <span class="summary-chevron" aria-hidden="true"></span>
+          </summary>
+          <div class="disclosure-body">
+            <div class="field">
+              <div class="label-row">
+                <label for="mqtt-client-id">Client ID</label>
+                <span class="recommended">권장값</span>
+              </div>
+              <input id="mqtt-client-id" class="machine-value" required maxlength="64" autocomplete="off">
+              <small id="mqtt-client-id-help">이 기기를 MQTT에서 구분하는 고유 이름입니다.</small>
+            </div>
+
+            <div class="field">
+              <div class="label-row">
+                <label for="mqtt-base-topic">Base topic</label>
+                <span class="recommended">권장값</span>
+              </div>
+              <input id="mqtt-base-topic" class="machine-value" required maxlength="128" autocomplete="off">
+              <small id="mqtt-base-topic-help">알림과 상태가 발행되는 MQTT 경로입니다.</small>
+            </div>
+
+            <label class="check-row" for="mqtt-tls">
+              <input id="mqtt-tls" type="checkbox">
+              <span>
+                <strong>TLS 보안 연결</strong>
+                <small>TLS 브로커를 사용할 때만 켜세요.</small>
+              </span>
+            </label>
+
+            <div class="field" id="mqtt-ca-field" hidden>
+              <label for="mqtt-ca">CA 인증서 PEM</label>
+              <textarea id="mqtt-ca" rows="7" maxlength="4096" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+              <small id="mqtt-ca-help">TLS를 켜면 CA 인증서가 필요합니다.</small>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <div class="form-note">
+        <span aria-hidden="true">i</span>
+        <p>기존에 저장된 비밀번호와 인증서는 입력란을 비워 두면 유지됩니다.</p>
+      </div>
+
+      <div class="form-actions">
+        <button class="button button-primary" id="save-connect" type="submit">저장하고 연결</button>
+        <button class="button button-secondary" id="mqtt-test" type="button">MQTT 연결 테스트</button>
+      </div>
+    </form>
+
+    <section class="panel ble-panel" aria-labelledby="ble-title">
+      <div class="ble-copy">
+        <p class="section-kicker">Bluetooth</p>
+        <h2 id="ble-title">iPhone 연결</h2>
+        <p id="ble-guidance">등록 전에는 Bluetooth 등록 신호를 보내지 않습니다. iPhone 등록 시작을 누르면 신호를 보내고, 이후에는 등록된 iPhone만 자동으로 다시 연결됩니다.</p>
+      </div>
+      <button class="button button-primary" id="enroll" type="button">iPhone 등록 시작</button>
+    </section>
+
+    <details id="device-management" class="panel disclosure management">
+      <summary>
+        <span>
+          <strong>기기 관리</strong>
+          <small>재시작, iPhone 교체, 설정 초기화</small>
+        </span>
+        <span class="summary-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="disclosure-body management-body">
+        <section class="management-item">
+          <div>
+            <h3>기기 재시작</h3>
+            <p>저장된 Wi-Fi, MQTT, iPhone 등록은 유지됩니다.</p>
+          </div>
+          <button class="button button-secondary" id="restart" type="button">재시작</button>
+        </section>
+
+        <section class="management-item danger-zone">
+          <div>
+            <h3>등록된 iPhone 교체</h3>
+            <p>기존 Bluetooth 등록을 지우고 새 iPhone 등록을 시작합니다.</p>
+          </div>
+          <label for="replace-confirmation">확인을 위해 <code>REPLACE ENROLLMENT</code> 입력</label>
+          <input id="replace-confirmation" autocomplete="off">
+          <button class="button button-danger" id="replace-enrollment" type="button">iPhone 등록 교체</button>
+        </section>
+
+        <section class="management-item danger-zone">
+          <div>
+            <h3>네트워크 설정 초기화</h3>
+            <p>Wi-Fi와 MQTT 설정만 지웁니다. iPhone 등록은 유지됩니다.</p>
+          </div>
+          <label for="reset-confirmation">확인을 위해 <code>RESET PROVISIONING</code> 입력</label>
+          <input id="reset-confirmation" autocomplete="off">
+          <button class="button button-danger" id="reset-provisioning" type="button">네트워크 설정 초기화</button>
+        </section>
+      </div>
+    </details>
+
+    <footer>
+      <span class="local-dot" aria-hidden="true"></span>
+      이 설정 페이지는 기기 내부에서만 열립니다.
+    </footer>
+  </main>
+  <script src="/portal.js"></script>
+</body>
+</html>

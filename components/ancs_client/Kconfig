@@ -1,0 +1,53 @@
+menu "ANCS client runtime"
+
+config ANCS_REQUEST_TIMEOUT_MS
+    int "Control Point response timeout (milliseconds)"
+    default 3000
+    range 1000 30000
+
+config ANCS_WORKER_STACK_SIZE
+    int "ANCS worker stack size"
+    default 8192
+    range 4096 16384
+
+config ANCS_WORK_QUEUE_LENGTH
+    int "BLE-to-worker queue length"
+    default 24
+    range 8 64
+
+config ANCS_MAX_FRAGMENT_SIZE
+    int "Maximum accepted Data Source fragment bytes"
+    default 512
+    range 64 1024
+
+config ANCS_CACHE_CAPACITY
+    int "Completed notification cache entries"
+    default 4
+    range 1 8
+
+config ANCS_DUPLICATE_WINDOW_MS
+    int "Exact Notification Source duplicate window"
+    default 500
+    range 100 5000
+
+config ANCS_ENROLL_WINDOW_MS
+    int "BLE enrollment advertising window (milliseconds)"
+    default 120000
+    range 10000 600000
+
+config ANCS_ENROLL_BOOT_GPIO
+    int "BOOT button GPIO used to open BLE enrollment"
+    default 9
+    range 0 30
+
+config ANCS_ENROLL_BOOT_HOLD_MS
+    int "BOOT button hold time for BLE enrollment"
+    default 3000
+    range 500 30000
+
+config ANCS_ENROLL_BUTTON_DEBOUNCE_MS
+    int "BOOT button debounce interval"
+    default 20
+    range 5 250
+
+endmenu
