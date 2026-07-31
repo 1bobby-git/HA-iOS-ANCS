@@ -15,6 +15,7 @@ PORTAL_JS = ROOT / "components" / "portal_http" / "portal.js"
 PORTAL_HTML = ROOT / "components" / "portal_http" / "portal.html"
 INSTALLER_HTML = ROOT / "docs" / "index.html"
 INSTALLER_JS = ROOT / "docs" / "app.js"
+INSTALLER_VENDOR_DIR = ROOT / "docs" / "vendor" / "esp-web-tools-10.4.0"
 MULTI_MANIFEST = ROOT / "docs" / "manifests" / "ios-ancs.json"
 LEGACY_C6_MANIFEST = ROOT / "docs" / "manifests" / "esp32-c6.json"
 BUILD_MATRIX = ROOT / "tools" / "build_matrix.ps1"
@@ -183,6 +184,24 @@ def test_installer_uses_one_selector_and_one_auto_detect_manifest():
     assert "board-select" in html
     assert "board-select" in javascript
     assert "board-grid" not in javascript
+
+
+def test_installer_retries_transient_compressed_block_failures():
+    html = read(INSTALLER_HTML)
+
+    assert (
+        'src="./vendor/esp-web-tools-10.4.0/install-button.js"'
+        in html
+    )
+    assert INSTALLER_VENDOR_DIR.is_dir()
+
+    runtime = "\n".join(
+        read(path)
+        for path in sorted(INSTALLER_VENDOR_DIR.glob("*.js"))
+    )
+    assert "Compressed block" in runtime
+    assert "retrying with" in runtime
+    assert "3 attempts" in runtime
 
 
 def test_installer_models_are_sorted_and_c61_is_explained():
