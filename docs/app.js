@@ -1,77 +1,75 @@
-const boards = [
-  {
-    id: "esp32-c6",
-    order: "BOARD / 001",
+const boards = {
+  esp32c6: {
     chip: "C6",
     name: "ESP32-C6",
-    status: "검증 완료",
-    description: "iPhone ANCS 알림을 Wi-Fi와 MQTT로 전달하는 현재 검증 펌웨어입니다.",
-    specs: ["8 MB FLASH", "BLE 5", "Wi-Fi 6"],
-    version: "v0.1.0 · ESP-IDF 6.0.2 · SHA256 1F4EC9D1…",
-    manifest: "./manifests/esp32-c6.json",
-    available: true,
+    boot: "GPIO 9",
+    validation: "COM9 실기기 검증",
+    status: "HARDWARE VERIFIED",
+    description:
+      "현재 COM9에서 v0.2.0 설치, 부팅, 저장된 Wi-Fi 연결, BLE bond 복구를 확인한 기준 모델입니다.",
+    hash: "SHA256 3CBD015AF10C",
   },
-  {
-    id: "esp32-wroom-32",
-    order: "BOARD / 002",
-    chip: "D32",
-    name: "ESP32-WROOM-32",
-    status: "준비 중",
-    description: "클래식 ESP32 WROOM-D32 보드를 위한 전용 빌드와 검증 슬롯입니다.",
-    specs: ["ESP32", "BT CLASSIC", "2.4 GHz"],
-    available: false,
+  esp32: {
+    chip: "32",
+    name: "ESP32 / WROOM-32",
+    boot: "GPIO 0",
+    validation: "펌웨어 빌드 검증",
+    status: "BUILD VERIFIED",
+    description:
+      "ESP32-WROOM-32와 WROOM-D32 계열을 위한 Xtensa 듀얼 코어 빌드입니다.",
+    hash: "SHA256 70972A7EA25D",
   },
-  {
-    id: "esp32-c3",
-    order: "BOARD / 003",
+  esp32c3: {
     chip: "C3",
     name: "ESP32-C3",
-    status: "준비 중",
-    description: "소형 RISC-V ESP32-C3 보드를 위한 전용 빌드와 검증 슬롯입니다.",
-    specs: ["RISC-V", "BLE 5", "2.4 GHz"],
-    available: false,
+    boot: "GPIO 9",
+    validation: "펌웨어 빌드 검증",
+    status: "BUILD VERIFIED",
+    description:
+      "소형 RISC-V ESP32-C3 보드를 위한 Wi-Fi·BLE ANCS 브리지 빌드입니다.",
+    hash: "SHA256 9B4054EA7629",
   },
-];
-
-function boardCard(board) {
-  const action = board.available
-    ? `
-      <esp-web-install-button manifest="${board.manifest}">
-        <button class="install-button" slot="activate" type="button">
-          C6 펌웨어 설치 →
-        </button>
-        <span class="installer-message" slot="unsupported">
-          이 브라우저는 USB 설치를 지원하지 않습니다. Windows Chrome 또는 Edge를 사용하세요.
-        </span>
-        <span class="installer-message" slot="not-allowed">
-          USB 설치는 HTTPS 또는 localhost에서만 실행할 수 있습니다.
-        </span>
-      </esp-web-install-button>
-      <p class="card-build">${board.version}</p>
-    `
-    : `
-      <button class="planned-button" type="button" disabled>
-        전용 펌웨어 준비 중
-      </button>
-      <p class="card-build">검증된 바이너리가 등록되면 활성화됩니다.</p>
-    `;
-
-  return `
-    <article class="board-card ${board.available ? "available" : "planned"}" id="${board.id}">
-      <div class="card-index">
-        <span>${board.order}</span>
-        <span class="card-status">${board.status}</span>
-      </div>
-      <div class="chip-diagram" aria-hidden="true">${board.chip}</div>
-      <h3>${board.name}</h3>
-      <p class="board-description">${board.description}</p>
-      <ul class="spec-list" aria-label="${board.name} 사양">
-        ${board.specs.map((spec) => `<li>${spec}</li>`).join("")}
-      </ul>
-      <div class="install-wrap">${action}</div>
-    </article>
-  `;
-}
+  esp32s3: {
+    chip: "S3",
+    name: "ESP32-S3",
+    boot: "GPIO 0",
+    validation: "펌웨어 빌드 검증",
+    status: "BUILD VERIFIED",
+    description:
+      "USB 기능과 넉넉한 메모리를 갖춘 ESP32-S3 계열용 빌드입니다.",
+    hash: "SHA256 1D0A5BF96C44",
+  },
+  esp32c2: {
+    chip: "C2",
+    name: "ESP32-C2",
+    boot: "GPIO 9",
+    validation: "펌웨어 빌드 검증",
+    status: "BUILD VERIFIED",
+    description:
+      "저비용 ESP32-C2 보드를 위한 4 MB 기준 ANCS·MQTT 빌드입니다.",
+    hash: "SHA256 1F935BFDAD64",
+  },
+  esp32c5: {
+    chip: "C5",
+    name: "ESP32-C5",
+    boot: "GPIO 28",
+    validation: "펌웨어 빌드 검증",
+    status: "BUILD VERIFIED",
+    description:
+      "ESP32-C5의 Wi-Fi·BLE 기능에 맞춘 ANCS MQTT 브리지 빌드입니다.",
+    hash: "SHA256 9EB99F11A3BB",
+  },
+  esp32c61: {
+    chip: "C61",
+    name: "ESP32-C61",
+    boot: "GPIO 9",
+    validation: "펌웨어 빌드 검증",
+    status: "BUILD VERIFIED",
+    description:
+      "ESP32-C61 보드를 위한 최신 RISC-V 계열 ANCS MQTT 브리지 빌드입니다.",
+    hash: "SHA256 90BCD4D9AE65",
+  },
+};
 
 function setRuntimeStatus(elementId, lampId, supported, goodText, badText) {
   const status = document.getElementById(elementId);
@@ -93,7 +91,22 @@ function updateClock() {
   }).format(new Date())} KST`;
 }
 
-document.getElementById("board-grid").innerHTML = boards.map(boardCard).join("");
+function applyBoard(target) {
+  const board = boards[target];
+  if (!board) return;
+
+  document.getElementById("signal-chip").textContent = board.chip;
+  document.getElementById("target-family").textContent = board.name;
+  document.getElementById("target-boot").textContent = board.boot;
+  document.getElementById("target-validation").textContent = board.validation;
+  document.getElementById("selected-name").textContent = board.name;
+  document.getElementById("selected-status").textContent = board.status;
+  document.getElementById("selected-description").textContent = board.description;
+  document.getElementById("build-hash").textContent = board.hash;
+}
+
+const boardSelect = document.getElementById("board-select");
+boardSelect.addEventListener("change", (event) => applyBoard(event.target.value));
 
 setRuntimeStatus(
   "secure-status",
@@ -111,5 +124,6 @@ setRuntimeStatus(
   "Chrome · Edge 필요",
 );
 
+applyBoard(boardSelect.value);
 updateClock();
 window.setInterval(updateClock, 1000);

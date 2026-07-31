@@ -69,6 +69,37 @@ def test_verifier_accepts_required_mqtt_capture_and_redacts_report():
     assert "com.example.chat" in result.report
 
 
+def test_verifier_accepts_target_specific_source_identity():
+    events = valid_events()
+    events[2] = event(
+        "ios-ancs/c3-abcd/notification",
+        notification(target="esp32c3", source="esp32c3_ancs"),
+        retain=False,
+    )
+    events[0]["topic"] = "ios-ancs/c3-abcd/availability"
+    discovery_payload = json.loads(events[1]["payload"])
+    discovery_payload["state_topic"] = "ios-ancs/c3-abcd/notification"
+    discovery_payload["json_attributes_topic"] = "ios-ancs/c3-abcd/notification"
+    events[1]["payload"] = json.dumps(discovery_payload)
+    events[3]["topic"] = "ios-ancs/c3-abcd/state"
+
+    result = verify_broker_events(events)
+
+    assert result.base_topic == "ios-ancs/c3-abcd"
+
+
+def test_verifier_rejects_source_that_does_not_match_target():
+    events = valid_events()
+    events[2] = event(
+        f"{BASE_TOPIC}/notification",
+        notification(target="esp32c3", source="esp32c6_ancs"),
+        retain=False,
+    )
+
+    with pytest.raises(MqttRelayValidationError, match="source"):
+        verify_broker_events(events)
+
+
 def test_verifier_requires_retained_availability_and_discovery():
     missing_discovery = valid_events()
     missing_discovery.pop(1)

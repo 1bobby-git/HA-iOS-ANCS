@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "notification_sink.h"
+#include "platform_identity.h"
 
 esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notification,
                                           const char *device_name,
@@ -53,7 +54,9 @@ esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notificatio
 
     const int written = snprintf(payload + length - 1U,
                                  capacity - length + 1U,
-                                 ",\"relay_id\":\"%s\",\"source\":\"esp32c6_ancs\",\"published_at_ms\":%" PRIu64 "}",
+                                 ",\"relay_id\":\"%s\",\"source\":\""
+                                 ANCS_SOURCE_ID
+                                 "\",\"published_at_ms\":%" PRIu64 "}",
                                  relay_id,
                                  uptime_ms);
     if (written < 0 || (size_t)written >= capacity - length + 1U) {

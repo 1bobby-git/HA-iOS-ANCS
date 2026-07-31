@@ -1,8 +1,44 @@
 # Validation Report
 
-Validation date: 2026-07-30 (Asia/Seoul)
+Validation date: 2026-07-31 (Asia/Seoul)
 
-This report tracks evidence for the standalone ESP32-C6 ANCS MQTT relay. Host contracts, production/test firmware builds, COM9 flash verification, setup AP portal recovery, existing-bond BLE portal behavior, and the duplicate-cache-after-MQTT-queue-acceptance fix have fresh Task 5 evidence. Live iPhone reconnect, STA IP, MQTT, and Home Assistant event proof remain pending.
+## Multi-target v0.2.0 build evidence (2026-07-31)
+
+`tools/build_matrix.ps1` completed one final sequential ESP-IDF v6.0.2 build, link,
+partition-size check, and esptool merged-image generation pass for every public
+installer target. All images use the 4 MB minimum flash layout.
+
+| Target | Merged bytes | SHA-256 | Validation level |
+| --- | ---: | --- | --- |
+| `esp32` | 1,411,632 | `70972a7ea25d258de99777df19e28fcbc60dfcd6e6a07c1ad2f6118e97096622` | Build verified |
+| `esp32c2` | 1,429,760 | `1f935bfdad64f3ad2e81f3ec24563a5d1855c7da534a69a4bd6f13d183f060e0` | Build verified |
+| `esp32c3` | 1,509,344 | `9b4054ea76299a7c1b8bf882805a8b9d107d0f6036464129de4a5d74646b28da` | Build verified |
+| `esp32c5` | 1,763,648 | `9eb99f11a3bb6ae0033662b5130cdf66d3e3ccc77f1fa0db74fd03be8d5b95f1` | Build verified |
+| `esp32c6` | 1,763,856 | `3cbd015af10ce2d9f43ca2689fe43c6df57d086b2c23725e58790408b8898986` | v0.2.0 build, flash, and boot verified on COM9 |
+| `esp32c61` | 1,706,816 | `90bcd4d9ae65a8f7f0be354509f98d806296af965cc8db6a99a6602ecbe3c0b6` | Build verified |
+| `esp32s3` | 1,393,312 | `1d0a5bf96c4404d8c0a3402f973791f337dbdf982ede11080be0b99cdaea63f9` | Build verified |
+
+The final matrix report is `artifacts/build-matrix.json`. Only C6 has
+physical-device evidence. The other targets must not be described as hardware
+verified.
+
+### Current release C6 hardware smoke (2026-07-31)
+
+- `python -m esptool --port COM9 chip-id` detected an ESP32-C6 and base MAC
+  `40:4C:CA:57:2B:20`.
+- `tools/flash.ps1 -Target esp32c6 -Port COM9` wrote the v0.2.0 bootloader,
+  partition table, and application and verified every written hash.
+- The device booted ESP-IDF v6.0.2 from the factory partition with the 4 MB
+  image layout.
+- Existing provisioning and BLE bond data survived the normal flash. Serial
+  runtime showed Wi-Fi connected to the stored SSID and obtained
+  `10.140.40.33`, BLE bond count `1`, state `advertising`, and device name
+  `IOS-ANCS-C6-2B20`.
+- The Windows host was on a different routed subnet, so the current pass did
+  not claim a live MQTT broker connection, Home Assistant Discovery receipt,
+  iPhone `ancs_ready`, or a new end-to-end notification event.
+
+This report tracks evidence for the standalone ESP32-C6 ANCS MQTT relay. Host contracts, production/test firmware builds, COM9 flash verification, setup AP portal recovery, existing-bond BLE portal behavior, and the duplicate-cache-after-MQTT-queue-acceptance fix have fresh evidence. Live iPhone reconnect, MQTT, and Home Assistant event proof remain pending.
 
 ## Scope
 

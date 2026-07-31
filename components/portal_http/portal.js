@@ -28,16 +28,16 @@ function deviceSuffix(apSsid) {
   return match ? match[1].toLowerCase() : 'c6';
 }
 
-function iphoneBluetoothName(apSsid) {
-  return `IOS-ANCS-C6-${deviceSuffix(apSsid).toUpperCase()}`;
+function iphoneBluetoothName(apSsid, deviceFamily) {
+  return `IOS-ANCS-${deviceFamily}-${deviceSuffix(apSsid).toUpperCase()}`;
 }
 
-function recommendedClientId(apSsid) {
-  return `ios_ancs_c6_${deviceSuffix(apSsid)}`;
+function recommendedClientId(apSsid, deviceFamily) {
+  return `ios_ancs_${deviceFamily.toLowerCase()}_${deviceSuffix(apSsid)}`;
 }
 
-function recommendedBaseTopic(apSsid) {
-  return `ios-ancs/c6-${deviceSuffix(apSsid)}`;
+function recommendedBaseTopic(apSsid, deviceFamily) {
+  return `ios-ancs/${deviceFamily.toLowerCase()}-${deviceSuffix(apSsid)}`;
 }
 
 function updateTile(id, state, value, detail) {
@@ -50,8 +50,11 @@ function applyStatus(status) {
   const runtime = status.runtime || {};
   const system = status.system || {};
   const config = status.config || {};
-  const apName = runtime.ap_ssid || 'IOS ANCS C6';
-  const bluetoothName = iphoneBluetoothName(apName);
+  const target = String(status.target || 'esp32c6').toLowerCase();
+  const deviceFamily = String(status.device_family || 'C6').toUpperCase();
+  const apName = runtime.ap_ssid || 'IOS-ANCS-SETUP';
+  const bluetoothName = iphoneBluetoothName(apName, deviceFamily);
+  if (document.body?.dataset) document.body.dataset.target = target;
 
   $('device-name').textContent = apName;
 
@@ -100,8 +103,10 @@ function applyStatus(status) {
   $('mqtt-port').value = config.mqtt_port || 1883;
   $('mqtt-username').value = config.mqtt_username || '';
   $('mqtt-tls').checked = Boolean(config.mqtt_tls);
-  $('mqtt-client-id').value = config.mqtt_client_id || recommendedClientId(apName);
-  $('mqtt-base-topic').value = config.mqtt_base_topic || recommendedBaseTopic(apName);
+  $('mqtt-client-id').value =
+    config.mqtt_client_id || recommendedClientId(apName, deviceFamily);
+  $('mqtt-base-topic').value =
+    config.mqtt_base_topic || recommendedBaseTopic(apName, deviceFamily);
 
   $('wifi-password-help').textContent = config.wifi_password_configured
     ? '저장된 비밀번호가 있습니다. 변경할 때만 새로 입력하세요.'

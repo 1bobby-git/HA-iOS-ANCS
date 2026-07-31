@@ -4,7 +4,7 @@ This device uses explicit BLE enrollment. It does not advertise for a new iPhone
 
 ## Before Pairing
 
-1. Power the ESP32-C6 from USB.
+1. Power the ESP32 board from USB.
 2. If provisioning is not complete, join `IOS-ANCS-SETUP-<SUFFIX>` with password `ANCS-<SUFFIX>`.
 3. Open `http://192.168.4.1`.
 4. Configure Wi-Fi and MQTT, or leave the portal open if you only need Enroll access.
@@ -15,7 +15,7 @@ For the current board, `<SUFFIX>` is `572B20`, so the AP is `IOS-ANCS-SETUP-572B
 
 1. Open an Enroll window by holding BOOT for 3 seconds or pressing **Enroll** in the portal.
 2. On iPhone, open **Settings > Bluetooth**.
-3. Select `IOS-ANCS-C6-<SUFFIX>` when it appears.
+3. Select `IOS-ANCS-<FAMILY>-<SUFFIX>` when it appears, such as `IOS-ANCS-C6-2B20`.
 4. Enter PIN `123456`.
 5. Accept the iOS prompt to share system notifications.
 6. Confirm the device reaches `ancs_ready` in serial logs or validation output.
@@ -24,7 +24,7 @@ The Enroll window closes after 120 seconds or after a successful bond. If it clo
 
 ## Existing Bond Reconnect
 
-After a successful bond, rebooting the ESP32-C6 should reconnect to the same iPhone without pressing Enroll. The device should reject new unknown pairing requests while a bond exists.
+After a successful bond, rebooting the ESP32 should reconnect to the same iPhone without pressing Enroll. The device should reject new unknown pairing requests while a bond exists.
 
 ## Replace Enrollment
 
@@ -41,6 +41,7 @@ If the iPhone still has the old Bluetooth record after Replace, remove it from i
 
 ```powershell
 python tools/verify_capture.py `
+  --target esp32c6 `
   --port COM9 `
   --baud 115200 `
   --timeout 180 `
@@ -50,7 +51,7 @@ python tools/verify_capture.py `
 Expected readiness line:
 
 ```text
-ANCS_STATE_JSON {"target":"esp32c6","state":"ancs_ready",...,"bonded":true,"data_source_subscribed":true,"notification_source_subscribed":true}
+ANCS_STATE_JSON {"target":"<idf-target>","state":"ancs_ready",...,"bonded":true,"data_source_subscribed":true,"notification_source_subscribed":true}
 ```
 
 Generate one visible iOS notification after `ancs_ready`. The verifier writes the raw serial stream and a single capture JSON file. It does not prove MQTT or Home Assistant delivery; use `tools/verify_mqtt_relay.py` with broker events for that layer.

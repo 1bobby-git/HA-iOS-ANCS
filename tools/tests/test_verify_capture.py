@@ -105,6 +105,23 @@ def test_wrong_target_is_rejected():
         validate_notification(notification(target="esp32c3"))
 
 
+def test_explicit_target_accepts_matching_non_c6_capture():
+    c3_state = state_line().replace("esp32c6", "esp32c3")
+    c3_notification = notification(
+        target="esp32c3",
+        device_name="IOS-ANCS-C3-ABCD",
+    )
+
+    result = consume_log_stream(
+        [c3_state, notification_line(c3_notification)],
+        output_path=io.StringIO(),
+        capture_path=None,
+        target="esp32c3",
+    )
+
+    assert result["target"] == "esp32c3"
+
+
 def test_notification_before_ready_does_not_pass():
     lines = [notification_line(notification())]
     with pytest.raises(CaptureNotReadyError, match="ancs_ready"):

@@ -132,6 +132,6 @@ Use `--expect-offline-drop` only when the capture includes offline and reconnect
 
 - Confirm the automation uses the MQTT Discovery last-notification sensor.
 - Confirm the trigger requires a state change, not only attribute updates.
-- Confirm C6 state reports increment `dropped_echo` for every `io.robbie.HomeAssistant` notification.
+- Confirm the device state reports increment `dropped_echo` for every `io.robbie.HomeAssistant` notification.
 - Confirm the automation ignores `unknown`, `unavailable`, incomplete payloads, and `pre_existing=true`.
 - Confirm there is no REST command, webhook, or HTTP action path.

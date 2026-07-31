@@ -51,7 +51,9 @@ def test_client_config_sets_broker_auth_tls_and_lwt():
 def test_discovery_and_payload_contracts_are_present():
     payload = read("mqtt_payload.c")
     source = read("mqtt_relay.c")
-    assert '\\"source\\":\\"esp32c6_ancs\\"' in payload
+    assert '#include "platform_identity.h"' in payload
+    assert "ANCS_SOURCE_ID" in payload
+    assert '\\"source\\":\\"esp32c6_ancs\\"' not in payload
     assert '\\"relay_id\\":' in payload
     assert '\\"published_at_ms\\":' in payload
     assert "value_json.relay_id" in source

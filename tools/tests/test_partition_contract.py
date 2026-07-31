@@ -67,17 +67,18 @@ def test_provision_nvs_and_coredump_follow_factory_application():
     assert partitions["coredump"]["Size"] == "0x10000"
 
 
-def test_defaults_select_8mb_custom_partition_coexistence_and_certificate_bundle():
+def test_defaults_select_4mb_custom_partition_coexistence_and_certificate_bundle():
     defaults = _sdkconfig_defaults()
 
     for setting in (
-        "CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y",
+        "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y",
         "CONFIG_PARTITION_TABLE_CUSTOM=y",
         'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"',
         "CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y",
         "CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y",
     ):
         assert setting in defaults
+    assert "CONFIG_IDF_TARGET=" not in defaults
 
 
 def test_active_sdkconfig_uses_expected_flash_and_partition_table_when_present():
@@ -86,7 +87,7 @@ def test_active_sdkconfig_uses_expected_flash_and_partition_table_when_present()
         return
 
     config = active_sdkconfig.read_text(encoding="utf-8")
-    assert "CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y" in config
+    assert "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y" in config
     assert "CONFIG_PARTITION_TABLE_CUSTOM=y" in config
     assert 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' in config
 
@@ -108,7 +109,7 @@ def test_all_partition_extents_are_sorted_non_overlapping_and_fit_flash():
 
     assert [name for _, _, name in extents] == ["nvs", "phy_init", "factory", "provision", "coredump"]
     assert all(current_start >= previous_end for (_, previous_end, _), (current_start, _, _) in zip(extents, extents[1:]))
-    assert extents[-1][1] <= 0x800000
+    assert extents[-1][1] <= 0x400000
 
 
 def test_dependency_lock_resolves_official_mqtt_and_cjson_for_esp32c6_idf_602():
