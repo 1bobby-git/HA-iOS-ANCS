@@ -10,13 +10,13 @@ The shared firmware uses a 4 MB minimum flash layout. ESP32-C6 on `COM9` is hard
 
 | Target | Typical module/board | Factory image | Validation |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,411,632 bytes | Build verified |
-| `esp32c2` | ESP32-C2 | 1,429,760 bytes | Build verified |
-| `esp32c3` | ESP32-C3 | 1,509,344 bytes | Build verified |
-| `esp32c5` | ESP32-C5 | 1,763,648 bytes | Build verified |
-| `esp32c6` | ESP32-C6 | 1,763,856 bytes | COM9 v0.2.0 flash, boot, Wi-Fi, and stored-bond recovery verified |
-| `esp32c61` | ESP32-C61 | 1,706,816 bytes | Build verified |
-| `esp32s3` | ESP32-S3 | 1,393,312 bytes | Build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,414,080 bytes | v0.2.1 build verified |
+| `esp32c2` | ESP32-C2 | 1,432,336 bytes | v0.2.1 build verified |
+| `esp32c3` | ESP32-C3 | 1,511,936 bytes | v0.2.1 build verified |
+| `esp32c5` | ESP32-C5 | 1,766,240 bytes | v0.2.1 build verified |
+| `esp32c6` | ESP32-C6 | 1,766,448 bytes | v0.2.1 build verified; v0.2.0 COM9 hardware verified |
+| `esp32c61` | ESP32-C61 | 1,709,408 bytes | v0.2.1 build verified |
+| `esp32s3` | ESP32-S3 | 1,395,808 bytes | v0.2.1 build verified |
 
 ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
@@ -99,6 +99,7 @@ Published topics:
 <base>/availability
 <base>/state
 homeassistant/sensor/<device_id>/last_notification/config
+homeassistant/sensor/<device_id>/<field>/config
 ```
 
 Contracts:
@@ -106,7 +107,8 @@ Contracts:
 - `<base>/notification`: ANCS JSON plus `relay_id`, target-specific `source=<target>_ancs`, and uptime; QoS 1; retained false.
 - `<base>/availability`: `online` or `offline`; QoS 1; retained true; LWT publishes `offline`.
 - `<base>/state`: counters and diagnostics; QoS 1; retained true.
-- Discovery config: retained true and uses `relay_id` as the sensor state.
+- Discovery configs: retained true. The aggregate sensor uses `relay_id` as
+  its state, and each field sensor extracts one JSON value.
 
 Notifications received while Wi-Fi or MQTT is disconnected are dropped immediately and are not replayed after reconnect. `pre_existing`, incomplete, invalid, duplicate, removed, and marked Home Assistant echo notifications are excluded from MQTT.
 
@@ -122,7 +124,10 @@ Copy its content into Home Assistant automation YAML or include it from your aut
 
 The firmware drops every ANCS event whose `app_id` is `io.robbie.HomeAssistant`. The title marker is retained for operator visibility, but the app-level exclusion is the loop-prevention boundary, so marked and unmarked Home Assistant notifications are never published back to MQTT.
 
-MQTT Discovery creates one `last notification` sensor per device. The sensor state is the latest `relay_id`, and the notification JSON is attached to the entity as attributes through `json_attributes_topic`. The attributes include:
+MQTT Discovery creates one aggregate `last notification` sensor plus 33
+individual field sensors per device. The aggregate sensor state is the latest
+`relay_id`, and the complete notification JSON remains attached to it through
+`json_attributes_topic`. The individual sensors cover:
 
 ```text
 schema_version, target, device_name, session_id, event, event_id, uid,
@@ -131,6 +136,12 @@ negative_action_available, category_id, category, category_count, app_id,
 title, subtitle, message, message_size, date, complete, truncated, error,
 received_at_ms, relay_id, source, published_at_ms
 ```
+
+The four nested `truncated` flags are also exposed as
+`truncated_app_id`, `truncated_title`, `truncated_subtitle`, and
+`truncated_message`. The `app_id`, `title`, `subtitle`, and `message` entity
+states are clipped to 255 characters to stay within Home Assistant's state
+limit; their complete values are preserved in the aggregate sensor attributes.
 
 For the existing C6 device, the identity remains `target=esp32c6` and `source=esp32c6_ancs`. Other firmware targets use their own exact ESP-IDF target name, such as `target=esp32c3` and `source=esp32c3_ancs`.
 

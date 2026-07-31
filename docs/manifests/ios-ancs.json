@@ -1,13 +1,13 @@
 {
   "name": "iOS ANCS MQTT Bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32",
       "parts": [
         {
-          "path": "../firmware/esp32/ios-ancs-esp32-v0.2.0.factory.bin",
+          "path": "../firmware/esp32/ios-ancs-esp32-v0.2.1.factory.bin",
           "offset": 0
         }
       ]
@@ -16,7 +16,7 @@
       "chipFamily": "ESP32-C2",
       "parts": [
         {
-          "path": "../firmware/esp32c2/ios-ancs-esp32c2-v0.2.0.factory.bin",
+          "path": "../firmware/esp32c2/ios-ancs-esp32c2-v0.2.1.factory.bin",
           "offset": 0
         }
       ]
@@ -25,7 +25,7 @@
       "chipFamily": "ESP32-C3",
       "parts": [
         {
-          "path": "../firmware/esp32c3/ios-ancs-esp32c3-v0.2.0.factory.bin",
+          "path": "../firmware/esp32c3/ios-ancs-esp32c3-v0.2.1.factory.bin",
           "offset": 0
         }
       ]
@@ -34,7 +34,7 @@
       "chipFamily": "ESP32-C5",
       "parts": [
         {
-          "path": "../firmware/esp32c5/ios-ancs-esp32c5-v0.2.0.factory.bin",
+          "path": "../firmware/esp32c5/ios-ancs-esp32c5-v0.2.1.factory.bin",
           "offset": 0
         }
       ]
@@ -43,7 +43,7 @@
       "chipFamily": "ESP32-C6",
       "parts": [
         {
-          "path": "../firmware/esp32c6/ios-ancs-esp32c6-v0.2.0.factory.bin",
+          "path": "../firmware/esp32c6/ios-ancs-esp32c6-v0.2.1.factory.bin",
           "offset": 0
         }
       ]
@@ -52,7 +52,7 @@
       "chipFamily": "ESP32-C61",
       "parts": [
         {
-          "path": "../firmware/esp32c61/ios-ancs-esp32c61-v0.2.0.factory.bin",
+          "path": "../firmware/esp32c61/ios-ancs-esp32c61-v0.2.1.factory.bin",
           "offset": 0
         }
       ]
@@ -61,7 +61,7 @@
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "../firmware/esp32s3/ios-ancs-esp32s3-v0.2.0.factory.bin",
+          "path": "../firmware/esp32s3/ios-ancs-esp32s3-v0.2.1.factory.bin",
           "offset": 0
         }
       ]

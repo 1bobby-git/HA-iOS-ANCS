@@ -2,6 +2,42 @@
 
 Validation date: 2026-07-31 (Asia/Seoul)
 
+## Home Assistant field-sensor correction v0.2.1
+
+- MQTT Discovery now publishes one retained aggregate sensor config and 33
+  retained individual field-sensor configs for every configured device.
+- Individual configs share `<base>/notification` as the state topic and
+  extract their value with `value_template`.
+- The four members of `truncated` are also individual sensors.
+- The `app_id`, `title`, `subtitle`, and `message` sensor states are clipped to
+  255 characters; the complete JSON remains available on the aggregate sensor
+  through `json_attributes_topic`.
+- Host contract: `python -m pytest tools/tests -q` reports `93 passed`.
+- ESP-IDF Unity test firmware compiles successfully with the new field
+  Discovery cases.
+- Home Assistant live MQTT Discovery registration was exercised through the
+  configured MQTT integration for device `ios_ancs_c6_2b20`. The device now
+  reports exactly 34 entities: one aggregate `last_notification` entity and
+  all 33 field entities. This proves Home Assistant accepted every retained
+  Discovery config; it does not prove that the disconnected C6 is already
+  running v0.2.1.
+- ESP-IDF v6.0.2 completed build, link, partition checks, and merged-image
+  generation for all seven public targets:
+
+| Target | Merged bytes | SHA-256 | Validation level |
+| --- | ---: | --- | --- |
+| `esp32` | 1,414,080 | `949aa5982ab9b01d893867750a48896de0e6f9744cec7c70899e49cf9cc2a68d` | v0.2.1 build verified |
+| `esp32c2` | 1,432,336 | `4e035429738a0769cfe83548c0eacfb9cca0465170a29b078df9d7f31e05a1cb` | v0.2.1 build verified |
+| `esp32c3` | 1,511,936 | `7cb8af801d0e0100241eab29d378a95cc280f512a49de95f5ad7fd0124ce5c19` | v0.2.1 build verified |
+| `esp32c5` | 1,766,240 | `f0507c429a9be485bff484117bf8ce2a93a66afe17e9356f61f16a12e8f0f4b6` | v0.2.1 build verified |
+| `esp32c6` | 1,766,448 | `92027eba5d2be465db56115287b6912b9f3e12a355668f5e5ecf7115d46dab6b` | v0.2.1 build verified; device flash pending |
+| `esp32c61` | 1,709,408 | `eb2d3931763fb83b310ddb2048bfd5779bed6771001ef9215df93a6498402448` | v0.2.1 build verified |
+| `esp32s3` | 1,395,808 | `2bac7fb3a0c035b0c9e452703a65548a421102537fc81e2af83c6744ab736ef0` | v0.2.1 build verified |
+
+- Current physical reflash remains pending because the known ESP32-C6 CH343
+  port `COM9` is not present. The active `COM7` was identified read-only as an
+  ESP32-D0WD-V3 and was not flashed.
+
 ## Multi-target v0.2.0 build evidence (2026-07-31)
 
 `tools/build_matrix.ps1` completed one final sequential ESP-IDF v6.0.2 build, link,

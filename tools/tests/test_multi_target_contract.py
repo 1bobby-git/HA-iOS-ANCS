@@ -100,6 +100,60 @@ def test_home_assistant_sensor_receives_complete_notification_attributes():
     assert '\\"json_attributes_topic\\":' in relay
 
 
+def test_home_assistant_discovery_creates_an_individual_sensor_for_every_field():
+    relay = read(ROOT / "components" / "mqtt_relay" / "mqtt_relay.c")
+    expected_fields = {
+        "schema_version",
+        "target",
+        "device_name",
+        "session_id",
+        "event",
+        "event_id",
+        "uid",
+        "event_flags",
+        "silent",
+        "important",
+        "pre_existing",
+        "positive_action_available",
+        "negative_action_available",
+        "category_id",
+        "category",
+        "category_count",
+        "app_id",
+        "title",
+        "subtitle",
+        "message",
+        "message_size",
+        "date",
+        "complete",
+        "truncated",
+        "error",
+        "received_at_ms",
+        "relay_id",
+        "source",
+        "published_at_ms",
+        "truncated_app_id",
+        "truncated_title",
+        "truncated_subtitle",
+        "truncated_message",
+    }
+    for field in expected_fields:
+        assert f'.key = "{field}"' in relay, f"missing Discovery sensor: {field}"
+
+    for field in ("app_id", "title", "subtitle", "message"):
+        field_block = relay.split(f'.key = "{field}"', 1)[1].split("},", 1)[0]
+        assert "[:255]" in field_block, f"unbounded Home Assistant state: {field}"
+
+    assert '"homeassistant/sensor/%s/%s/config"' in relay
+    assert "mqtt_relay_build_field_discovery_payload" in relay
+    assert "mqtt_relay_discovery_field_count()" in relay
+    retained = relay.split(
+        "static void mqtt_relay_publish_retained_status", 1
+    )[1].split("static void mqtt_relay_drain_queue", 1)[0]
+    assert "mqtt_relay_build_field_discovery_topic" in retained
+    assert "mqtt_relay_build_field_discovery_payload" in retained
+
+
 def test_portal_defaults_are_derived_from_reported_target():
     portal = read(PORTAL_SOURCE)
     javascript = read(PORTAL_JS)
@@ -168,9 +222,9 @@ def test_legacy_c6_manifest_redirects_existing_users_to_current_image():
     part = build["parts"][0]
     binary = (LEGACY_C6_MANIFEST.parent / part["path"]).resolve()
 
-    assert manifest["version"] == "0.2.0"
+    assert manifest["version"] == "0.2.1"
     assert build["chipFamily"] == "ESP32-C6"
-    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.2.0.factory.bin"
+    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.2.1.factory.bin"
     assert binary.is_file()
     assert not (
         ROOT

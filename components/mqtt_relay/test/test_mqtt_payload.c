@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "ancs_protocol.h"
 #include "mqtt_relay.h"
@@ -45,6 +46,7 @@ static int s_last_qos;
 static int s_last_retain;
 static mqtt_relay_event_t s_last_event;
 static int s_event_count;
+static int s_discovery_publish_calls;
 
 static int capture_publish(const char *topic,
                            const char *payload,
@@ -58,6 +60,9 @@ static int capture_publish(const char *topic,
     s_publish_calls++;
     s_last_qos = qos;
     s_last_retain = retain;
+    if (strncmp(topic, "homeassistant/sensor/", 21) == 0) {
+        s_discovery_publish_calls++;
+    }
     return s_next_msg_id++;
 }
 
@@ -70,6 +75,7 @@ static void reset_relay_for_ownership_test(void)
     s_last_retain = -1;
     s_last_event = MQTT_RELAY_EVENT_FAILED;
     s_event_count = 0;
+    s_discovery_publish_calls = 0;
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config));
     mqtt_relay_set_publish_for_test(capture_publish);
     mqtt_relay_simulate_connected_for_test(true);
@@ -199,6 +205,157 @@ TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
                                                          "ios-ancs/2b20/availability",
                                                          payload,
                                                          sizeof(payload)));
+}
+
+TEST_CASE("discovery creates a retained sensor for every notification field",
+          "[mqtt_relay]")
+{
+    static const char *expected_fields[] = {
+        "schema_version",
+        "target",
+        "device_name",
+        "session_id",
+        "event",
+        "event_id",
+        "uid",
+        "event_flags",
+        "silent",
+        "important",
+        "pre_existing",
+        "positive_action_available",
+        "negative_action_available",
+        "category_id",
+        "category",
+        "category_count",
+        "app_id",
+        "title",
+        "subtitle",
+        "message",
+        "message_size",
+        "date",
+        "complete",
+        "truncated",
+        "error",
+        "received_at_ms",
+        "relay_id",
+        "source",
+        "published_at_ms",
+        "truncated_app_id",
+        "truncated_title",
+        "truncated_subtitle",
+        "truncated_message",
+    };
+    provision_config_t config = valid_config();
+    char topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char payload[1024];
+
+    TEST_ASSERT_EQUAL(sizeof(expected_fields) / sizeof(expected_fields[0]),
+                      mqtt_relay_discovery_field_count());
+    for (size_t index = 0; index < mqtt_relay_discovery_field_count(); ++index) {
+        TEST_ASSERT_EQUAL_STRING(expected_fields[index],
+                                 mqtt_relay_discovery_field_key(index));
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_field_discovery_topic(&config,
+                                                   index,
+                                                   topic,
+                                                   sizeof(topic)));
+        char expected_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+        snprintf(expected_topic,
+                 sizeof(expected_topic),
+                 "homeassistant/sensor/ios_ancs_c6_2b20/%s/config",
+                 expected_fields[index]);
+        TEST_ASSERT_EQUAL_STRING(expected_topic, topic);
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_field_discovery_payload(
+                &config,
+                "ios-ancs/2b20/notification",
+                "ios-ancs/2b20/availability",
+                index,
+                payload,
+                sizeof(payload)));
+        TEST_ASSERT_NOT_NULL(
+            strstr(payload, "\"state_topic\":\"ios-ancs/2b20/notification\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"value_template\":\"{{"));
+        if (strcmp(expected_fields[index], "app_id") == 0 ||
+            strcmp(expected_fields[index], "title") == 0 ||
+            strcmp(expected_fields[index], "subtitle") == 0 ||
+            strcmp(expected_fields[index], "message") == 0) {
+            TEST_ASSERT_NOT_NULL(strstr(payload, "[:255]"));
+        }
+        TEST_ASSERT_NOT_NULL(
+            strstr(payload, "\"availability_topic\":\"ios-ancs/2b20/availability\""));
+        TEST_ASSERT_NULL(strstr(payload, "\"json_attributes_topic\""));
+    }
+    TEST_ASSERT_NULL(
+        mqtt_relay_discovery_field_key(mqtt_relay_discovery_field_count()));
+    TEST_ASSERT_EQUAL(
+        ESP_ERR_INVALID_ARG,
+        mqtt_relay_build_field_discovery_topic(
+            &config,
+            mqtt_relay_discovery_field_count(),
+            topic,
+            sizeof(topic)));
+}
+
+TEST_CASE("retained status publishes last notification and every field discovery",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_publish_calls = 0;
+    s_discovery_publish_calls = 0;
+
+    mqtt_relay_publish_retained_for_test();
+
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 3U, s_publish_calls);
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 1U,
+                      s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
+}
+
+TEST_CASE("field discovery supports maximum configured identifiers and topics",
+          "[mqtt_relay]")
+{
+    provision_config_t config = valid_config();
+    memset(config.mqtt_client_id, 'a', PROVISION_MQTT_CLIENT_ID_MAX);
+    config.mqtt_client_id[PROVISION_MQTT_CLIENT_ID_MAX] = '\0';
+    memset(config.mqtt_base_topic, 'b', PROVISION_MQTT_BASE_TOPIC_MAX);
+    config.mqtt_base_topic[PROVISION_MQTT_BASE_TOPIC_MAX] = '\0';
+
+    char notification[MQTT_RELAY_TOPIC_MAX];
+    char availability[MQTT_RELAY_TOPIC_MAX];
+    char state[MQTT_RELAY_TOPIC_MAX];
+    char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char discovery_payload[1536];
+
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_build_topics(&config,
+                                              notification,
+                                              sizeof(notification),
+                                              availability,
+                                              sizeof(availability),
+                                              state,
+                                              sizeof(state),
+                                              discovery_topic,
+                                              sizeof(discovery_topic)));
+    for (size_t index = 0; index < mqtt_relay_discovery_field_count(); ++index) {
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_field_discovery_topic(&config,
+                                                   index,
+                                                   discovery_topic,
+                                                   sizeof(discovery_topic)));
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_field_discovery_payload(&config,
+                                                     notification,
+                                                     availability,
+                                                     index,
+                                                     discovery_payload,
+                                                     sizeof(discovery_payload)));
+    }
 }
 
 TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")

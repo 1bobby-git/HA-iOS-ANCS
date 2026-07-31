@@ -6,8 +6,8 @@ const boards = {
     validation: "COM9 실기기 검증",
     status: "HARDWARE VERIFIED",
     description:
-      "현재 COM9에서 v0.2.0 설치, 부팅, 저장된 Wi-Fi 연결, BLE bond 복구를 확인한 기준 모델입니다.",
-    hash: "SHA256 3CBD015AF10C",
+      "v0.2.1은 알림 JSON의 각 항목을 Home Assistant 개별 센서로 생성합니다.",
+    hash: "SHA256 92027EBA5D2B",
   },
   esp32: {
     chip: "32",
@@ -17,7 +17,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "ESP32-WROOM-32와 WROOM-D32 계열을 위한 Xtensa 듀얼 코어 빌드입니다.",
-    hash: "SHA256 70972A7EA25D",
+    hash: "SHA256 949AA5982AB9",
   },
   esp32c3: {
     chip: "C3",
@@ -27,7 +27,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "소형 RISC-V ESP32-C3 보드를 위한 Wi-Fi·BLE ANCS 브리지 빌드입니다.",
-    hash: "SHA256 9B4054EA7629",
+    hash: "SHA256 7CB8AF801D0E",
   },
   esp32s3: {
     chip: "S3",
@@ -37,7 +37,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "USB 기능과 넉넉한 메모리를 갖춘 ESP32-S3 계열용 빌드입니다.",
-    hash: "SHA256 1D0A5BF96C44",
+    hash: "SHA256 2BAC7FB3A0C0",
   },
   esp32c2: {
     chip: "C2",
@@ -47,7 +47,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "저비용 ESP32-C2 보드를 위한 4 MB 기준 ANCS·MQTT 빌드입니다.",
-    hash: "SHA256 1F935BFDAD64",
+    hash: "SHA256 4E035429738A",
   },
   esp32c5: {
     chip: "C5",
@@ -57,7 +57,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "ESP32-C5의 Wi-Fi·BLE 기능에 맞춘 ANCS MQTT 브리지 빌드입니다.",
-    hash: "SHA256 9EB99F11A3BB",
+    hash: "SHA256 F0507C429A9B",
   },
   esp32c61: {
     chip: "C61",
@@ -67,7 +67,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "ESP32-C61 보드를 위한 최신 RISC-V 계열 ANCS MQTT 브리지 빌드입니다.",
-    hash: "SHA256 90BCD4D9AE65",
+    hash: "SHA256 EB2D3931763F",
   },
 };
 
