@@ -37,8 +37,10 @@ config ANCS_ENROLL_WINDOW_MS
 
 config ANCS_ENROLL_BOOT_GPIO
     int "BOOT button GPIO used to open BLE enrollment"
+    default 0 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
+    default 28 if IDF_TARGET_ESP32C5
     default 9
-    range 0 30
+    range 0 48
 
 config ANCS_ENROLL_BOOT_HOLD_MS
     int "BOOT button hold time for BLE enrollment"

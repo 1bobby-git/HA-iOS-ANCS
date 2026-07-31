@@ -1,0 +1,31 @@
+#pragma once
+
+#include "sdkconfig.h"
+
+#define ANCS_TARGET_ID CONFIG_IDF_TARGET
+#define ANCS_SOURCE_ID CONFIG_IDF_TARGET "_ancs"
+
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#define ANCS_DEVICE_FAMILY "ESP32"
+#define ANCS_DEFAULT_BOOT_GPIO 0
+#elif defined(CONFIG_IDF_TARGET_ESP32C2)
+#define ANCS_DEVICE_FAMILY "C2"
+#define ANCS_DEFAULT_BOOT_GPIO 9
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+#define ANCS_DEVICE_FAMILY "C3"
+#define ANCS_DEFAULT_BOOT_GPIO 9
+#elif defined(CONFIG_IDF_TARGET_ESP32C5)
+#define ANCS_DEVICE_FAMILY "C5"
+#define ANCS_DEFAULT_BOOT_GPIO 28
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#define ANCS_DEVICE_FAMILY "C6"
+#define ANCS_DEFAULT_BOOT_GPIO 9
+#elif defined(CONFIG_IDF_TARGET_ESP32C61)
+#define ANCS_DEVICE_FAMILY "C61"
+#define ANCS_DEFAULT_BOOT_GPIO 9
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+#define ANCS_DEVICE_FAMILY "S3"
+#define ANCS_DEFAULT_BOOT_GPIO 0
+#else
+#error "iOS ANCS relay requires a supported ESP32 target with Wi-Fi and BLE"
+#endif

@@ -8,7 +8,15 @@ from typing import Any, Iterable
 
 
 ECHO_APP_ID = "io.robbie.HomeAssistant"
-SOURCE = "esp32c6_ancs"
+SUPPORTED_TARGETS = {
+    "esp32",
+    "esp32c2",
+    "esp32c3",
+    "esp32c5",
+    "esp32c6",
+    "esp32c61",
+    "esp32s3",
+}
 REDACTED = "<redacted>"
 CONTENT_FIELDS = {"title", "subtitle", "message"}
 SECRET_FIELDS = {
@@ -160,7 +168,12 @@ def _has_required_discovery(events: list[dict[str, Any]], base_topic: str) -> bo
 def _verify_notification_event(event: dict[str, Any], payload: dict[str, Any]) -> str:
     _require(_event_qos(event) == 1, "notification publish must use QoS 1")
     _require(not _event_retain(event), "notification publish must not be retained")
-    _require(payload.get("source") == SOURCE, "notification source must be esp32c6_ancs")
+    target = payload.get("target")
+    _require(target in SUPPORTED_TARGETS, "notification target is not supported")
+    _require(
+        payload.get("source") == f"{target}_ancs",
+        "notification source must match <target>_ancs",
+    )
     relay_id = payload.get("relay_id")
     _require(isinstance(relay_id, str) and relay_id, "notification relay_id is required")
     _require(payload.get("complete") is True, "notification complete must be true")
@@ -308,7 +321,7 @@ def verify_broker_events(
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="Validate captured MQTT broker events for the ESP32-C6 ANCS relay."
+        description="Validate captured MQTT broker events for the ESP32 ANCS relay."
     )
     parser.add_argument("capture", type=Path, help="JSONL or JSON array broker event capture")
     parser.add_argument("--report", type=Path, default=Path("artifacts/mqtt-relay-report.md"))

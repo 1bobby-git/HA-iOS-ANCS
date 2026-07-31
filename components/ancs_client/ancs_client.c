@@ -24,6 +24,7 @@
 #include "freertos/task.h"
 #include "hid_server.h"
 #include "notification_sink.h"
+#include "platform_identity.h"
 #include "nvs_flash.h"
 
 #define ANCS_APP_ID 0
@@ -1952,7 +1953,7 @@ esp_err_t ancs_client_init(void)
     }
     const int name_length = snprintf(s_client.device_name,
                                      sizeof(s_client.device_name),
-                                     "IOS-ANCS-C6-%02X%02X",
+                                     "IOS-ANCS-" ANCS_DEVICE_FAMILY "-%02X%02X",
                                      base_mac[4],
                                      base_mac[5]);
     if (name_length < 0 || (size_t)name_length >= sizeof(s_client.device_name)) {

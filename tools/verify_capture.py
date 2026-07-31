@@ -32,12 +32,12 @@ class CaptureTimeoutError(CaptureError):
     pass
 
 
-def validate_notification(payload, allow_empty_content=False):
+def validate_notification(payload, allow_empty_content=False, target="esp32c6"):
     errors = []
     if not isinstance(payload, dict):
         raise CaptureValidationError("notification must be a JSON object")
-    if payload.get("target") != "esp32c6":
-        errors.append("target must be esp32c6")
+    if payload.get("target") != target:
+        errors.append(f"target must be {target}")
     if payload.get("event") not in {"added", "modified"}:
         errors.append("event must be added or modified")
     if not isinstance(payload.get("session_id"), int) or payload["session_id"] < 1:
@@ -109,6 +109,7 @@ def consume_log_stream(
     output_path,
     capture_path,
     allow_empty_content=False,
+    target="esp32c6",
 ):
     output, close_output = _open_output(output_path)
     ready = False
@@ -118,7 +119,7 @@ def consume_log_stream(
             if line.startswith(STATE_PREFIX):
                 state = _decode_prefixed_json(line, STATE_PREFIX)
                 if (
-                    state.get("target") == "esp32c6"
+                    state.get("target") == target
                     and state.get("state") == "ancs_ready"
                     and state.get("bonded") is True
                     and state.get("data_source_subscribed") is True
@@ -134,6 +135,7 @@ def consume_log_stream(
             validate_notification(
                 notification,
                 allow_empty_content=allow_empty_content,
+                target=target,
             )
             _write_capture(capture_path, notification)
             return notification
@@ -170,11 +172,12 @@ def _serial_lines(port, baud, timeout_seconds):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="Capture and validate ESP32-C6 ANCS serial JSON."
+        description="Capture and validate ESP32 ANCS serial JSON."
     )
     parser.add_argument("--port", required=True)
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=180)
+    parser.add_argument("--target", default="esp32c6")
     parser.add_argument(
         "--output",
         type=Path,
@@ -197,6 +200,7 @@ def main(argv=None):
             output_path=args.output,
             capture_path=capture_path,
             allow_empty_content=args.allow_empty_content,
+            target=args.target,
         )
     except CaptureNotReadyError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)

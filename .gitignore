@@ -11,5 +11,12 @@
 /**/__pycache__/
 /**/*.py[cod]
 /sdkconfig.old
+/sdkconfig.esp32
+/sdkconfig.esp32c2
+/sdkconfig.esp32c3
+/sdkconfig.esp32c5
+/sdkconfig.esp32c6
+/sdkconfig.esp32c61
+/sdkconfig.esp32s3
 /test_app/sdkconfig.old
 *.log

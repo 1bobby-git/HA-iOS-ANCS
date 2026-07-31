@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "platform_identity.h"
+
 static notification_sink_observer_t s_observer;
 static void *s_observer_context;
 
@@ -211,7 +213,9 @@ int notification_sink_format_json(const ancs_notification_t *notification,
         .capacity = output_capacity,
     };
 
-    writer_raw(&writer, "{\"schema_version\":1,\"target\":\"esp32c6\",\"device_name\":");
+    writer_raw(&writer,
+               "{\"schema_version\":1,\"target\":\"" ANCS_TARGET_ID
+               "\",\"device_name\":");
     writer_string(&writer, device_name);
     writer_format(&writer,
                   ",\"session_id\":%" PRIu32 ",\"event\":",
@@ -289,7 +293,7 @@ int notification_sink_format_state_json(const char *state,
         .buffer = output,
         .capacity = output_capacity,
     };
-    writer_raw(&writer, "{\"target\":\"esp32c6\",\"state\":");
+    writer_raw(&writer, "{\"target\":\"" ANCS_TARGET_ID "\",\"state\":");
     writer_string(&writer, state);
     writer_format(&writer,
                   ",\"session_id\":%" PRIu32 ",\"bonded\":%s"

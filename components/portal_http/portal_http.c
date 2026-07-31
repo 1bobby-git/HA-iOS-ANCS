@@ -11,6 +11,7 @@
 #include "esp_wifi_types.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
+#include "platform_identity.h"
 
 #define PORTAL_HTTP_MAX_POST_BODY 8192
 #define PORTAL_HTTP_JSON_TYPE "application/json"
@@ -397,7 +398,9 @@ static cJSON *build_status_response(void)
         (void)s_handlers.status(&system, s_handlers.context);
     }
 
-    if (add_bool(root, "configured", has_config) != ESP_OK ||
+    if (add_string(root, "target", ANCS_TARGET_ID) != ESP_OK ||
+        add_string(root, "device_family", ANCS_DEVICE_FAMILY) != ESP_OK ||
+        add_bool(root, "configured", has_config) != ESP_OK ||
         add_item(root, "config", cfg) != ESP_OK) {
         goto out_of_memory;
     }

@@ -1,18 +1,30 @@
-# ESP32-C6 iOS ANCS MQTT Relay
+# ESP32 iOS ANCS MQTT Relay
 
-ESP32-C6 firmware for a power-only iOS ANCS notification relay. The device pairs with one iPhone through BLE ANCS, connects to user-provided Wi-Fi and MQTT settings, publishes eligible notifications to MQTT, and lets Home Assistant relay each new `relay_id` once.
+Multi-target ESP32 firmware for a power-only iOS ANCS notification relay. The device pairs with one iPhone through BLE ANCS, connects to user-provided Wi-Fi and MQTT settings, publishes eligible notifications to MQTT, and lets Home Assistant relay each new `relay_id` once.
 
 ## Browser Installer
 
-Open the [ANCS Flash Station](https://1bobby-git.github.io/ios-ancs/) in Chrome or Edge on a desktop computer, connect the ESP32-C6 with a USB data cable, and select **Install C6 firmware**. The page uses ESP Web Tools and the checked-in merged factory image, so ESP-IDF is not required for installation.
+Open the [ANCS Flash Station](https://1bobby-git.github.io/ios-ancs/) in Chrome or Edge on a desktop computer, connect the ESP board with a USB data cable, select the model for guidance, and press **USB 장치 자동 감지 후 설치**. A unified ESP Web Tools manifest detects the connected chip and selects the matching checked-in factory image, so ESP-IDF is not required for installation.
 
-The current verified target is ESP32-C6 with 8 MB flash. ESP32-WROOM-32 and ESP32-C3 entries are reserved in the installer catalog but remain disabled until board-specific firmware is built and tested.
+The shared firmware uses a 4 MB minimum flash layout. ESP32-C6 on `COM9` is hardware verified; every other image shown in the installer is compile, link, partition, and merged-image verified. A build-verified image is not a claim of physical-board validation.
+
+| Target | Typical module/board | Factory image | Validation |
+| --- | --- | ---: | --- |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,411,632 bytes | Build verified |
+| `esp32c2` | ESP32-C2 | 1,429,760 bytes | Build verified |
+| `esp32c3` | ESP32-C3 | 1,509,344 bytes | Build verified |
+| `esp32c5` | ESP32-C5 | 1,763,648 bytes | Build verified |
+| `esp32c6` | ESP32-C6 | 1,763,856 bytes | COM9 v0.2.0 flash, boot, Wi-Fi, and stored-bond recovery verified |
+| `esp32c61` | ESP32-C61 | 1,706,816 bytes | Build verified |
+| `esp32s3` | ESP32-S3 | 1,393,312 bytes | Build verified |
+
+ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
 > iPhone and iPad browsers cannot flash the board over USB. Use desktop Chrome or Edge for installation, then use the captive portal from any phone or computer for Wi-Fi and MQTT setup.
 
 ## Requirements
 
-- ESP32-C6 board on Windows `COM9` for local build, flash, and serial validation.
+- A supported Wi-Fi + BLE ESP32 board. ESP32-C6 on Windows `COM9` is the local hardware-validation reference.
 - ESP-IDF v6.0.2 with Bluedroid.
 - Python 3.11 or newer.
 - Python dependencies:
@@ -28,8 +40,14 @@ The known test board has base MAC suffix `ABC123`. Its provisioning AP is `IOS-A
 PowerShell:
 
 ```powershell
-.\tools\build.ps1
+.\tools\build.ps1 -Target esp32c6
 .\tools\flash.ps1 -Port COM9
+```
+
+Build every supported target and generate merged web-installer images:
+
+```powershell
+.\tools\build_matrix.ps1
 ```
 
 Linux/macOS:
@@ -85,7 +103,7 @@ homeassistant/sensor/<device_id>/last_notification/config
 
 Contracts:
 
-- `<base>/notification`: ANCS JSON plus `relay_id`, `source=esp32c6_ancs`, and uptime; QoS 1; retained false.
+- `<base>/notification`: ANCS JSON plus `relay_id`, target-specific `source=<target>_ancs`, and uptime; QoS 1; retained false.
 - `<base>/availability`: `online` or `offline`; QoS 1; retained true; LWT publishes `offline`.
 - `<base>/state`: counters and diagnostics; QoS 1; retained true.
 - Discovery config: retained true and uses `relay_id` as the sensor state.
@@ -102,7 +120,19 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 
 Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, sends `notify.mobile_app_example_phone`, and prefixes the mobile notification title with `[C6→HA]`.
 
-That title marker is the echo boundary. ANCS events from `io.robbie.HomeAssistant` whose title starts with `[C6→HA]` must not be published back to MQTT. Unmarked original Home Assistant notifications are treated like any other original iOS notification and may relay once.
+The firmware drops every ANCS event whose `app_id` is `io.robbie.HomeAssistant`. The title marker is retained for operator visibility, but the app-level exclusion is the loop-prevention boundary, so marked and unmarked Home Assistant notifications are never published back to MQTT.
+
+MQTT Discovery creates one `last notification` sensor per device. The sensor state is the latest `relay_id`, and the notification JSON is attached to the entity as attributes through `json_attributes_topic`. The attributes include:
+
+```text
+schema_version, target, device_name, session_id, event, event_id, uid,
+event_flags, silent, important, pre_existing, positive_action_available,
+negative_action_available, category_id, category, category_count, app_id,
+title, subtitle, message, message_size, date, complete, truncated, error,
+received_at_ms, relay_id, source, published_at_ms
+```
+
+For the existing C6 device, the identity remains `target=esp32c6` and `source=esp32c6_ancs`. Other firmware targets use their own exact ESP-IDF target name, such as `target=esp32c3` and `source=esp32c3_ancs`.
 
 ## Validation Tools
 
