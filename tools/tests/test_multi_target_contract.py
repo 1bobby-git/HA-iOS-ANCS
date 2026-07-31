@@ -15,7 +15,7 @@ PORTAL_JS = ROOT / "components" / "portal_http" / "portal.js"
 PORTAL_HTML = ROOT / "components" / "portal_http" / "portal.html"
 INSTALLER_HTML = ROOT / "docs" / "index.html"
 INSTALLER_JS = ROOT / "docs" / "app.js"
-INSTALLER_VENDOR_DIR = ROOT / "docs" / "vendor" / "esp-web-tools-10.4.0"
+INSTALLER_VENDOR_DIR = ROOT / "docs" / "vendor" / "esp-web-tools-10.4.0-r2"
 MULTI_MANIFEST = ROOT / "docs" / "manifests" / "ios-ancs.json"
 LEGACY_C6_MANIFEST = ROOT / "docs" / "manifests" / "esp32-c6.json"
 BUILD_MATRIX = ROOT / "tools" / "build_matrix.ps1"
@@ -190,7 +190,7 @@ def test_installer_retries_transient_compressed_block_failures():
     html = read(INSTALLER_HTML)
 
     assert (
-        'src="./vendor/esp-web-tools-10.4.0/install-button.js"'
+        'src="./vendor/esp-web-tools-10.4.0-r2/install-button.js"'
         in html
     )
     assert INSTALLER_VENDOR_DIR.is_dir()
@@ -202,6 +202,19 @@ def test_installer_retries_transient_compressed_block_failures():
     assert "Compressed block" in runtime
     assert "retrying with" in runtime
     assert "3 attempts" in runtime
+
+
+def test_installer_retries_and_reports_transient_chip_erase_failures():
+    runtime = "\n".join(
+        read(path)
+        for path in sorted(INSTALLER_VENDOR_DIR.glob("*.js"))
+    )
+
+    assert "Chip erase attempt" in runtime
+    assert "erase retrying with" in runtime
+    assert "3 attempts" in runtime
+    assert 'error:"erase_failed"' in runtime
+    assert "Failed to erase the device." in runtime
 
 
 def test_installer_models_are_sorted_and_c61_is_explained():
