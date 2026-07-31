@@ -66,7 +66,7 @@ const boards = {
     validation: "펌웨어 빌드 검증",
     status: "BUILD VERIFIED",
     description:
-      "ESP32-C61 보드를 위한 최신 RISC-V 계열 ANCS MQTT 브리지 빌드입니다.",
+      "ESP32-C61은 ESP32-C6의 리비전이 아니라 별도 최신 칩입니다. 실제 보드 각인이 C61인 경우에만 선택하세요.",
     hash: "SHA256 EB2D3931763F",
   },
 };

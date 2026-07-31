@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -184,6 +185,23 @@ def test_installer_uses_one_selector_and_one_auto_detect_manifest():
     assert "board-grid" not in javascript
 
 
+def test_installer_models_are_sorted_and_c61_is_explained():
+    html = read(INSTALLER_HTML)
+    javascript = read(INSTALLER_JS)
+    option_labels = re.findall(r'<option value="[^"]+">([^<]+)</option>', html)
+
+    assert option_labels == [
+        "ESP32 / WROOM-32",
+        "ESP32-C2",
+        "ESP32-C3",
+        "ESP32-C5",
+        "ESP32-C6",
+        "ESP32-C61",
+        "ESP32-S3",
+    ]
+    assert "ESP32-C61은 ESP32-C6의 리비전이 아니라 별도 최신 칩입니다." in javascript
+
+
 def test_unified_manifest_has_unique_builds_and_existing_binaries():
     assert MULTI_MANIFEST.exists()
     manifest = json.loads(read(MULTI_MANIFEST))
@@ -196,6 +214,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
     assert "ESP32-C3" in families
     assert "ESP32-C6" in families
     assert "ESP32-S3" in families
+    assert manifest["new_install_improv_wait_time"] == 0
     for build in builds:
         assert len(build["parts"]) == 1
         part = build["parts"][0]
