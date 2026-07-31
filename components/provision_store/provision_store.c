@@ -16,6 +16,8 @@
 #define PROVISION_ACTIVE_A 0U
 #define PROVISION_ACTIVE_B 1U
 
+static const char *const TAG = "provision_store";
+
 static bool s_initialized;
 #if CONFIG_PROVISION_STORE_TEST_BACKEND
 static bool s_test_backend;
@@ -355,47 +357,50 @@ static esp_err_t select_live_slot(const provision_best_slot_t *best, provision_l
 }
 
 #if CONFIG_PROVISION_STORE_TEST_BACKEND
-static esp_err_t read_best_test_slot(provision_best_slot_t *best)
+static esp_err_t read_best_test_slot(provision_best_slot_t *best,
+                                     provision_config_t *scratch)
 {
+    if (best == NULL || scratch == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
     memset(best, 0, sizeof(*best));
     best->active_known = s_test_active_valid;
     best->active_slot = s_test_active;
-
-    provision_config_t *config = calloc(1, sizeof(*config));
-    if (config == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
 
     for (uint8_t slot = PROVISION_ACTIVE_A; slot <= PROVISION_ACTIVE_B; ++slot) {
         if (!s_test_slot_valid[slot]) {
             continue;
         }
-        memset(config, 0, sizeof(*config));
+        memset(scratch, 0, sizeof(*scratch));
         uint32_t generation = 0;
         esp_err_t err = provision_store_decode(
             (const uint8_t *)&s_test_slots[slot],
             sizeof(s_test_slots[slot]),
-            config,
+            scratch,
             &generation);
         if (err != ESP_OK) {
             continue;
         }
         if (best->active_known && best->active_slot == slot) {
             best->active_valid = true;
-            best->active_config = *config;
+            best->active_config = *scratch;
             best->active_generation = generation;
         }
-        consider_best_slot(best, slot, config, generation);
+        consider_best_slot(best, slot, scratch, generation);
     }
 
-    memset(config, 0, sizeof(*config));
-    free(config);
+    memset(scratch, 0, sizeof(*scratch));
     return best->found ? ESP_OK : ESP_ERR_NVS_NOT_FOUND;
 }
 #endif
 
-static esp_err_t read_best_nvs_slot(nvs_handle_t handle, provision_best_slot_t *best)
+static esp_err_t read_best_nvs_slot(nvs_handle_t handle,
+                                    provision_best_slot_t *best,
+                                    provision_config_t *scratch)
 {
+    if (best == NULL || scratch == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
     memset(best, 0, sizeof(*best));
     uint8_t active = PROVISION_ACTIVE_A;
     if (nvs_get_u8(handle, PROVISION_ACTIVE_KEY, &active) == ESP_OK) {
@@ -403,36 +408,30 @@ static esp_err_t read_best_nvs_slot(nvs_handle_t handle, provision_best_slot_t *
         best->active_slot = active == PROVISION_ACTIVE_B ? PROVISION_ACTIVE_B : PROVISION_ACTIVE_A;
     }
 
-    provision_config_t *config = calloc(1, sizeof(*config));
-    if (config == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-
     uint32_t generation = 0;
-    esp_err_t err = read_slot(handle, PROVISION_SLOT_A, config, &generation);
+    esp_err_t err = read_slot(handle, PROVISION_SLOT_A, scratch, &generation);
     if (err == ESP_OK) {
         if (best->active_known && best->active_slot == PROVISION_ACTIVE_A) {
             best->active_valid = true;
-            best->active_config = *config;
+            best->active_config = *scratch;
             best->active_generation = generation;
         }
-        consider_best_slot(best, PROVISION_ACTIVE_A, config, generation);
+        consider_best_slot(best, PROVISION_ACTIVE_A, scratch, generation);
     }
 
-    memset(config, 0, sizeof(*config));
+    memset(scratch, 0, sizeof(*scratch));
     generation = 0;
-    err = read_slot(handle, PROVISION_SLOT_B, config, &generation);
+    err = read_slot(handle, PROVISION_SLOT_B, scratch, &generation);
     if (err == ESP_OK) {
         if (best->active_known && best->active_slot == PROVISION_ACTIVE_B) {
             best->active_valid = true;
-            best->active_config = *config;
+            best->active_config = *scratch;
             best->active_generation = generation;
         }
-        consider_best_slot(best, PROVISION_ACTIVE_B, config, generation);
+        consider_best_slot(best, PROVISION_ACTIVE_B, scratch, generation);
     }
 
-    memset(config, 0, sizeof(*config));
-    free(config);
+    memset(scratch, 0, sizeof(*scratch));
     return best->found ? ESP_OK : ESP_ERR_NVS_NOT_FOUND;
 }
 
@@ -450,7 +449,7 @@ esp_err_t provision_store_load(provision_config_t *out)
     esp_err_t err = ESP_OK;
 #if CONFIG_PROVISION_STORE_TEST_BACKEND
     if (s_test_backend) {
-        err = read_best_test_slot(&workspace->best);
+        err = read_best_test_slot(&workspace->best, &workspace->live.config);
         if (err == ESP_OK) {
             err = select_live_slot(&workspace->best, &workspace->live);
         }
@@ -467,7 +466,7 @@ esp_err_t provision_store_load(provision_config_t *out)
         goto cleanup;
     }
 
-    err = read_best_nvs_slot(handle, &workspace->best);
+    err = read_best_nvs_slot(handle, &workspace->best, &workspace->live.config);
     nvs_close(handle);
     if (err == ESP_OK) {
         err = select_live_slot(&workspace->best, &workspace->live);
@@ -487,7 +486,7 @@ static esp_err_t save_test_atomic(
     const provision_config_t *config,
     provision_store_save_workspace_t *workspace)
 {
-    esp_err_t best_err = read_best_test_slot(&workspace->best);
+    esp_err_t best_err = read_best_test_slot(&workspace->best, &workspace->readback);
     if (best_err != ESP_OK && best_err != ESP_ERR_NVS_NOT_FOUND) {
         return best_err;
     }
@@ -558,16 +557,21 @@ static esp_err_t save_nvs_atomic(
     nvs_handle_t handle = 0;
     esp_err_t err = open_namespace(NVS_READWRITE, &handle);
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "open namespace failed: %s", esp_err_to_name(err));
         return err;
     }
 
-    esp_err_t best_err = read_best_nvs_slot(handle, &workspace->best);
+    esp_err_t best_err = read_best_nvs_slot(handle,
+                                            &workspace->best,
+                                            &workspace->readback);
     if (best_err != ESP_OK && best_err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGE(TAG, "read slots failed: %s", esp_err_to_name(best_err));
         nvs_close(handle);
         return best_err;
     }
     esp_err_t live_err = select_live_slot(&workspace->best, &workspace->live);
     if (live_err != ESP_OK && live_err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGE(TAG, "select live slot failed: %s", esp_err_to_name(live_err));
         nvs_close(handle);
         return live_err;
     }
@@ -603,9 +607,19 @@ static esp_err_t save_nvs_atomic(
     err = encode_blob(config, next_generation, &workspace->blob);
     if (err == ESP_OK) {
         err = nvs_set_blob(handle, inactive_key, &workspace->blob, sizeof(workspace->blob));
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG,
+                     "write slot failed key=%s bytes=%u: %s",
+                     inactive_key,
+                     (unsigned)sizeof(workspace->blob),
+                     esp_err_to_name(err));
+        }
     }
     if (err == ESP_OK) {
         err = nvs_commit(handle);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "commit slot failed: %s", esp_err_to_name(err));
+        }
     }
     if (err == ESP_OK) {
         uint32_t readback_generation = 0;
@@ -613,12 +627,21 @@ static esp_err_t save_nvs_atomic(
         if (err == ESP_OK && readback_generation != next_generation) {
             err = ESP_ERR_INVALID_RESPONSE;
         }
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "readback slot failed: %s", esp_err_to_name(err));
+        }
     }
     if (err == ESP_OK) {
         err = nvs_set_u8(handle, PROVISION_ACTIVE_KEY, inactive);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "write active slot failed: %s", esp_err_to_name(err));
+        }
     }
     if (err == ESP_OK) {
         err = nvs_commit(handle);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "commit active slot failed: %s", esp_err_to_name(err));
+        }
     }
 
     nvs_close(handle);

@@ -560,14 +560,10 @@ static esp_err_t handle_config_post(httpd_req_t *req)
 
     provision_config_t *update = calloc(1, sizeof(*update));
     provision_config_t *existing = calloc(1, sizeof(*existing));
-    provision_config_t *merged = calloc(1, sizeof(*merged));
-    provision_config_t *readback = calloc(1, sizeof(*readback));
-    if (update == NULL || existing == NULL || merged == NULL || readback == NULL) {
+    if (update == NULL || existing == NULL) {
         cJSON_Delete(json);
         free(update);
         free(existing);
-        free(merged);
-        free(readback);
         return send_error_json(req, "500 Internal Server Error", "out of memory");
     }
 
@@ -575,41 +571,36 @@ static esp_err_t handle_config_post(httpd_req_t *req)
         cJSON_Delete(json);
         free(update);
         free(existing);
-        free(merged);
-        free(readback);
         return send_error_json(req, "400 Bad Request", "invalid config");
     }
     cJSON_Delete(json);
 
     if (provision_store_load(existing) == ESP_OK) {
-        err = provision_config_merge_preserving_secrets(existing, update, merged);
+        err = provision_config_merge_preserving_secrets(existing, update, update);
     } else {
-        *merged = *update;
-        err = provision_config_validate(merged) == PROVISION_CONFIG_OK ? ESP_OK
+        err = provision_config_validate(update) == PROVISION_CONFIG_OK ? ESP_OK
                                                                        : ESP_ERR_INVALID_ARG;
     }
     if (err == ESP_OK) {
-        err = provision_store_save_atomic(merged);
+        err = provision_store_save_atomic(update);
     }
     if (err == ESP_OK) {
-        err = provision_store_load(readback);
-        if (err == ESP_OK && !same_config(merged, readback)) {
+        memset(existing, 0, sizeof(*existing));
+        err = provision_store_load(existing);
+        if (err == ESP_OK && !same_config(update, existing)) {
             err = ESP_ERR_INVALID_RESPONSE;
         }
     }
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "config save failed: %s", esp_err_to_name(err));
         free(update);
         free(existing);
-        free(merged);
-        free(readback);
         return send_error_json(req, "500 Internal Server Error", "save failed");
     }
 
-    err = s_handlers.reconnect(merged, s_handlers.context);
+    err = s_handlers.reconnect(update, s_handlers.context);
     free(update);
     free(existing);
-    free(merged);
-    free(readback);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "reconnect callback failed: %s", esp_err_to_name(err));
         return send_json(req, "{\"ok\":true,\"saved\":true,\"reconnect\":false}");

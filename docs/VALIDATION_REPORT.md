@@ -199,6 +199,18 @@ The verifier redacts `title`, `subtitle`, `message`, passwords, tokens, and CA b
 
 These entries are intentionally pending or partial. Do not mark them PASS until fresh device and external-service evidence exists.
 
+### 2026-07-31 COM7 WROOM configuration-save regression
+
+- Hardware: ESP32-D0WD-V3 revision 3.1, 4 MB flash, MAC suffix `F738`, on COM7.
+- Before the fix, `POST /api/config` returned `{"ok":false,"error":"save failed"}`. Instrumented runtime logs identified `provision_store: read slots failed: ESP_ERR_NO_MEM`.
+- Root cause: the portal and provisioning store simultaneously allocated multiple fixed-size configuration structures after Bluetooth initialization. The configuration includes a 4096-byte CA field, so the final slot-read scratch allocation failed on the live ESP32 heap.
+- The fix reuses the existing portal and NVS work buffers instead of allocating four portal configurations plus an additional slot-read buffer.
+- After the fix, the same request returned `{"ok":true,"saved":true,"reconnect":true}`. A fresh `/api/status` read reported `configured=true`, both secret-configured flags, the expected client ID and base topic, and no plaintext passwords.
+- `GET /api/wifi/scan` returned HTTP 200 with nearby 2.4 GHz networks, and `POST /api/ble/enroll` changed `enroll_window_open` from `false` to `true`; restart returned it to `false` for the unbonded device.
+- The saved `SPARKPLUS14_4F` attempt did not obtain an IP in this location. Runtime status ended with disconnect reason `2` (`WIFI_REASON_AUTH_EXPIRE`) at RSSI `-86`, so MQTT and Home Assistant delivery remain pending rather than claimed.
+- AX1800 remained connected to `SPARKPLUS14_5F` throughout; only the NUC adapter was temporarily moved to the setup AP and restored.
+- The rebuilt v0.2.1 matrix completed for ESP32, ESP32-C2, ESP32-C3, ESP32-C5, ESP32-C6, ESP32-C61, and ESP32-S3. Host contract verification passed `96` tests.
+
 The final Task 5 and after-review status captures show the device config still targeted MQTT broker `220.85.87.159:1883` (`artifacts/task5-final/http-task5-final.json`, `artifacts/task5-final-after-review/http-after-review.json`). The dupfix pass did not repeat portal config POST because that code path was unchanged. MQTT and Home Assistant delivery stayed unverified because the device never reached `sta_has_ip=true`; no broker routing failure was proven in Task 5.
 
 Task 5 did not print or store plaintext Wi-Fi or MQTT secrets. Redacted status showed only secret-configured flags, and the save/connect handoff used empty secret fields to preserve existing stored values.
@@ -208,7 +220,8 @@ Task 5 did not print or store plaintext Wi-Fi or MQTT secrets. Redacted status s
 | Automatic AP visible without BOOT | PASS | `artifacts/task5-final-dupfix/production-serial-dupfix.log`, `artifacts/task5-final-dupfix/windows-wlan-readonly-dupfix.txt` |
 | Portal reachable at `192.168.4.1` from Windows | PASS | `artifacts/task5-final-after-review/http-after-review.json`: `root_gets` HTTP 200 x2, content length `9927`; `/api/status` x2 |
 | Portal reachable from iPhone | Pending | `artifacts/live-portal-iphone.*` |
-| Wi-Fi scan and save arbitrary settings | PARTIAL | `artifacts/task5-final-after-review/http-after-review.json`: `GET /api/wifi/scan` x2 with counts `20`, `20`; redacted save/connect response `ok/saved/reconnect=true`; AP returned automatically; no STA IP obtained |
+| Wi-Fi scan and persistent save | PASS | 2026-07-31 COM7 live run: scan HTTP 200; save returned `ok/saved/reconnect=true`; fresh status returned `configured=true` with redacted secrets |
+| Wi-Fi STA IP | Pending | Saved 2.4 GHz candidate ended at reason `2`, RSSI `-86`; recovery AP remained available |
 | MQTT availability, state, and Discovery retained | Pending | `artifacts/mqtt-events.jsonl` |
 | Enroll from BOOT and portal | PARTIAL | `artifacts/task5-final-after-review/http-after-review.json`: portal `POST /api/ble/enroll` returned 200 and retained existing bond; BOOT enroll not exercised |
 | Bonded reconnect without Enroll | Pending | `artifacts/task5-final-dupfix/production-serial-dupfix.log` shows existing bond loaded and advertising observed, but no live iPhone reconnect event observed |
