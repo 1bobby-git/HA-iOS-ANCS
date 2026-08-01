@@ -261,3 +261,12 @@ Expected behavior:
 - Send exactly one `notify.mobile_app_1bobby` call for a new `relay_id`.
 - Prefix relayed title with `[C6→HA]`.
 - Use queued mode with max 10.
+
+## ESP32-C3 setup AP compatibility build (2026-08-02)
+
+- The previously published C3 factory image declared minimum chip revision v0.3, so an older C3 could be rejected before `app_main` and never start the setup AP.
+- The C3 target now declares minimum revision v0.0 and enables `CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY=y`, avoiding ECO3-only Bluetooth ROM symbols while retaining the ANCS client.
+- ESP-IDF v6.0.2 completed the C3 build and merge. The factory image is 1,622,032 bytes, SHA-256 `8DD305F8229C887757C18119B79363CA10455975F8344A7DCB6C3FEC8BB4273F`, with 26% of the 2 MB app partition free.
+- `esptool image-info` reports ESP32-C3, 4 MB DIO, minimum chip revision v0.0, and valid checksum/hash.
+- Host contracts pass: `python -m pytest tools/tests -q` reports `97 passed`.
+- Live C3 AP and portal verification is pending because no ESP32-C3 USB/JTAG serial device was connected during this build.

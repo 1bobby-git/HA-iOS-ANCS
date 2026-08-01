@@ -20,6 +20,7 @@ MULTI_MANIFEST = ROOT / "docs" / "manifests" / "ios-ancs.json"
 LEGACY_C6_MANIFEST = ROOT / "docs" / "manifests" / "esp32-c6.json"
 BUILD_MATRIX = ROOT / "tools" / "build_matrix.ps1"
 FLASH_SCRIPT = ROOT / "tools" / "flash.ps1"
+C3_DEFAULTS = ROOT / "sdkconfig.defaults.esp32c3"
 
 
 def read(path: Path) -> str:
@@ -307,6 +308,17 @@ def test_build_matrix_isolated_target_outputs_and_four_megabyte_baseline():
     assert "build-$Target" in script
     assert "flasher_args.json" in script
     assert "merge-bin" in script
+
+
+def test_c3_release_supports_every_published_c3_chip_revision():
+    script = read(BUILD_MATRIX)
+
+    assert C3_DEFAULTS.is_file()
+    c3_defaults = read(C3_DEFAULTS)
+    assert "CONFIG_ESP32C3_REV_MIN_0=y" in c3_defaults
+    assert "CONFIG_ESP32C3_REV_MIN_3=y" not in c3_defaults
+    assert "CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY=y" in c3_defaults
+    assert "Remove-Item -LiteralPath $SdkconfigPath" in script
 
 
 def test_flash_helper_uses_the_selected_target_build_directory():
