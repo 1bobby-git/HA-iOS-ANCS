@@ -26,8 +26,8 @@ const boards = {
     validation: "펌웨어 빌드 검증",
     status: "BUILD VERIFIED",
     description:
-      "소형 RISC-V ESP32-C3 보드를 위한 Wi-Fi·BLE ANCS 브리지 빌드입니다.",
-    hash: "SHA256 9FEB48C76B57",
+      "칩 리비전 v0.0 이상을 지원하는 ESP32-C3 Wi-Fi·BLE ANCS 브리지 빌드입니다.",
+    hash: "SHA256 8DD305F8229C",
   },
   esp32s3: {
     chip: "S3",

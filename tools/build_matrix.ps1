@@ -127,6 +127,9 @@ try {
         $OutputPath = Join-Path $FirmwareDir "ios-ancs-$Target-v$Version.factory.bin"
 
         try {
+            if (Test-Path -LiteralPath $SdkconfigPath) {
+                Remove-Item -LiteralPath $SdkconfigPath
+            }
             Invoke-IdfCommand -ExportBat $ExportBat -Arguments @(
                 "-B$BuildDir",
                 "-DIDF_TARGET=$Target",
