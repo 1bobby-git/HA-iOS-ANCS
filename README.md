@@ -6,17 +6,17 @@ Multi-target ESP32 firmware for a power-only iOS ANCS notification relay. The de
 
 Open the [ANCS Flash Station](https://1bobby-git.github.io/ios-ancs/) in Chrome or Edge on a desktop computer, connect the ESP board with a USB data cable, select the model for guidance, and press **USB 장치 자동 감지 후 설치**. A unified ESP Web Tools manifest detects the connected chip and selects the matching checked-in factory image, so ESP-IDF is not required for installation.
 
-The shared firmware uses a 4 MB minimum flash layout. ESP32-C6 on `COM9` is hardware verified; every other image shown in the installer is compile, link, partition, and merged-image verified. A build-verified image is not a claim of physical-board validation.
+The shared firmware uses a 4 MB minimum flash layout. All v0.3.1 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-C6 v0.3.0 on `COM9` also has historical hardware verification; a v0.3.1 build-verified image is not yet a claim of physical-board validation.
 
 | Target | Typical module/board | Factory image | Validation |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,416,192 bytes | v0.3.0 build verified |
-| `esp32c2` | ESP32-C2 | 1,434,784 bytes | v0.3.0 build verified |
-| `esp32c3` | ESP32-C3 | 1,623,824 bytes | v0.3.0 build verified |
-| `esp32c5` | ESP32-C5 | 1,768,688 bytes | v0.3.0 build verified |
-| `esp32c6` | ESP32-C6 | 1,768,896 bytes | v0.3.0 COM9 flash, AP/portal, BOOT, live MQTT/HA button, and BLE advertising verified |
-| `esp32c61` | ESP32-C61 | 1,711,888 bytes | v0.3.0 build verified |
-| `esp32s3` | ESP32-S3 | 1,398,064 bytes | v0.3.0 build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,420,944 bytes | v0.3.1 build verified |
+| `esp32c2` | ESP32-C2 | 1,440,144 bytes | v0.3.1 build verified |
+| `esp32c3` | ESP32-C3 | 1,629,184 bytes | v0.3.1 build verified |
+| `esp32c5` | ESP32-C5 | 1,774,304 bytes | v0.3.1 build verified |
+| `esp32c6` | ESP32-C6 | 1,774,336 bytes | v0.3.1 build verified; v0.3.0 hardware evidence remains historical |
+| `esp32c61` | ESP32-C61 | 1,717,456 bytes | v0.3.1 build verified |
+| `esp32s3` | ESP32-S3 | 1,402,832 bytes | v0.3.1 build verified |
 
 ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
@@ -33,7 +33,7 @@ ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has 
 python -m pip install -r tools/requirements.txt
 ```
 
-The known test board has base MAC suffix `572B20`. Its provisioning AP is `IOS-ANCS-SETUP-572B20` with password `ANCS-572B20`. Other boards derive both values from the last three MAC bytes as `IOS-ANCS-SETUP-<SUFFIX>` and `ANCS-<SUFFIX>`.
+The known test board has base MAC suffix `572B20`. Its provisioning AP is `IOS-ANCS-SETUP-572B20` with password `ancs-572b20`. Other boards use the uppercase MAC suffix in the SSID and the lowercase form `ancs-<lowercase_suffix>` for the setup password. Infrastructure Wi-Fi passwords remain case-sensitive and are stored exactly as entered.
 
 ## Build And Flash
 
@@ -63,7 +63,7 @@ After flashing, the device is designed to run from USB power only. Windows on `C
 
 If the `provision` NVS partition is empty or invalid, the device automatically starts a WPA2 setup AP. No BOOT press is required.
 
-1. Join `IOS-ANCS-SETUP-<SUFFIX>` with password `ANCS-<SUFFIX>`.
+1. Join `IOS-ANCS-SETUP-<SUFFIX>` with password `ancs-<lowercase_suffix>`.
 2. Open `http://192.168.4.1`.
 3. Use Wi-Fi scan or enter any SSID manually.
 4. Enter the MQTT host, port, and account details. The portal automatically applies a recommended device-specific Client ID and base topic under **Advanced MQTT settings**; edit them only when your broker requires a custom value.
@@ -151,6 +151,12 @@ The four nested `truncated` flags are also exposed as
 `truncated_message`. The `app_id`, `title`, `subtitle`, and `message` entity
 states are clipped to 255 characters to stay within Home Assistant's state
 limit; their complete values are preserved in the aggregate sensor attributes.
+
+Three retained diagnostic sensors expose the live connection snapshot as
+`wifi_ssid`, `wifi_ip`, and `wifi_rssi`. Home Assistant attaches every entity
+to the same device record and shows `manufacturer`, `model`, `sw_version`, and
+`hw_version`. Neither Discovery nor retained state contains Wi-Fi or MQTT
+passwords.
 
 For the existing C6 device, the identity remains `target=esp32c6` and `source=esp32c6_ancs`. Other firmware targets use their own exact ESP-IDF target name, such as `target=esp32c3` and `source=esp32c3_ancs`.
 
