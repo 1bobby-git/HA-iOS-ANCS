@@ -59,6 +59,21 @@ def test_mqtt_is_started_only_after_wifi_ip():
     assert "mqtt_relay_start()" in starter
 
 
+def test_mqtt_enroll_request_runs_only_in_the_app_coordinator():
+    source = read("main/app_main.c")
+    callback = source.split("static void mqtt_event_callback", 1)[1].split(
+        "static void boot_held_callback", 1
+    )[0]
+    handler = source.split("static void handle_mqtt_event", 1)[1].split(
+        "static void handle_config_changed", 1
+    )[0]
+
+    assert "APP_EVENT_MQTT" in callback
+    assert "ancs_client_request_enroll" not in callback
+    assert "MQTT_RELAY_EVENT_ENROLL_REQUEST" in handler
+    assert "ancs_client_request_enroll();" in handler
+
+
 def test_wifi_timeout_stops_station_before_starting_recovery_portal():
     source = read("main/app_main.c")
     recovery_helper = source.split("static void enter_wifi_timeout_recovery", 1)[1].split(
