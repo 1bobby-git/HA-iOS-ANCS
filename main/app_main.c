@@ -261,12 +261,6 @@ static esp_err_t portal_reconnect(const provision_config_t *config, void *contex
     return ESP_OK;
 }
 
-static esp_err_t portal_ble_enroll(void *context)
-{
-    (void)context;
-    return ancs_client_request_enroll();
-}
-
 static esp_err_t portal_ble_replace(void *context)
 {
     (void)context;
@@ -295,7 +289,6 @@ static const portal_http_handlers_t s_portal_handlers = {
     .status = portal_status,
     .mqtt_test = portal_mqtt_test,
     .reconnect = portal_reconnect,
-    .ble_enroll = portal_ble_enroll,
     .ble_replace = portal_ble_replace,
     .restart = portal_restart,
     .reset_provisioning = portal_reset_provisioning,
@@ -501,6 +494,16 @@ static void handle_provisioning_event(provisioning_event_t event,
 
 static void handle_mqtt_event(mqtt_relay_event_t event)
 {
+    if (event == MQTT_RELAY_EVENT_ENROLL_REQUEST) {
+        const esp_err_t error = ancs_client_request_enroll();
+        if (error != ESP_OK) {
+            ESP_LOGW(TAG,
+                     "MQTT enrollment request failed: %s",
+                     esp_err_to_name(error));
+        }
+        return;
+    }
+
     if (event == MQTT_RELAY_EVENT_CONNECTED) {
         handle_provisioning_event(PROVISION_EVENT_MQTT_CONNECTED, 0);
         return;

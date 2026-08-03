@@ -308,7 +308,7 @@ TEST_CASE("retained status publishes last notification and every field discovery
 
     mqtt_relay_publish_retained_for_test();
 
-    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 3U, s_publish_calls);
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 4U, s_publish_calls);
     TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 1U,
                       s_discovery_publish_calls);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
