@@ -1,8 +1,12 @@
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "ancs_client.h"
+#include "esp_app_desc.h"
+#include "esp_chip_info.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -14,6 +18,7 @@
 #include "mqtt_relay.h"
 #include "notification_sink.h"
 #include "nvs_flash.h"
+#include "platform_identity.h"
 #include "portal_http.h"
 #include "provision_store.h"
 #include "provisioning_runtime.h"
@@ -26,6 +31,7 @@
 #define APP_BOND_POLL_MS 1000
 #define APP_RESTART_DELAY_MS 750
 #define APP_CONFIG_HANDOFF_DELAY_MS 750
+#define APP_WIFI_STATUS_REFRESH_MS 60000
 
 static const char *const TAG = "ANCS_APP";
 
@@ -35,6 +41,7 @@ typedef enum {
     APP_EVENT_CONFIG_CHANGED,
     APP_EVENT_MQTT_RETRY,
     APP_EVENT_BOND_POLL,
+    APP_EVENT_WIFI_STATUS_REFRESH,
     APP_EVENT_RESET_PROVISIONING,
 } app_event_type_t;
 
@@ -52,6 +59,7 @@ typedef struct {
     bool config_valid;
     bool mqtt_initialized;
     bool mqtt_started;
+    mqtt_relay_device_info_t device_info;
     uint32_t active_sta_attempt_generation;
 } app_coordinator_state_t;
 
@@ -68,6 +76,7 @@ static TaskHandle_t s_event_task;
 static TimerHandle_t s_recovery_timer;
 static TimerHandle_t s_mqtt_retry_timer;
 static TimerHandle_t s_bond_poll_timer;
+static TimerHandle_t s_wifi_status_timer;
 static TimerHandle_t s_restart_timer;
 static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -89,6 +98,31 @@ static uint64_t app_now_us(void)
 static uint64_t app_now_ms(void)
 {
     return app_now_us() / 1000;
+}
+
+static mqtt_relay_device_info_t build_device_info(void)
+{
+    mqtt_relay_device_info_t info = {0};
+    strlcpy(info.manufacturer,
+            "Espressif Systems",
+            sizeof(info.manufacturer));
+    strlcpy(info.model, ANCS_DEVICE_MODEL, sizeof(info.model));
+
+    const esp_app_desc_t *description = esp_app_get_description();
+    if (description != NULL) {
+        strlcpy(info.sw_version,
+                description->version,
+                sizeof(info.sw_version));
+    }
+
+    esp_chip_info_t chip = {0};
+    esp_chip_info(&chip);
+    (void)snprintf(info.hw_version,
+                   sizeof(info.hw_version),
+                   "rev %u.%u",
+                   chip.revision / 100U,
+                   chip.revision % 100U);
+    return info;
 }
 
 static bool app_post(const app_event_msg_t *message)
@@ -161,6 +195,15 @@ static void bond_poll_timer_callback(TimerHandle_t timer)
     (void)timer;
     const app_event_msg_t message = {
         .type = APP_EVENT_BOND_POLL,
+    };
+    (void)app_post(&message);
+}
+
+static void wifi_status_timer_callback(TimerHandle_t timer)
+{
+    (void)timer;
+    const app_event_msg_t message = {
+        .type = APP_EVENT_WIFI_STATUS_REFRESH,
     };
     (void)app_post(&message);
 }
@@ -334,6 +377,9 @@ static void apply_reducer_requirements(provisioning_state_t state)
 
 static void stop_mqtt(void)
 {
+    if (s_wifi_status_timer != NULL) {
+        (void)xTimerStop(s_wifi_status_timer, 0);
+    }
     app_state_lock();
     const bool initialized = s_app.mqtt_initialized;
     s_app.mqtt_started = false;
@@ -353,6 +399,24 @@ static void schedule_mqtt_retry(void)
     }
 }
 
+static esp_err_t refresh_wifi_status(void)
+{
+    provisioning_wifi_snapshot_t snapshot = {0};
+    const esp_err_t snapshot_error =
+        provisioning_runtime_get_wifi_snapshot(&snapshot);
+
+    mqtt_relay_wifi_status_t status = {0};
+    if (snapshot_error == ESP_OK && snapshot.connected) {
+        status.connected = true;
+        status.rssi = snapshot.rssi;
+        strlcpy(status.ssid, snapshot.ssid, sizeof(status.ssid));
+        strlcpy(status.ip, snapshot.ip, sizeof(status.ip));
+    }
+
+    const esp_err_t update_error = mqtt_relay_update_wifi_status(&status);
+    return snapshot_error != ESP_OK ? snapshot_error : update_error;
+}
+
 static esp_err_t start_or_reconnect_mqtt(void)
 {
     const app_runtime_snapshot_t app = app_runtime_snapshot();
@@ -362,12 +426,18 @@ static esp_err_t start_or_reconnect_mqtt(void)
 
     esp_err_t error = ESP_OK;
     if (!app.mqtt_initialized) {
-        error = mqtt_relay_init(&s_app.config);
+        error = mqtt_relay_init(&s_app.config, &s_app.device_info);
         if (error == ESP_OK) {
             error = mqtt_relay_register_event_callback(mqtt_event_callback, NULL);
         }
         if (error == ESP_OK) {
             mqtt_relay_set_wifi_connected(true);
+            const esp_err_t status_error = refresh_wifi_status();
+            if (status_error != ESP_OK) {
+                ESP_LOGW(TAG,
+                         "initial Wi-Fi status refresh failed: %s",
+                         esp_err_to_name(status_error));
+            }
             error = mqtt_relay_start();
         }
         if (error == ESP_OK) {
@@ -380,6 +450,12 @@ static esp_err_t start_or_reconnect_mqtt(void)
         (void)mqtt_relay_deinit();
     } else {
         mqtt_relay_set_wifi_connected(true);
+        const esp_err_t status_error = refresh_wifi_status();
+        if (status_error != ESP_OK) {
+            ESP_LOGW(TAG,
+                     "Wi-Fi status refresh before reconnect failed: %s",
+                     esp_err_to_name(status_error));
+        }
         error = app.mqtt_started ? mqtt_relay_reconnect()
                                  : mqtt_relay_start();
         if (error == ESP_OK) {
@@ -470,6 +546,9 @@ static void handle_provisioning_event(provisioning_event_t event,
         break;
 
     case PROVISION_EVENT_MQTT_FAILED:
+        if (s_wifi_status_timer != NULL) {
+            (void)xTimerStop(s_wifi_status_timer, 0);
+        }
         schedule_mqtt_retry();
         break;
 
@@ -506,6 +585,9 @@ static void handle_mqtt_event(mqtt_relay_event_t event)
 
     if (event == MQTT_RELAY_EVENT_CONNECTED) {
         handle_provisioning_event(PROVISION_EVENT_MQTT_CONNECTED, 0);
+        if (s_wifi_status_timer != NULL) {
+            (void)xTimerReset(s_wifi_status_timer, 0);
+        }
         return;
     }
 
@@ -610,6 +692,15 @@ static void coordinator_task(void *argument)
         case APP_EVENT_BOND_POLL:
             handle_bond_poll();
             break;
+        case APP_EVENT_WIFI_STATUS_REFRESH: {
+            const esp_err_t error = refresh_wifi_status();
+            if (error != ESP_OK) {
+                ESP_LOGW(TAG,
+                         "periodic Wi-Fi status refresh failed: %s",
+                         esp_err_to_name(error));
+            }
+            break;
+        }
         case APP_EVENT_RESET_PROVISIONING:
             handle_reset_provisioning();
             break;
@@ -623,6 +714,7 @@ static void coordinator_task(void *argument)
 static esp_err_t initialize_coordinator(void)
 {
     s_app.state = provisioning_initial();
+    s_app.device_info = build_device_info();
     s_event_queue = xQueueCreate(APP_EVENT_QUEUE_LENGTH, sizeof(app_event_msg_t));
     if (s_event_queue == NULL) {
         return ESP_ERR_NO_MEM;
@@ -654,13 +746,19 @@ static esp_err_t initialize_coordinator(void)
                                      pdTRUE,
                                      NULL,
                                      bond_poll_timer_callback);
+    s_wifi_status_timer = xTimerCreate("wifi_status",
+                                      pdMS_TO_TICKS(APP_WIFI_STATUS_REFRESH_MS),
+                                      pdTRUE,
+                                      NULL,
+                                      wifi_status_timer_callback);
     s_restart_timer = xTimerCreate("restart",
                                    pdMS_TO_TICKS(APP_RESTART_DELAY_MS),
                                    pdFALSE,
                                    NULL,
                                    restart_timer_callback);
     if (s_recovery_timer == NULL || s_mqtt_retry_timer == NULL ||
-        s_bond_poll_timer == NULL || s_restart_timer == NULL) {
+        s_bond_poll_timer == NULL || s_wifi_status_timer == NULL ||
+        s_restart_timer == NULL) {
         if (s_recovery_timer != NULL) {
             (void)xTimerDelete(s_recovery_timer, 0);
             s_recovery_timer = NULL;
@@ -672,6 +770,10 @@ static esp_err_t initialize_coordinator(void)
         if (s_bond_poll_timer != NULL) {
             (void)xTimerDelete(s_bond_poll_timer, 0);
             s_bond_poll_timer = NULL;
+        }
+        if (s_wifi_status_timer != NULL) {
+            (void)xTimerDelete(s_wifi_status_timer, 0);
+            s_wifi_status_timer = NULL;
         }
         if (s_restart_timer != NULL) {
             (void)xTimerDelete(s_restart_timer, 0);
