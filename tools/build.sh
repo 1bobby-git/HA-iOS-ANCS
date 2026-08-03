@@ -4,7 +4,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 idf_path="${IDF_PATH:-}"
 target="${TARGET:-esp32c6}"
-version="${VERSION:-0.3.0}"
+version="${VERSION:-0.3.1}"
 
 if [[ -z "${idf_path}" ]]; then
     bundled_idf="$(cd "${project_root}/../.." && pwd)/work/sdk/esp-idf-6.0.2"

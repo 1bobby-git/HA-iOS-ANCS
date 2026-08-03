@@ -135,6 +135,25 @@ def test_retained_status_uses_small_non_secret_snapshot_and_worker_rendezvous():
     assert "mqtt_relay_wait_worker_idle();" in source
     assert "mqtt_relay_stop_worker_for_teardown();" in source
     assert "s_ctx.worker_task = NULL" in source
+
+
+def test_connected_event_defers_retained_discovery_to_the_worker():
+    source = read("mqtt_relay.c")
+    handler = source.split("static void mqtt_relay_event_handler", 1)[1].split(
+        "static esp_err_t mqtt_relay_prepare_context", 1
+    )[0]
+    connected = handler.split("if (event_id == MQTT_EVENT_CONNECTED)", 1)[1].split(
+        "if (event_id == MQTT_EVENT_DATA)", 1
+    )[0]
+    worker = source.split("static void mqtt_relay_worker", 1)[1].split(
+        "static void mqtt_relay_notify_worker", 1
+    )[0]
+
+    assert "s_ctx.retained_refresh_pending = true;" in connected
+    assert "mqtt_relay_publish_retained_status();" not in connected
+    assert "s_ctx.retained_refresh_pending" in worker
+    assert "mqtt_relay_publish_retained_status();" in worker
+    assert "mqtt_relay_publish_retained_with_retry" in source
     assert "SemaphoreHandle_t lifecycle_lock" in source
     assert "mqtt_relay_lifecycle_lock();" in source
     assert "mqtt_relay_lifecycle_unlock();" in source
@@ -229,3 +248,48 @@ def test_no_secret_logging_or_state_discovery_serialization():
     state_discovery = read("mqtt_relay.c")
     assert "mqtt_password" not in state_discovery.split("mqtt_relay_build_state_payload", 1)[1]
     assert "mqtt_ca" not in state_discovery.split("mqtt_relay_build_discovery_payload", 1)[1]
+
+
+def test_device_metadata_and_wifi_discovery_contracts_are_present():
+    header = read("include/mqtt_relay.h")
+    source = read("mqtt_relay.c")
+
+    assert "mqtt_relay_device_info_t" in header
+    for field in ("manufacturer", "model", "sw_version", "hw_version"):
+        assert field in header
+    assert "append_device_json" in source
+    assert "mqtt_relay_wifi_discovery_field_count" in header
+    assert "mqtt_relay_wifi_discovery_field_key" in header
+    assert "mqtt_relay_build_wifi_discovery_topic" in header
+    assert "mqtt_relay_build_wifi_discovery_payload" in header
+    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+        assert f'.key = "{key}"' in source
+    assert r'\"entity_category\":\"diagnostic\"' in source
+    assert 'signal_strength' in source
+    assert 'measurement' in source
+    assert 'unit_of_measurement' in source
+    assert 'dBm' in source
+
+
+def test_retained_wifi_state_update_is_bounded_and_secret_free():
+    header = read("include/mqtt_relay.h")
+    source = read("mqtt_relay.c")
+
+    assert "mqtt_relay_wifi_status_t wifi_status" in source
+    assert "mqtt_relay_update_wifi_status" in header
+    state_builder = source.split("esp_err_t mqtt_relay_build_state_payload", 1)[1].split(
+        "static void mqtt_relay_lock", 1
+    )[0]
+    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+        assert key in state_builder
+    assert "password" not in state_builder
+
+    updater = source.split("esp_err_t mqtt_relay_update_wifi_status", 1)[1].split(
+        "void mqtt_relay_set_wifi_connected", 1
+    )[0]
+    assert "s_ctx.wifi_status = *status" in updater
+    assert "mqtt_relay_build_state_payload" in updater
+    assert "mqtt_relay_publish_raw" in updater
+    assert "mqtt_relay_publish_retained_status" not in updater
+    assert "mqtt_password" not in updater
+    assert "mqtt_ca" not in updater

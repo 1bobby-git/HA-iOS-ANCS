@@ -17,11 +17,16 @@
 #define MQTT_RELAY_WORKER_STACK 4096
 #define MQTT_RELAY_WORKER_PRIORITY 5
 #define MQTT_RELAY_DISCOVERY_PAYLOAD_MAX 1536
+#define MQTT_RELAY_RETAINED_PUBLISH_ATTEMPTS 5U
+#define MQTT_RELAY_RETAINED_RETRY_DELAY_MS 100U
+#define MQTT_RELAY_RETAINED_PACE_MS 20U
 
 static const char MQTT_RELAY_ENROLL_PAYLOAD[] = "ENROLL";
 
 typedef struct {
     provision_config_t config;
+    mqtt_relay_device_info_t device_info;
+    mqtt_relay_wifi_status_t wifi_status;
     esp_mqtt_client_handle_t client;
     QueueHandle_t queue;
     SemaphoreHandle_t lock;
@@ -32,6 +37,7 @@ typedef struct {
     bool accepting_observers;
     bool publish_allowed;
     uint32_t publish_in_flight;
+    bool retained_refresh_pending;
     bool wifi_connected;
     bool mqtt_connected;
     mqtt_relay_event_callback_t event_callback;
@@ -53,6 +59,15 @@ typedef struct {
     const char *name;
     const char *value_template;
 } mqtt_relay_discovery_field_t;
+
+typedef struct {
+    const char *key;
+    const char *name;
+    const char *value_template;
+    const char *device_class;
+    const char *state_class;
+    const char *unit_of_measurement;
+} mqtt_relay_wifi_discovery_field_t;
 
 static const mqtt_relay_discovery_field_t s_discovery_fields[] = {
     {.key = "schema_version",
@@ -142,6 +157,21 @@ static const mqtt_relay_discovery_field_t s_discovery_fields[] = {
     {.key = "truncated_message",
      .name = "Message truncated",
      .value_template = "{{ value_json.truncated.message | default(false) }}"},
+};
+
+static const mqtt_relay_wifi_discovery_field_t s_wifi_discovery_fields[] = {
+    {.key = "wifi_ssid",
+     .name = "Wi-Fi SSID",
+     .value_template = "{{ value_json.wifi_ssid }}"},
+    {.key = "wifi_ip",
+     .name = "Wi-Fi IP",
+     .value_template = "{{ value_json.wifi_ip }}"},
+    {.key = "wifi_rssi",
+     .name = "Wi-Fi RSSI",
+     .value_template = "{{ value_json.wifi_rssi }}",
+     .device_class = "signal_strength",
+     .state_class = "measurement",
+     .unit_of_measurement = "dBm"},
 };
 
 static mqtt_relay_context_t s_ctx;
@@ -252,6 +282,103 @@ static esp_err_t json_write_string(char **cursor,
     return ESP_OK;
 }
 
+static esp_err_t json_write_literal(char **cursor,
+                                    size_t *remaining,
+                                    const char *literal)
+{
+    if (cursor == NULL || *cursor == NULL || remaining == NULL ||
+        *remaining == 0U || literal == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const int written = snprintf(*cursor, *remaining, "%s", literal);
+    if (written < 0 || (size_t)written >= *remaining) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    *cursor += written;
+    *remaining -= (size_t)written;
+    return ESP_OK;
+}
+
+static bool bounded_required_text(const char *value, size_t capacity)
+{
+    return value != NULL && value[0] != '\0' && strnlen(value, capacity) < capacity;
+}
+
+static bool device_info_is_valid(const mqtt_relay_device_info_t *device_info)
+{
+    return device_info != NULL &&
+           bounded_required_text(device_info->manufacturer,
+                                 sizeof(device_info->manufacturer)) &&
+           bounded_required_text(device_info->model, sizeof(device_info->model)) &&
+           bounded_required_text(device_info->sw_version,
+                                 sizeof(device_info->sw_version)) &&
+           bounded_required_text(device_info->hw_version,
+                                 sizeof(device_info->hw_version));
+}
+
+static bool wifi_status_is_valid(const mqtt_relay_wifi_status_t *status)
+{
+    if (status == NULL) {
+        return false;
+    }
+    if (!status->connected) {
+        return true;
+    }
+    return bounded_required_text(status->ssid, sizeof(status->ssid)) &&
+           bounded_required_text(status->ip, sizeof(status->ip));
+}
+
+static esp_err_t append_device_json(char **cursor,
+                                    size_t *remaining,
+                                    const provision_config_t *config,
+                                    const mqtt_relay_device_info_t *device_info)
+{
+    if (config == NULL || !discovery_id_is_safe(config->mqtt_client_id) ||
+        !device_info_is_valid(device_info)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = json_write_literal(
+        cursor, remaining, ",\"device\":{\"identifiers\":[");
+    if (err == ESP_OK) {
+        err = json_write_string(cursor, remaining, config->mqtt_client_id);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(cursor, remaining, "],\"name\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(cursor, remaining, config->mqtt_client_id);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(cursor, remaining, ",\"manufacturer\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(cursor, remaining, device_info->manufacturer);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(cursor, remaining, ",\"model\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(cursor, remaining, device_info->model);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(cursor, remaining, ",\"sw_version\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(cursor, remaining, device_info->sw_version);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(cursor, remaining, ",\"hw_version\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(cursor, remaining, device_info->hw_version);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(cursor, remaining, "}");
+    }
+    return err;
+}
+
 static esp_err_t append_topic(const char *base,
                               const char *suffix,
                               char *out,
@@ -338,6 +465,7 @@ esp_err_t mqtt_relay_build_enroll_discovery_topic(
 
 esp_err_t mqtt_relay_build_enroll_discovery_payload(
     const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
     const char *command_topic,
     const char *availability_topic,
     char *out,
@@ -346,6 +474,7 @@ esp_err_t mqtt_relay_build_enroll_discovery_payload(
     if (config == NULL || command_topic == NULL || availability_topic == NULL ||
         out == NULL || out_size == 0U ||
         !discovery_id_is_safe(config->mqtt_client_id) ||
+        !device_info_is_valid(device_info) ||
         topic_has_publish_wildcard(command_topic) ||
         topic_has_publish_wildcard(availability_topic)) {
         return ESP_ERR_INVALID_ARG;
@@ -408,17 +537,12 @@ esp_err_t mqtt_relay_build_enroll_discovery_payload(
     APPEND_ENROLL_LITERAL(
         ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\""
         ",\"qos\":1,\"retain\":false,\"entity_category\":\"config\""
-        ",\"icon\":\"mdi:bluetooth-connect\",\"device\":{\"identifiers\":[");
-    err = json_write_string(&cursor, &remaining, config->mqtt_client_id);
+        ",\"icon\":\"mdi:bluetooth-connect\"");
+    err = append_device_json(&cursor, &remaining, config, device_info);
     if (err != ESP_OK) {
         return err;
     }
-    APPEND_ENROLL_LITERAL("],\"name\":");
-    err = json_write_string(&cursor, &remaining, config->mqtt_client_id);
-    if (err != ESP_OK) {
-        return err;
-    }
-    APPEND_ENROLL_LITERAL("}}");
+    APPEND_ENROLL_LITERAL("}");
 #undef APPEND_ENROLL_LITERAL
     return ESP_OK;
 }
@@ -478,13 +602,16 @@ esp_err_t mqtt_relay_build_client_config(const provision_config_t *config,
 }
 
 esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
+                                             const mqtt_relay_device_info_t *device_info,
                                              const char *notification_topic,
                                              const char *availability_topic,
                                              char *out,
                                              size_t out_size)
 {
     if (config == NULL || notification_topic == NULL || availability_topic == NULL ||
-        out == NULL || out_size == 0U || !discovery_id_is_safe(config->mqtt_client_id) ||
+        out == NULL || out_size == 0U ||
+        !discovery_id_is_safe(config->mqtt_client_id) ||
+        !device_info_is_valid(device_info) ||
         topic_has_publish_wildcard(notification_topic) ||
         topic_has_publish_wildcard(availability_topic)) {
         return ESP_ERR_INVALID_ARG;
@@ -574,28 +701,17 @@ esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
     }
     written = snprintf(cursor,
                        remaining,
-                       ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\""
-                       ",\"device\":{\"identifiers\":[");
+                       ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\"");
     if (written < 0 || (size_t)written >= remaining) {
         return ESP_ERR_INVALID_SIZE;
     }
     cursor += written;
     remaining -= (size_t)written;
-    err = json_write_string(&cursor, &remaining, config->mqtt_client_id);
+    err = append_device_json(&cursor, &remaining, config, device_info);
     if (err != ESP_OK) {
         return err;
     }
-    written = snprintf(cursor, remaining, "],\"name\":");
-    if (written < 0 || (size_t)written >= remaining) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-    cursor += written;
-    remaining -= (size_t)written;
-    err = json_write_string(&cursor, &remaining, config->mqtt_client_id);
-    if (err != ESP_OK) {
-        return err;
-    }
-    written = snprintf(cursor, remaining, "}}");
+    written = snprintf(cursor, remaining, "}");
     return (written < 0 || (size_t)written >= remaining) ? ESP_ERR_INVALID_SIZE
                                                          : ESP_OK;
 }
@@ -635,6 +751,7 @@ esp_err_t mqtt_relay_build_field_discovery_topic(
 
 esp_err_t mqtt_relay_build_field_discovery_payload(
     const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
     const char *notification_topic,
     const char *availability_topic,
     size_t field_index,
@@ -645,6 +762,7 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
         out == NULL || out_size == 0U ||
         field_index >= mqtt_relay_discovery_field_count() ||
         !discovery_id_is_safe(config->mqtt_client_id) ||
+        !device_info_is_valid(device_info) ||
         topic_has_publish_wildcard(notification_topic) ||
         topic_has_publish_wildcard(availability_topic)) {
         return ESP_ERR_INVALID_ARG;
@@ -719,46 +837,217 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
         return err;
     }
     APPEND_JSON_LABEL(
-        ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\""
-        ",\"device\":{\"identifiers\":[");
-    err = json_write_string(&cursor, &remaining, config->mqtt_client_id);
+        ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\"");
+    err = append_device_json(&cursor, &remaining, config, device_info);
     if (err != ESP_OK) {
         return err;
     }
-    APPEND_JSON_LABEL("],\"name\":");
-    err = json_write_string(&cursor, &remaining, config->mqtt_client_id);
-    if (err != ESP_OK) {
-        return err;
-    }
-    APPEND_JSON_LABEL("}}");
+    APPEND_JSON_LABEL("}");
 #undef APPEND_JSON_LABEL
 
     return ESP_OK;
 }
 
+size_t mqtt_relay_wifi_discovery_field_count(void)
+{
+    return sizeof(s_wifi_discovery_fields) / sizeof(s_wifi_discovery_fields[0]);
+}
+
+const char *mqtt_relay_wifi_discovery_field_key(size_t field_index)
+{
+    if (field_index >= mqtt_relay_wifi_discovery_field_count()) {
+        return NULL;
+    }
+    return s_wifi_discovery_fields[field_index].key;
+}
+
+esp_err_t mqtt_relay_build_wifi_discovery_topic(
+    const provision_config_t *config,
+    size_t field_index,
+    char *out,
+    size_t out_size)
+{
+    if (config == NULL || out == NULL || out_size == 0U ||
+        field_index >= mqtt_relay_wifi_discovery_field_count() ||
+        !discovery_id_is_safe(config->mqtt_client_id)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const int written = snprintf(out,
+                                 out_size,
+                                 "homeassistant/sensor/%s/%s/config",
+                                 config->mqtt_client_id,
+                                 s_wifi_discovery_fields[field_index].key);
+    return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
+                                                        : ESP_OK;
+}
+
+esp_err_t mqtt_relay_build_wifi_discovery_payload(
+    const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
+    const char *state_topic,
+    const char *availability_topic,
+    size_t field_index,
+    char *out,
+    size_t out_size)
+{
+    if (config == NULL || !device_info_is_valid(device_info) ||
+        state_topic == NULL || availability_topic == NULL || out == NULL ||
+        out_size == 0U ||
+        field_index >= mqtt_relay_wifi_discovery_field_count() ||
+        !discovery_id_is_safe(config->mqtt_client_id) ||
+        topic_has_publish_wildcard(state_topic) ||
+        topic_has_publish_wildcard(availability_topic)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const mqtt_relay_wifi_discovery_field_t *field =
+        &s_wifi_discovery_fields[field_index];
+    char object_name[PROVISION_MQTT_CLIENT_ID_MAX + 40];
+    char unique_id[PROVISION_MQTT_CLIENT_ID_MAX + 32];
+    int written = snprintf(object_name,
+                           sizeof(object_name),
+                           "%s %s",
+                           config->mqtt_client_id,
+                           field->name);
+    if (written < 0 || (size_t)written >= sizeof(object_name)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    written = snprintf(unique_id,
+                       sizeof(unique_id),
+                       "%s_%s",
+                       config->mqtt_client_id,
+                       field->key);
+    if (written < 0 || (size_t)written >= sizeof(unique_id)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    char *cursor = out;
+    size_t remaining = out_size;
+    esp_err_t err = json_write_literal(&cursor, &remaining, "{\"name\":");
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, object_name);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"unique_id\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, unique_id);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"object_id\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, unique_id);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"state_topic\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, state_topic);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"value_template\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, field->value_template);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"availability_topic\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, availability_topic);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(
+            &cursor,
+            &remaining,
+            ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\""
+            ",\"entity_category\":\"diagnostic\"");
+    }
+    if (err == ESP_OK && field->device_class != NULL) {
+        err = json_write_literal(&cursor, &remaining, ",\"device_class\":");
+        if (err == ESP_OK) {
+            err = json_write_string(&cursor, &remaining, field->device_class);
+        }
+    }
+    if (err == ESP_OK && field->state_class != NULL) {
+        err = json_write_literal(&cursor, &remaining, ",\"state_class\":");
+        if (err == ESP_OK) {
+            err = json_write_string(&cursor, &remaining, field->state_class);
+        }
+    }
+    if (err == ESP_OK && field->unit_of_measurement != NULL) {
+        err = json_write_literal(&cursor, &remaining, ",\"unit_of_measurement\":");
+        if (err == ESP_OK) {
+            err = json_write_string(&cursor,
+                                    &remaining,
+                                    field->unit_of_measurement);
+        }
+    }
+    if (err == ESP_OK) {
+        err = append_device_json(&cursor, &remaining, config, device_info);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, "}");
+    }
+    return err;
+}
+
 esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
                                          bool connected,
+                                         const mqtt_relay_wifi_status_t *wifi_status,
                                          char *out,
                                          size_t out_size)
 {
-    if (counters == NULL || out == NULL || out_size == 0U) {
+    if (counters == NULL || !wifi_status_is_valid(wifi_status) || out == NULL ||
+        out_size == 0U) {
         return ESP_ERR_INVALID_ARG;
     }
-    const int written =
-        snprintf(out,
-                 out_size,
+
+    char *cursor = out;
+    size_t remaining = out_size;
+    int written =
+        snprintf(cursor,
+                 remaining,
                  "{\"connected\":%s,\"accepted\":%" PRIu32
                  ",\"published_ack\":%" PRIu32 ",\"dropped_offline\":%" PRIu32
                  ",\"dropped_enqueue\":%" PRIu32 ",\"dropped_policy\":%" PRIu32
-                 "}",
+                 ",\"wifi_ssid\":",
                  connected ? "true" : "false",
                  counters->accepted,
                  counters->published_ack,
                  counters->dropped_offline,
                  counters->dropped_enqueue,
                  counters->dropped_policy);
-    return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
-                                                        : ESP_OK;
+    if (written < 0 || (size_t)written >= remaining) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    cursor += written;
+    remaining -= (size_t)written;
+
+    const char *ssid = wifi_status->connected ? wifi_status->ssid : "";
+    const char *ip = wifi_status->connected ? wifi_status->ip : "";
+    esp_err_t err = json_write_string(&cursor, &remaining, ssid);
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"wifi_ip\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, ip);
+    }
+    if (err == ESP_OK) {
+        if (wifi_status->connected) {
+            written = snprintf(cursor,
+                               remaining,
+                               ",\"wifi_rssi\":%" PRId32 "}",
+                               wifi_status->rssi);
+        } else {
+            written = snprintf(cursor, remaining, ",\"wifi_rssi\":null}");
+        }
+        if (written < 0 || (size_t)written >= remaining) {
+            err = ESP_ERR_INVALID_SIZE;
+        }
+    }
+    return err;
 }
 
 static void mqtt_relay_lock(void)
@@ -906,6 +1195,36 @@ static void mqtt_relay_wait_publish_idle(void)
     }
 }
 
+static int mqtt_relay_publish_retained_with_retry(const char *topic,
+                                                  const char *payload)
+{
+    for (size_t attempt = 0; attempt < MQTT_RELAY_RETAINED_PUBLISH_ATTEMPTS;
+         ++attempt) {
+        const int result = mqtt_relay_publish_raw(topic,
+                                                  payload,
+                                                  0,
+                                                  MQTT_RELAY_RETAINED_QOS,
+                                                  MQTT_RELAY_RETAINED_RETAIN);
+        if (result >= 0) {
+            if (s_publish_for_test == NULL) {
+                vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_RETAINED_PACE_MS));
+            }
+            return result;
+        }
+
+        mqtt_relay_lock();
+        const bool can_retry = s_ctx.mqtt_connected && s_ctx.publish_allowed;
+        mqtt_relay_unlock();
+        if (!can_retry) {
+            return result;
+        }
+        if (s_publish_for_test == NULL) {
+            vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_RETAINED_RETRY_DELAY_MS));
+        }
+    }
+    return -1;
+}
+
 static void mqtt_relay_publish_retained_status(void)
 {
     provision_config_t *discovery_config = calloc(1, sizeof(*discovery_config));
@@ -916,6 +1235,8 @@ static void mqtt_relay_publish_retained_status(void)
         return;
     }
     mqtt_relay_counters_t counters;
+    mqtt_relay_device_info_t device_info;
+    mqtt_relay_wifi_status_t wifi_status;
     bool connected;
     char notification_topic[MQTT_RELAY_TOPIC_MAX];
     char availability_topic[MQTT_RELAY_TOPIC_MAX];
@@ -929,6 +1250,8 @@ static void mqtt_relay_publish_retained_status(void)
                   s_ctx.config.mqtt_client_id,
                   sizeof(discovery_config->mqtt_client_id));
     counters = s_ctx.counters;
+    device_info = s_ctx.device_info;
+    wifi_status = s_ctx.wifi_status;
     connected = s_ctx.mqtt_connected;
     (void)strlcpy(notification_topic, s_ctx.notification_topic, sizeof(notification_topic));
     (void)strlcpy(availability_topic, s_ctx.availability_topic, sizeof(availability_topic));
@@ -942,29 +1265,24 @@ static void mqtt_relay_publish_retained_status(void)
                   sizeof(enroll_discovery_topic));
     mqtt_relay_unlock();
 
-    char state[256];
+    char state[512];
     if (mqtt_relay_build_discovery_payload(discovery_config,
+                                           &device_info,
                                            notification_topic,
                                            availability_topic,
                                            discovery,
                                            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        (void)mqtt_relay_publish_raw(discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(discovery_topic, discovery);
     }
     if (mqtt_relay_build_enroll_discovery_payload(
             discovery_config,
+            &device_info,
             enroll_command_topic,
             availability_topic,
             discovery,
             MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        (void)mqtt_relay_publish_raw(enroll_discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(enroll_discovery_topic,
+                                                     discovery);
     }
     for (size_t field_index = 0;
          field_index < mqtt_relay_discovery_field_count();
@@ -974,6 +1292,7 @@ static void mqtt_relay_publish_retained_status(void)
                                                    discovery_topic,
                                                    sizeof(discovery_topic)) != ESP_OK ||
             mqtt_relay_build_field_discovery_payload(discovery_config,
+                                                     &device_info,
                                                      notification_topic,
                                                      availability_topic,
                                                      field_index,
@@ -982,27 +1301,35 @@ static void mqtt_relay_publish_retained_status(void)
             ESP_OK) {
             continue;
         }
-        (void)mqtt_relay_publish_raw(discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(discovery_topic, discovery);
+    }
+    for (size_t field_index = 0;
+         field_index < mqtt_relay_wifi_discovery_field_count();
+         ++field_index) {
+        if (mqtt_relay_build_wifi_discovery_topic(discovery_config,
+                                                  field_index,
+                                                  discovery_topic,
+                                                  sizeof(discovery_topic)) != ESP_OK ||
+            mqtt_relay_build_wifi_discovery_payload(
+                discovery_config,
+                &device_info,
+                state_topic,
+                availability_topic,
+                field_index,
+                discovery,
+                MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK) {
+            continue;
+        }
+        (void)mqtt_relay_publish_retained_with_retry(discovery_topic, discovery);
     }
     if (mqtt_relay_build_state_payload(&counters,
                                        connected,
+                                       &wifi_status,
                                        state,
                                        sizeof(state)) == ESP_OK) {
-        (void)mqtt_relay_publish_raw(state_topic,
-                                     state,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(state_topic, state);
     }
-    (void)mqtt_relay_publish_raw(availability_topic,
-                                 "online",
-                                 0,
-                                 MQTT_RELAY_RETAINED_QOS,
-                                 MQTT_RELAY_RETAINED_RETAIN);
+    (void)mqtt_relay_publish_retained_with_retry(availability_topic, "online");
     free(discovery);
     free(discovery_config);
 }
@@ -1052,7 +1379,19 @@ static void mqtt_relay_worker(void *arg)
             mqtt_relay_unlock();
             vTaskDelete(NULL);
         }
+        const bool publish_retained = s_ctx.retained_refresh_pending &&
+                                      s_ctx.mqtt_connected;
+        if (publish_retained) {
+            s_ctx.retained_refresh_pending = false;
+            s_ctx.worker_busy = true;
+        }
         mqtt_relay_unlock();
+        if (publish_retained) {
+            mqtt_relay_publish_retained_status();
+            mqtt_relay_lock();
+            s_ctx.worker_busy = false;
+            mqtt_relay_unlock();
+        }
         mqtt_relay_drain_queue();
     }
 }
@@ -1131,6 +1470,7 @@ static esp_err_t mqtt_relay_ensure_worker(void)
 static void mqtt_relay_handle_disconnect_locked(void)
 {
     s_ctx.mqtt_connected = false;
+    s_ctx.retained_refresh_pending = false;
     mqtt_relay_free_queue_locked();
     mqtt_relay_free_pending_locked();
 }
@@ -1204,6 +1544,7 @@ static void mqtt_relay_event_handler(void *handler_args,
         char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
         mqtt_relay_lock();
         s_ctx.mqtt_connected = true;
+        s_ctx.retained_refresh_pending = true;
         (void)strlcpy(enroll_command_topic,
                       s_ctx.enroll_command_topic,
                       sizeof(enroll_command_topic));
@@ -1219,7 +1560,6 @@ static void mqtt_relay_event_handler(void *handler_args,
             mqtt_relay_emit_event(MQTT_RELAY_EVENT_FAILED);
             return;
         }
-        mqtt_relay_publish_retained_status();
         mqtt_relay_notify_worker();
         mqtt_relay_emit_event(MQTT_RELAY_EVENT_CONNECTED);
         return;
@@ -1283,9 +1623,11 @@ static void mqtt_relay_event_handler(void *handler_args,
     }
 }
 
-static esp_err_t mqtt_relay_prepare_context(const provision_config_t *config)
+static esp_err_t mqtt_relay_prepare_context(
+    const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info)
 {
-    if (config == NULL) {
+    if (config == NULL || !device_info_is_valid(device_info)) {
         return ESP_ERR_INVALID_ARG;
     }
     esp_err_t err = mqtt_relay_build_topics(config,
@@ -1315,6 +1657,7 @@ static esp_err_t mqtt_relay_prepare_context(const provision_config_t *config)
         return err;
     }
     s_ctx.config = *config;
+    s_ctx.device_info = *device_info;
     s_ctx.queue = xQueueCreate(MQTT_RELAY_QUEUE_CAPACITY, sizeof(mqtt_payload_item_t *));
     s_ctx.lock = xSemaphoreCreateMutex();
     s_ctx.lifecycle_lock = xSemaphoreCreateMutex();
@@ -1327,13 +1670,14 @@ static esp_err_t mqtt_relay_prepare_context(const provision_config_t *config)
     return ESP_OK;
 }
 
-esp_err_t mqtt_relay_init(const provision_config_t *config)
+esp_err_t mqtt_relay_init(const provision_config_t *config,
+                          const mqtt_relay_device_info_t *device_info)
 {
     if (s_ctx.client != NULL || s_ctx.queue != NULL) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    esp_err_t err = mqtt_relay_prepare_context(config);
+    esp_err_t err = mqtt_relay_prepare_context(config, device_info);
     if (err != ESP_OK) {
         return err;
     }
@@ -1640,6 +1984,44 @@ esp_err_t mqtt_relay_register_event_callback(mqtt_relay_event_callback_t callbac
     return ESP_OK;
 }
 
+esp_err_t mqtt_relay_update_wifi_status(const mqtt_relay_wifi_status_t *status)
+{
+    if (!wifi_status_is_valid(status)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    mqtt_relay_counters_t counters;
+    bool mqtt_connected;
+    char state_topic[MQTT_RELAY_TOPIC_MAX];
+    mqtt_relay_lock();
+    s_ctx.wifi_status = *status;
+    counters = s_ctx.counters;
+    mqtt_connected = s_ctx.mqtt_connected;
+    (void)strlcpy(state_topic, s_ctx.state_topic, sizeof(state_topic));
+    mqtt_relay_unlock();
+
+    if (!mqtt_connected) {
+        return ESP_OK;
+    }
+
+    char state[512];
+    esp_err_t err = mqtt_relay_build_state_payload(&counters,
+                                                   mqtt_connected,
+                                                   status,
+                                                   state,
+                                                   sizeof(state));
+    if (err != ESP_OK) {
+        return err;
+    }
+    return mqtt_relay_publish_raw(state_topic,
+                                  state,
+                                  0,
+                                  MQTT_RELAY_RETAINED_QOS,
+                                  MQTT_RELAY_RETAINED_RETAIN) < 0
+               ? ESP_FAIL
+               : ESP_OK;
+}
+
 void mqtt_relay_set_wifi_connected(bool connected)
 {
     mqtt_relay_lock();
@@ -1750,7 +2132,9 @@ void mqtt_relay_get_counters(mqtt_relay_counters_t *out)
     mqtt_relay_unlock();
 }
 
-esp_err_t mqtt_relay_reset_for_test(const provision_config_t *config)
+esp_err_t mqtt_relay_reset_for_test(
+    const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info)
 {
     if (s_ctx.lock != NULL) {
         (void)xSemaphoreTake(s_ctx.lock, portMAX_DELAY);
@@ -1777,7 +2161,7 @@ esp_err_t mqtt_relay_reset_for_test(const provision_config_t *config)
     }
     memset(&s_ctx, 0, sizeof(s_ctx));
     s_publish_for_test = NULL;
-    esp_err_t err = mqtt_relay_prepare_context(config);
+    esp_err_t err = mqtt_relay_prepare_context(config, device_info);
     if (err == ESP_OK) {
         s_ctx.accepting_observers = true;
         s_ctx.publish_allowed = true;

@@ -5,6 +5,7 @@
 #include "ancs_protocol.h"
 #include "mqtt_relay.h"
 #include "mqtt_relay_test.h"
+#include "platform_identity.h"
 #include "unity.h"
 
 static ancs_notification_t valid_notification(void)
@@ -40,6 +41,16 @@ static provision_config_t valid_config(void)
     return config;
 }
 
+static mqtt_relay_device_info_t valid_device_info(void)
+{
+    mqtt_relay_device_info_t info = {0};
+    strcpy(info.manufacturer, "Espressif Systems");
+    strcpy(info.model, "ESP32-C6");
+    strcpy(info.sw_version, "0.3.1");
+    strcpy(info.hw_version, "rev 0.1");
+    return info;
+}
+
 static int s_publish_calls;
 static int s_next_msg_id;
 static int s_last_qos;
@@ -47,6 +58,9 @@ static int s_last_retain;
 static mqtt_relay_event_t s_last_event;
 static int s_event_count;
 static int s_discovery_publish_calls;
+static int s_wifi_discovery_publish_calls;
+static unsigned int s_wifi_transient_failure_mask;
+static int s_wifi_discovery_success_calls;
 
 static int capture_publish(const char *topic,
                            const char *payload,
@@ -63,12 +77,48 @@ static int capture_publish(const char *topic,
     if (strncmp(topic, "homeassistant/sensor/", 21) == 0) {
         s_discovery_publish_calls++;
     }
+    if (strstr(topic, "/wifi_ssid/config") != NULL ||
+        strstr(topic, "/wifi_ip/config") != NULL ||
+        strstr(topic, "/wifi_rssi/config") != NULL) {
+        s_wifi_discovery_publish_calls++;
+    }
+    return s_next_msg_id++;
+}
+
+static int capture_publish_with_transient_wifi_failures(const char *topic,
+                                                        const char *payload,
+                                                        int length,
+                                                        int qos,
+                                                        int retain)
+{
+    (void)payload;
+    (void)length;
+    (void)qos;
+    (void)retain;
+    static const char *wifi_topics[] = {
+        "/wifi_ssid/config",
+        "/wifi_ip/config",
+        "/wifi_rssi/config",
+    };
+    for (size_t index = 0; index < 3U; ++index) {
+        if (strstr(topic, wifi_topics[index]) == NULL) {
+            continue;
+        }
+        const unsigned int bit = 1U << index;
+        if ((s_wifi_transient_failure_mask & bit) == 0U) {
+            s_wifi_transient_failure_mask |= bit;
+            return -1;
+        }
+        s_wifi_discovery_success_calls++;
+        break;
+    }
     return s_next_msg_id++;
 }
 
 static void reset_relay_for_ownership_test(void)
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     s_publish_calls = 0;
     s_next_msg_id = 40;
     s_last_qos = -1;
@@ -76,7 +126,10 @@ static void reset_relay_for_ownership_test(void)
     s_last_event = MQTT_RELAY_EVENT_FAILED;
     s_event_count = 0;
     s_discovery_publish_calls = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config));
+    s_wifi_discovery_publish_calls = 0;
+    s_wifi_transient_failure_mask = 0U;
+    s_wifi_discovery_success_calls = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config, &device_info));
     mqtt_relay_set_publish_for_test(capture_publish);
     mqtt_relay_simulate_connected_for_test(true);
 }
@@ -105,7 +158,8 @@ TEST_CASE("notification payload preserves serial fields and adds relay fields",
     TEST_ASSERT_NOT_NULL(payload);
     TEST_ASSERT_GREATER_THAN(0, length);
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"relay_id\":\"relay-1\""));
-    TEST_ASSERT_NOT_NULL(strstr(payload, "\"source\":\"esp32c6_ancs\""));
+    TEST_ASSERT_NOT_NULL(
+        strstr(payload, "\"source\":\"" ANCS_SOURCE_ID "\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_at_ms\":123456"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"app_id\":\"com.example.app\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"complete\":true"));
@@ -173,10 +227,12 @@ TEST_CASE("client config maps broker auth client id tls and retained lwt",
 TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     char payload[1024];
 
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_discovery_payload(&config,
+                                                         &device_info,
                                                          "ios-ancs/2b20/notification",
                                                          "ios-ancs/2b20/availability",
                                                          payload,
@@ -189,11 +245,16 @@ TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"value_template\":\"{{ value_json.relay_id }}\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"json_attributes_topic\":\"ios-ancs/2b20/notification\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"availability_topic\":\"ios-ancs/2b20/availability\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"hw_version\":\"rev 0.1\""));
     TEST_ASSERT_NULL(strstr(payload, "secret"));
 
     strcpy(config.mqtt_client_id, "bad/client");
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
                       mqtt_relay_build_discovery_payload(&config,
+                                                         &device_info,
                                                          "ios-ancs/2b20/notification",
                                                          "ios-ancs/2b20/availability",
                                                          payload,
@@ -201,6 +262,7 @@ TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
     config = valid_config();
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
                       mqtt_relay_build_discovery_payload(&config,
+                                                         &device_info,
                                                          "ios-ancs/+/notification",
                                                          "ios-ancs/2b20/availability",
                                                          payload,
@@ -246,6 +308,7 @@ TEST_CASE("discovery creates a retained sensor for every notification field",
         "truncated_message",
     };
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     char topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char payload[1024];
 
@@ -270,6 +333,7 @@ TEST_CASE("discovery creates a retained sensor for every notification field",
             ESP_OK,
             mqtt_relay_build_field_discovery_payload(
                 &config,
+                &device_info,
                 "ios-ancs/2b20/notification",
                 "ios-ancs/2b20/availability",
                 index,
@@ -286,6 +350,10 @@ TEST_CASE("discovery creates a retained sensor for every notification field",
         }
         TEST_ASSERT_NOT_NULL(
             strstr(payload, "\"availability_topic\":\"ios-ancs/2b20/availability\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"hw_version\":\"rev 0.1\""));
         TEST_ASSERT_NULL(strstr(payload, "\"json_attributes_topic\""));
     }
     TEST_ASSERT_NULL(
@@ -305,20 +373,63 @@ TEST_CASE("retained status publishes last notification and every field discovery
     reset_relay_for_ownership_test();
     s_publish_calls = 0;
     s_discovery_publish_calls = 0;
+    s_wifi_discovery_publish_calls = 0;
 
     mqtt_relay_publish_retained_for_test();
 
-    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 4U, s_publish_calls);
-    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 1U,
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() +
+                          mqtt_relay_wifi_discovery_field_count() + 4U,
+                      s_publish_calls);
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() +
+                          mqtt_relay_wifi_discovery_field_count() + 1U,
                       s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(mqtt_relay_wifi_discovery_field_count(),
+                      s_wifi_discovery_publish_calls);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
+}
+
+TEST_CASE("wifi diagnostics create three retained Home Assistant sensors",
+          "[mqtt_relay]")
+{
+    static const char *expected_keys[] = {"wifi_ssid", "wifi_ip", "wifi_rssi"};
+    provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    char topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char payload[1536];
+
+    TEST_ASSERT_EQUAL(3U, mqtt_relay_wifi_discovery_field_count());
+    for (size_t index = 0; index < mqtt_relay_wifi_discovery_field_count(); ++index) {
+        TEST_ASSERT_EQUAL_STRING(expected_keys[index],
+                                 mqtt_relay_wifi_discovery_field_key(index));
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_wifi_discovery_topic(
+                &config, index, topic, sizeof(topic)));
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_wifi_discovery_payload(
+                &config,
+                &device_info,
+                "ios-ancs/2b20/state",
+                "ios-ancs/2b20/availability",
+                index,
+                payload,
+                sizeof(payload)));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"state_topic\":\"ios-ancs/2b20/state\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"entity_category\":\"diagnostic\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+    }
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"device_class\":\"signal_strength\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"state_class\":\"measurement\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"unit_of_measurement\":\"dBm\""));
 }
 
 TEST_CASE("field discovery supports maximum configured identifiers and topics",
           "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     memset(config.mqtt_client_id, 'a', PROVISION_MQTT_CLIENT_ID_MAX);
     config.mqtt_client_id[PROVISION_MQTT_CLIENT_ID_MAX] = '\0';
     memset(config.mqtt_base_topic, 'b', PROVISION_MQTT_BASE_TOPIC_MAX);
@@ -350,6 +461,7 @@ TEST_CASE("field discovery supports maximum configured identifiers and topics",
         TEST_ASSERT_EQUAL(
             ESP_OK,
             mqtt_relay_build_field_discovery_payload(&config,
+                                                     &device_info,
                                                      notification,
                                                      availability,
                                                      index,
@@ -366,18 +478,79 @@ TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")
         .dropped_offline = 3,
         .dropped_enqueue = 4,
     };
+    mqtt_relay_wifi_status_t wifi_status = {
+        .connected = true,
+        .rssi = -61,
+    };
+    strcpy(wifi_status.ssid, "EDENARI");
+    strcpy(wifi_status.ip, "192.168.1.42");
     char payload[256];
 
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_state_payload(&counters,
                                                      true,
+                                                     &wifi_status,
                                                      payload,
                                                      sizeof(payload)));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"connected\":true"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"accepted\":2"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_ack\":1"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"EDENARI\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"192.168.1.42\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":-61"));
     TEST_ASSERT_NULL(strstr(payload, "password"));
     TEST_ASSERT_NULL(strstr(payload, "ca"));
+}
+
+TEST_CASE("disconnected state clears Wi-Fi identity and RSSI", "[mqtt_relay]")
+{
+    mqtt_relay_counters_t counters = {0};
+    mqtt_relay_wifi_status_t wifi_status = {0};
+    char payload[256];
+
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_build_state_payload(&counters,
+                                                     false,
+                                                     &wifi_status,
+                                                     payload,
+                                                     sizeof(payload)));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":null"));
+}
+
+TEST_CASE("live Wi-Fi status update republishes only retained state", "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_publish_calls = 0;
+    s_discovery_publish_calls = 0;
+    s_wifi_discovery_publish_calls = 0;
+    mqtt_relay_wifi_status_t wifi_status = {
+        .connected = true,
+        .rssi = -55,
+    };
+    strcpy(wifi_status.ssid, "EDENARI");
+    strcpy(wifi_status.ip, "192.168.1.43");
+
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_update_wifi_status(&wifi_status));
+    TEST_ASSERT_EQUAL(1, s_publish_calls);
+    TEST_ASSERT_EQUAL(0, s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
+}
+
+TEST_CASE("retained discovery retries transient MQTT outbox failures",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_wifi_transient_failure_mask = 0U;
+    s_wifi_discovery_success_calls = 0;
+    mqtt_relay_set_publish_for_test(capture_publish_with_transient_wifi_failures);
+
+    mqtt_relay_publish_retained_for_test();
+
+    TEST_ASSERT_EQUAL_HEX32(0x07U, s_wifi_transient_failure_mask);
+    TEST_ASSERT_EQUAL(3, s_wifi_discovery_success_calls);
 }
 
 TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]")
@@ -408,7 +581,9 @@ TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]"
 TEST_CASE("relay emits connection callbacks for coordinator", "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
-    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config));
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_reset_for_test(&config, &device_info));
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_register_event_callback(capture_event, NULL));
 
     mqtt_relay_simulate_connected_for_test(true);
@@ -495,6 +670,7 @@ TEST_CASE("disconnect frees queued and pending items without PUBACK", "[mqtt_rel
 TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     char command[MQTT_RELAY_TOPIC_MAX];
     char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char payload[1536];
@@ -512,6 +688,7 @@ TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_enroll_discovery_payload(
                           &config,
+                          &device_info,
                           command,
                           "ios-ancs/2b20/availability",
                           payload,
@@ -520,6 +697,10 @@ TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"retain\":false"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"entity_category\":\"config\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"unique_id\":\"ios_ancs_c6_2b20_enroll\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"hw_version\":\"rev 0.1\""));
     TEST_ASSERT_NULL(strstr(payload, "secret"));
 }
 

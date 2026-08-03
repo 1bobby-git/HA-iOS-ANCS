@@ -25,6 +25,10 @@ Address: http://192.168.4.1
 
 For the current board, use `IOS-ANCS-SETUP-572B20`; derive the AP password locally from the displayed suffix.
 
+The setup password format is `ancs-<lowercase_suffix>`; for that board it is
+`ancs-572b20`. This lowercase rule applies only to the device setup AP.
+Infrastructure Wi-Fi passwords remain case-sensitive and must not be normalized.
+
 If the AP is absent:
 
 - Hold BOOT for 3 seconds to open recovery AP.

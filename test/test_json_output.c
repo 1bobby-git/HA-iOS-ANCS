@@ -3,6 +3,7 @@
 
 #include "ancs_protocol.h"
 #include "notification_sink.h"
+#include "platform_identity.h"
 #include "unity.h"
 
 static char s_json_output[8192];
@@ -52,7 +53,8 @@ TEST_CASE("notification JSON is valid escaped UTF-8", "[ancs][json]")
                                                     sizeof(s_json_output)));
     TEST_ASSERT_EQUAL_CHAR('{', s_json_output[0]);
     TEST_ASSERT_EQUAL_CHAR('}', s_json_output[strlen(s_json_output) - 1]);
-    TEST_ASSERT_NOT_NULL(strstr(s_json_output, "\"target\":\"esp32c6\""));
+    TEST_ASSERT_NOT_NULL(
+        strstr(s_json_output, "\"target\":\"" ANCS_TARGET_ID "\""));
     TEST_ASSERT_NOT_NULL(
         strstr(s_json_output, "\"title\":\"택배 \\\"도착\\\"\""));
     TEST_ASSERT_NOT_NULL(

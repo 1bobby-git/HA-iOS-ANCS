@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 #define PROVISIONING_RUNTIME_AP_SSID_PREFIX "IOS-ANCS-SETUP-"
-#define PROVISIONING_RUNTIME_AP_PASSWORD_PREFIX "ANCS-"
+#define PROVISIONING_RUNTIME_AP_PASSWORD_PREFIX "ancs-"
 #define PROVISIONING_RUNTIME_CAPTIVE_URI "http://192.168.4.1"
 #define PROVISIONING_RUNTIME_WIFI_TIMEOUT_MS 30000
 #define PROVISIONING_RUNTIME_SCAN_MAX_APS 20
@@ -41,6 +41,13 @@ typedef struct {
     char ap_ssid[sizeof(PROVISIONING_RUNTIME_AP_SSID_PREFIX) + 12];
 } provisioning_runtime_status_t;
 
+typedef struct {
+    bool connected;
+    char ssid[PROVISION_WIFI_SSID_MAX + 1];
+    char ip[16];
+    int32_t rssi;
+} provisioning_wifi_snapshot_t;
+
 esp_err_t provisioning_runtime_init(
     const provision_config_t *config,
     provisioning_event_callback_t callback,
@@ -54,6 +61,7 @@ esp_err_t provisioning_runtime_scan(wifi_ap_record_t *records, size_t *count);
 esp_err_t provisioning_runtime_notify_mqtt_failed(void);
 esp_err_t provisioning_runtime_notify_mqtt_connected(void);
 esp_err_t provisioning_runtime_get_status(provisioning_runtime_status_t *out);
+esp_err_t provisioning_runtime_get_wifi_snapshot(provisioning_wifi_snapshot_t *out);
 
 #ifdef __cplusplus
 }

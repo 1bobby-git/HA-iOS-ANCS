@@ -219,18 +219,30 @@ static esp_err_t make_ap_identity(void)
                         TAG,
                         "read base Wi-Fi MAC");
 
-    char suffix[7] = {0};
-    (void)snprintf(suffix, sizeof(suffix), "%02X%02X%02X", mac[3], mac[4], mac[5]);
+    char ssid_suffix[7] = {0};
+    char password_suffix[7] = {0};
+    (void)snprintf(ssid_suffix,
+                   sizeof(ssid_suffix),
+                   "%02X%02X%02X",
+                   mac[3],
+                   mac[4],
+                   mac[5]);
+    (void)snprintf(password_suffix,
+                   sizeof(password_suffix),
+                   "%02x%02x%02x",
+                   mac[3],
+                   mac[4],
+                   mac[5]);
     (void)snprintf(s_ap_ssid,
                    sizeof(s_ap_ssid),
                    "%s%s",
                    PROVISIONING_RUNTIME_AP_SSID_PREFIX,
-                   suffix);
+                   ssid_suffix);
     (void)snprintf(s_ap_password,
                    sizeof(s_ap_password),
                    "%s%s",
                    PROVISIONING_RUNTIME_AP_PASSWORD_PREFIX,
-                   suffix);
+                   password_suffix);
     return ESP_OK;
 }
 
@@ -954,5 +966,41 @@ esp_err_t provisioning_runtime_get_status(provisioning_runtime_status_t *out)
     out->sta_attempt_generation = s_active_sta_attempt_generation;
     strlcpy(out->ap_ssid, s_ap_ssid, sizeof(out->ap_ssid));
     unlock_state();
+    return ESP_OK;
+}
+
+esp_err_t provisioning_runtime_get_wifi_snapshot(provisioning_wifi_snapshot_t *out)
+{
+    ESP_RETURN_ON_FALSE(out != NULL, ESP_ERR_INVALID_ARG, TAG, "missing Wi-Fi snapshot");
+    memset(out, 0, sizeof(*out));
+
+    lock_state();
+    const bool has_ip = s_sta_has_ip;
+    esp_netif_t *sta_netif = s_sta_netif;
+    unlock_state();
+    if (!has_ip) {
+        return ESP_OK;
+    }
+
+    ESP_RETURN_ON_FALSE(sta_netif != NULL,
+                        ESP_ERR_INVALID_STATE,
+                        TAG,
+                        "station netif missing");
+
+    wifi_ap_record_t ap_info = {0};
+    ESP_RETURN_ON_ERROR(esp_wifi_sta_get_ap_info(&ap_info), TAG, "read station AP info");
+
+    esp_netif_ip_info_t ip_info = {0};
+    ESP_RETURN_ON_ERROR(esp_netif_get_ip_info(sta_netif, &ip_info),
+                        TAG,
+                        "read station IP info");
+    ESP_RETURN_ON_FALSE(esp_ip4addr_ntoa(&ip_info.ip, out->ip, sizeof(out->ip)) != NULL,
+                        ESP_FAIL,
+                        TAG,
+                        "format station IP");
+
+    strlcpy(out->ssid, (const char *)ap_info.ssid, sizeof(out->ssid));
+    out->rssi = ap_info.rssi;
+    out->connected = true;
     return ESP_OK;
 }
