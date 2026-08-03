@@ -40,6 +40,16 @@ static provision_config_t valid_config(void)
     return config;
 }
 
+static mqtt_relay_device_info_t valid_device_info(void)
+{
+    mqtt_relay_device_info_t info = {0};
+    strcpy(info.manufacturer, "Espressif Systems");
+    strcpy(info.model, "ESP32-C6");
+    strcpy(info.sw_version, "0.3.1");
+    strcpy(info.hw_version, "rev 0.1");
+    return info;
+}
+
 static int s_publish_calls;
 static int s_next_msg_id;
 static int s_last_qos;
@@ -69,6 +79,7 @@ static int capture_publish(const char *topic,
 static void reset_relay_for_ownership_test(void)
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     s_publish_calls = 0;
     s_next_msg_id = 40;
     s_last_qos = -1;
@@ -76,7 +87,7 @@ static void reset_relay_for_ownership_test(void)
     s_last_event = MQTT_RELAY_EVENT_FAILED;
     s_event_count = 0;
     s_discovery_publish_calls = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config));
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config, &device_info));
     mqtt_relay_set_publish_for_test(capture_publish);
     mqtt_relay_simulate_connected_for_test(true);
 }
@@ -173,10 +184,12 @@ TEST_CASE("client config maps broker auth client id tls and retained lwt",
 TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     char payload[1024];
 
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_discovery_payload(&config,
+                                                         &device_info,
                                                          "ios-ancs/2b20/notification",
                                                          "ios-ancs/2b20/availability",
                                                          payload,
@@ -189,11 +202,16 @@ TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"value_template\":\"{{ value_json.relay_id }}\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"json_attributes_topic\":\"ios-ancs/2b20/notification\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"availability_topic\":\"ios-ancs/2b20/availability\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"hw_version\":\"rev 0.1\""));
     TEST_ASSERT_NULL(strstr(payload, "secret"));
 
     strcpy(config.mqtt_client_id, "bad/client");
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
                       mqtt_relay_build_discovery_payload(&config,
+                                                         &device_info,
                                                          "ios-ancs/2b20/notification",
                                                          "ios-ancs/2b20/availability",
                                                          payload,
@@ -201,6 +219,7 @@ TEST_CASE("discovery uses relay id state and json attributes", "[mqtt_relay]")
     config = valid_config();
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
                       mqtt_relay_build_discovery_payload(&config,
+                                                         &device_info,
                                                          "ios-ancs/+/notification",
                                                          "ios-ancs/2b20/availability",
                                                          payload,
@@ -246,6 +265,7 @@ TEST_CASE("discovery creates a retained sensor for every notification field",
         "truncated_message",
     };
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     char topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char payload[1024];
 
@@ -270,6 +290,7 @@ TEST_CASE("discovery creates a retained sensor for every notification field",
             ESP_OK,
             mqtt_relay_build_field_discovery_payload(
                 &config,
+                &device_info,
                 "ios-ancs/2b20/notification",
                 "ios-ancs/2b20/availability",
                 index,
@@ -286,6 +307,10 @@ TEST_CASE("discovery creates a retained sensor for every notification field",
         }
         TEST_ASSERT_NOT_NULL(
             strstr(payload, "\"availability_topic\":\"ios-ancs/2b20/availability\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"hw_version\":\"rev 0.1\""));
         TEST_ASSERT_NULL(strstr(payload, "\"json_attributes_topic\""));
     }
     TEST_ASSERT_NULL(
@@ -315,10 +340,47 @@ TEST_CASE("retained status publishes last notification and every field discovery
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
 }
 
+TEST_CASE("wifi diagnostics create three retained Home Assistant sensors",
+          "[mqtt_relay]")
+{
+    static const char *expected_keys[] = {"wifi_ssid", "wifi_ip", "wifi_rssi"};
+    provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    char topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char payload[1536];
+
+    TEST_ASSERT_EQUAL(3U, mqtt_relay_wifi_discovery_field_count());
+    for (size_t index = 0; index < mqtt_relay_wifi_discovery_field_count(); ++index) {
+        TEST_ASSERT_EQUAL_STRING(expected_keys[index],
+                                 mqtt_relay_wifi_discovery_field_key(index));
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_wifi_discovery_topic(
+                &config, index, topic, sizeof(topic)));
+        TEST_ASSERT_EQUAL(
+            ESP_OK,
+            mqtt_relay_build_wifi_discovery_payload(
+                &config,
+                &device_info,
+                "ios-ancs/2b20/state",
+                "ios-ancs/2b20/availability",
+                index,
+                payload,
+                sizeof(payload)));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"state_topic\":\"ios-ancs/2b20/state\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"entity_category\":\"diagnostic\""));
+        TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+    }
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"device_class\":\"signal_strength\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"state_class\":\"measurement\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"unit_of_measurement\":\"dBm\""));
+}
+
 TEST_CASE("field discovery supports maximum configured identifiers and topics",
           "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     memset(config.mqtt_client_id, 'a', PROVISION_MQTT_CLIENT_ID_MAX);
     config.mqtt_client_id[PROVISION_MQTT_CLIENT_ID_MAX] = '\0';
     memset(config.mqtt_base_topic, 'b', PROVISION_MQTT_BASE_TOPIC_MAX);
@@ -350,6 +412,7 @@ TEST_CASE("field discovery supports maximum configured identifiers and topics",
         TEST_ASSERT_EQUAL(
             ESP_OK,
             mqtt_relay_build_field_discovery_payload(&config,
+                                                     &device_info,
                                                      notification,
                                                      availability,
                                                      index,
@@ -408,7 +471,9 @@ TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]"
 TEST_CASE("relay emits connection callbacks for coordinator", "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
-    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config));
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_reset_for_test(&config, &device_info));
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_register_event_callback(capture_event, NULL));
 
     mqtt_relay_simulate_connected_for_test(true);
@@ -495,6 +560,7 @@ TEST_CASE("disconnect frees queued and pending items without PUBACK", "[mqtt_rel
 TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
 {
     provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
     char command[MQTT_RELAY_TOPIC_MAX];
     char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char payload[1536];
@@ -512,6 +578,7 @@ TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_enroll_discovery_payload(
                           &config,
+                          &device_info,
                           command,
                           "ios-ancs/2b20/availability",
                           payload,
@@ -520,6 +587,10 @@ TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"retain\":false"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"entity_category\":\"config\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"unique_id\":\"ios_ancs_c6_2b20_enroll\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"manufacturer\":\"Espressif Systems\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"hw_version\":\"rev 0.1\""));
     TEST_ASSERT_NULL(strstr(payload, "secret"));
 }
 

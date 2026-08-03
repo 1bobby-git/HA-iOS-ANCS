@@ -39,6 +39,20 @@ typedef struct {
     uint32_t freed;
 } mqtt_relay_counters_t;
 
+typedef struct {
+    char manufacturer[32];
+    char model[24];
+    char sw_version[32];
+    char hw_version[24];
+} mqtt_relay_device_info_t;
+
+typedef struct {
+    bool connected;
+    char ssid[PROVISION_WIFI_SSID_MAX + 1];
+    char ip[16];
+    int32_t rssi;
+} mqtt_relay_wifi_status_t;
+
 typedef enum {
     MQTT_RELAY_EVENT_CONNECTED = 0,
     MQTT_RELAY_EVENT_DISCONNECTED,
@@ -69,6 +83,7 @@ esp_err_t mqtt_relay_build_client_config(const provision_config_t *config,
                                          const char *availability_topic,
                                          esp_mqtt_client_config_t *out);
 esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
+                                             const mqtt_relay_device_info_t *device_info,
                                              const char *notification_topic,
                                              const char *availability_topic,
                                              char *out,
@@ -83,6 +98,7 @@ esp_err_t mqtt_relay_build_enroll_discovery_topic(
     size_t out_size);
 esp_err_t mqtt_relay_build_enroll_discovery_payload(
     const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
     const char *command_topic,
     const char *availability_topic,
     char *out,
@@ -104,7 +120,23 @@ esp_err_t mqtt_relay_build_field_discovery_topic(
     size_t out_size);
 esp_err_t mqtt_relay_build_field_discovery_payload(
     const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
     const char *notification_topic,
+    const char *availability_topic,
+    size_t field_index,
+    char *out,
+    size_t out_size);
+size_t mqtt_relay_wifi_discovery_field_count(void);
+const char *mqtt_relay_wifi_discovery_field_key(size_t field_index);
+esp_err_t mqtt_relay_build_wifi_discovery_topic(
+    const provision_config_t *config,
+    size_t field_index,
+    char *out,
+    size_t out_size);
+esp_err_t mqtt_relay_build_wifi_discovery_payload(
+    const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
+    const char *state_topic,
     const char *availability_topic,
     size_t field_index,
     char *out,
@@ -114,7 +146,8 @@ esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
                                          char *out,
                                          size_t out_size);
 
-esp_err_t mqtt_relay_init(const provision_config_t *config);
+esp_err_t mqtt_relay_init(const provision_config_t *config,
+                          const mqtt_relay_device_info_t *device_info);
 esp_err_t mqtt_relay_start(void);
 esp_err_t mqtt_relay_reconnect(void);
 esp_err_t mqtt_relay_stop(void);
