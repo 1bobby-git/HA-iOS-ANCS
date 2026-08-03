@@ -19,7 +19,7 @@ param(
         'esp32s3'
     ),
     [string]$IdfPath = $env:IDF_PATH,
-    [string]$Version = '0.2.1',
+    [string]$Version = '0.3.0',
     [switch]$KeepGoing
 )
 
