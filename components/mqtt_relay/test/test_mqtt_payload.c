@@ -5,6 +5,7 @@
 #include "ancs_protocol.h"
 #include "mqtt_relay.h"
 #include "mqtt_relay_test.h"
+#include "platform_identity.h"
 #include "unity.h"
 
 static ancs_notification_t valid_notification(void)
@@ -58,6 +59,8 @@ static mqtt_relay_event_t s_last_event;
 static int s_event_count;
 static int s_discovery_publish_calls;
 static int s_wifi_discovery_publish_calls;
+static unsigned int s_wifi_transient_failure_mask;
+static int s_wifi_discovery_success_calls;
 
 static int capture_publish(const char *topic,
                            const char *payload,
@@ -82,6 +85,36 @@ static int capture_publish(const char *topic,
     return s_next_msg_id++;
 }
 
+static int capture_publish_with_transient_wifi_failures(const char *topic,
+                                                        const char *payload,
+                                                        int length,
+                                                        int qos,
+                                                        int retain)
+{
+    (void)payload;
+    (void)length;
+    (void)qos;
+    (void)retain;
+    static const char *wifi_topics[] = {
+        "/wifi_ssid/config",
+        "/wifi_ip/config",
+        "/wifi_rssi/config",
+    };
+    for (size_t index = 0; index < 3U; ++index) {
+        if (strstr(topic, wifi_topics[index]) == NULL) {
+            continue;
+        }
+        const unsigned int bit = 1U << index;
+        if ((s_wifi_transient_failure_mask & bit) == 0U) {
+            s_wifi_transient_failure_mask |= bit;
+            return -1;
+        }
+        s_wifi_discovery_success_calls++;
+        break;
+    }
+    return s_next_msg_id++;
+}
+
 static void reset_relay_for_ownership_test(void)
 {
     provision_config_t config = valid_config();
@@ -94,6 +127,8 @@ static void reset_relay_for_ownership_test(void)
     s_event_count = 0;
     s_discovery_publish_calls = 0;
     s_wifi_discovery_publish_calls = 0;
+    s_wifi_transient_failure_mask = 0U;
+    s_wifi_discovery_success_calls = 0;
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config, &device_info));
     mqtt_relay_set_publish_for_test(capture_publish);
     mqtt_relay_simulate_connected_for_test(true);
@@ -123,7 +158,8 @@ TEST_CASE("notification payload preserves serial fields and adds relay fields",
     TEST_ASSERT_NOT_NULL(payload);
     TEST_ASSERT_GREATER_THAN(0, length);
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"relay_id\":\"relay-1\""));
-    TEST_ASSERT_NOT_NULL(strstr(payload, "\"source\":\"esp32c6_ancs\""));
+    TEST_ASSERT_NOT_NULL(
+        strstr(payload, "\"source\":\"" ANCS_SOURCE_ID "\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_at_ms\":123456"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"app_id\":\"com.example.app\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"complete\":true"));
@@ -501,6 +537,20 @@ TEST_CASE("live Wi-Fi status update republishes only retained state", "[mqtt_rel
     TEST_ASSERT_EQUAL(0, s_discovery_publish_calls);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
+}
+
+TEST_CASE("retained discovery retries transient MQTT outbox failures",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_wifi_transient_failure_mask = 0U;
+    s_wifi_discovery_success_calls = 0;
+    mqtt_relay_set_publish_for_test(capture_publish_with_transient_wifi_failures);
+
+    mqtt_relay_publish_retained_for_test();
+
+    TEST_ASSERT_EQUAL_HEX32(0x07U, s_wifi_transient_failure_mask);
+    TEST_ASSERT_EQUAL(3, s_wifi_discovery_success_calls);
 }
 
 TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]")
