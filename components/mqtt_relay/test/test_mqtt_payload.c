@@ -57,6 +57,7 @@ static int s_last_retain;
 static mqtt_relay_event_t s_last_event;
 static int s_event_count;
 static int s_discovery_publish_calls;
+static int s_wifi_discovery_publish_calls;
 
 static int capture_publish(const char *topic,
                            const char *payload,
@@ -73,6 +74,11 @@ static int capture_publish(const char *topic,
     if (strncmp(topic, "homeassistant/sensor/", 21) == 0) {
         s_discovery_publish_calls++;
     }
+    if (strstr(topic, "/wifi_ssid/config") != NULL ||
+        strstr(topic, "/wifi_ip/config") != NULL ||
+        strstr(topic, "/wifi_rssi/config") != NULL) {
+        s_wifi_discovery_publish_calls++;
+    }
     return s_next_msg_id++;
 }
 
@@ -87,6 +93,7 @@ static void reset_relay_for_ownership_test(void)
     s_last_event = MQTT_RELAY_EVENT_FAILED;
     s_event_count = 0;
     s_discovery_publish_calls = 0;
+    s_wifi_discovery_publish_calls = 0;
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config, &device_info));
     mqtt_relay_set_publish_for_test(capture_publish);
     mqtt_relay_simulate_connected_for_test(true);
@@ -330,12 +337,18 @@ TEST_CASE("retained status publishes last notification and every field discovery
     reset_relay_for_ownership_test();
     s_publish_calls = 0;
     s_discovery_publish_calls = 0;
+    s_wifi_discovery_publish_calls = 0;
 
     mqtt_relay_publish_retained_for_test();
 
-    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 4U, s_publish_calls);
-    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() + 1U,
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() +
+                          mqtt_relay_wifi_discovery_field_count() + 4U,
+                      s_publish_calls);
+    TEST_ASSERT_EQUAL(mqtt_relay_discovery_field_count() +
+                          mqtt_relay_wifi_discovery_field_count() + 1U,
                       s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(mqtt_relay_wifi_discovery_field_count(),
+                      s_wifi_discovery_publish_calls);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
 }
@@ -429,18 +442,65 @@ TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")
         .dropped_offline = 3,
         .dropped_enqueue = 4,
     };
+    mqtt_relay_wifi_status_t wifi_status = {
+        .connected = true,
+        .rssi = -61,
+    };
+    strcpy(wifi_status.ssid, "EDENARI");
+    strcpy(wifi_status.ip, "192.168.1.42");
     char payload[256];
 
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_state_payload(&counters,
                                                      true,
+                                                     &wifi_status,
                                                      payload,
                                                      sizeof(payload)));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"connected\":true"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"accepted\":2"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_ack\":1"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"EDENARI\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"192.168.1.42\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":-61"));
     TEST_ASSERT_NULL(strstr(payload, "password"));
     TEST_ASSERT_NULL(strstr(payload, "ca"));
+}
+
+TEST_CASE("disconnected state clears Wi-Fi identity and RSSI", "[mqtt_relay]")
+{
+    mqtt_relay_counters_t counters = {0};
+    mqtt_relay_wifi_status_t wifi_status = {0};
+    char payload[256];
+
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_build_state_payload(&counters,
+                                                     false,
+                                                     &wifi_status,
+                                                     payload,
+                                                     sizeof(payload)));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":null"));
+}
+
+TEST_CASE("live Wi-Fi status update republishes only retained state", "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_publish_calls = 0;
+    s_discovery_publish_calls = 0;
+    s_wifi_discovery_publish_calls = 0;
+    mqtt_relay_wifi_status_t wifi_status = {
+        .connected = true,
+        .rssi = -55,
+    };
+    strcpy(wifi_status.ssid, "EDENARI");
+    strcpy(wifi_status.ip, "192.168.1.43");
+
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_update_wifi_status(&wifi_status));
+    TEST_ASSERT_EQUAL(1, s_publish_calls);
+    TEST_ASSERT_EQUAL(0, s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
 }
 
 TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]")
