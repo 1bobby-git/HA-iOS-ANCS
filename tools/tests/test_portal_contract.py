@@ -861,3 +861,22 @@ def test_platform_identity_defines_home_assistant_model_for_every_target():
         "ESP32-S3",
     ):
         assert f'#define ANCS_DEVICE_MODEL "{model}"' in identity
+
+
+def test_provisioning_runtime_exposes_non_secret_wifi_snapshot():
+    header = read("components/provisioning/include/provisioning_runtime.h")
+    runtime = read("components/provisioning/provisioning_runtime.c")
+
+    assert "provisioning_wifi_snapshot_t" in header
+    assert "char ssid[PROVISION_WIFI_SSID_MAX + 1]" in header
+    assert "char ip[16]" in header
+    assert "int32_t rssi" in header
+    assert "provisioning_runtime_get_wifi_snapshot" in header
+
+    getter = runtime.split(
+        "esp_err_t provisioning_runtime_get_wifi_snapshot", 1
+    )[1]
+    assert "esp_wifi_sta_get_ap_info" in getter
+    assert "esp_netif_get_ip_info" in getter
+    assert "esp_ip4addr_ntoa" in getter
+    assert "password" not in getter
