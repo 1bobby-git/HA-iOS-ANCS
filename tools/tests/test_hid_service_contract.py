@@ -28,8 +28,11 @@ def test_enrollment_advertisement_places_name_and_standard_hid_uuid_in_primary_p
     # iOS Settings can passively inspect the primary advertisement.  Keep both
     # the complete device name and the standardized HOGP UUID there instead of
     # requiring a scan-response round trip to identify the ANCS accessory.
-    assert "static uint8_t s_hid_service_uuid[2]" in client_source
-    assert "0x12, 0x18" in client_source
+    assert "static uint8_t s_hid_service_uuid[16]" in client_source
+    assert (
+        "0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,\n"
+        "    0x00, 0x10, 0x00, 0x00, 0x12, 0x18, 0x00, 0x00"
+    ) in client_source
     adv_data = client_source.split("static esp_ble_adv_data_t s_adv_data", 1)[1].split(
         "static esp_ble_adv_data_t s_scan_response", 1
     )[0]

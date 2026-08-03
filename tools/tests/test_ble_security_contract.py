@@ -169,6 +169,16 @@ def test_every_advertising_entry_point_is_guarded_by_enrollment_policy():
     )
 
 
+def test_hid_ancs_device_advertises_from_the_public_controller_address():
+    source = CLIENT_SOURCE.read_text(encoding="utf-8")
+    adv_params = source.split(
+        "static esp_ble_adv_params_t s_adv_params = {", 1
+    )[1].split("};", 1)[0]
+
+    assert ".own_addr_type = BLE_ADDR_TYPE_PUBLIC," in adv_params
+    assert "connection.own_addr_type = s_adv_params.own_addr_type;" in source
+
+
 def test_connect_and_terminal_events_are_bound_to_the_accepted_peer():
     source = CLIENT_SOURCE.read_text(encoding="utf-8")
 

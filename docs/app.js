@@ -7,7 +7,7 @@ const boards = {
     status: "HARDWARE VERIFIED",
     description:
       "v0.2.1은 알림 JSON의 각 항목을 Home Assistant 개별 센서로 생성합니다.",
-    hash: "SHA256 2574868ACBDD",
+    hash: "SHA256 A245826CC27C",
   },
   esp32: {
     chip: "32",

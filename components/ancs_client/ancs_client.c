@@ -53,7 +53,10 @@ static const uint8_t DATA_SOURCE_UUID[16] = {
     0xFB, 0x7B, 0x7C, 0xCE, 0x6A, 0xB3, 0x44, 0xBE,
     0xB5, 0x4B, 0xD6, 0x24, 0xE9, 0xC6, 0xEA, 0x22,
 };
-static uint8_t s_hid_service_uuid[2] = {0x12, 0x18};
+static uint8_t s_hid_service_uuid[16] = {
+    0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,
+    0x00, 0x10, 0x00, 0x00, 0x12, 0x18, 0x00, 0x00,
+};
 
 typedef enum {
     WORK_NOTIFICATION_EVENT = 0,
@@ -176,7 +179,7 @@ static esp_ble_adv_params_t s_adv_params = {
     .adv_int_min = ESP_BLE_GAP_ADV_ITVL_MS(160),
     .adv_int_max = ESP_BLE_GAP_ADV_ITVL_MS(160),
     .adv_type = ADV_TYPE_IND,
-    .own_addr_type = BLE_ADDR_TYPE_RPA_PUBLIC,
+    .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
     .channel_map = ADV_CHNL_ALL,
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
