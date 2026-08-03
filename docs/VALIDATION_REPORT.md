@@ -2,6 +2,62 @@
 
 Validation date: 2026-08-03 (Asia/Seoul)
 
+## Bounded MQTT Discovery and Home Assistant enrollment v0.3.2
+
+- The reported Wi-Fi and MQTT portal tests were both valid, but they only
+  proved a short connection. The attached runtime log showed the sustained
+  failure: at roughly `-87` to `-93 dBm`, retained Home Assistant Discovery
+  publishing repeatedly logged `Writing didn't complete`, `tcp_write`, and
+  `outbox_enqueue(53): Memory exhausted`.
+- The retained Discovery publisher no longer retries one failed record five
+  times and then continues through the rest of the batch. It now attempts each
+  retained record once and aborts the batch on the first negative MQTT publish
+  result. A later broker reconnect safely replays the batch from the beginning.
+  Availability remains the last record, so an incomplete batch cannot report
+  the bridge as online.
+- `python -m pytest tools/tests -q` reports `112 passed`. The new regression
+  contract proves that a simulated Wi-Fi sensor Discovery outbox failure causes
+  exactly one failed publish and no subsequent retained publishes.
+- The ESP-IDF Unity test image ran on COM7 and reported `77 Tests 0 Failures 0
+  Ignored`, including `retained discovery aborts after one MQTT outbox
+  failure:PASS`.
+- COM7 was freshly identified as ESP32-D0WD-V3 revision 3.1 with base MAC
+  `a8:42:e3:aa:f7:38`, device name `IOS-ANCS-ESP32-F738`, and Bluetooth address
+  `A8:42:E3:AA:F7:3A`.
+- With a temporary Windows 2.4 GHz hotspot, the device received
+  `192.168.137.244` at `-56 dBm`. The existing MQTT configuration published
+  retained availability `online`, the diagnostic state, the enroll button, and
+  all notification and Wi-Fi sensor Discovery records.
+- Home Assistant registered `button.ios_ancs_esp32_f738_enroll` as enabled and
+  grouped it with the notification and Wi-Fi entities. The retained device
+  record exposed manufacturer `Espressif Systems`, model `ESP32`, software
+  `0.3.2`, and hardware `rev 3.1`.
+- Before enrollment, a Bluetooth scan found no target advertisement. Publishing
+  the exact non-retained `ENROLL` command once on
+  `ios-ancs/esp32-f738/command/enroll` exposed `IOS-ANCS-ESP32-F738` at about
+  `-61 dBm` with HID service UUID `00001812-0000-1000-8000-00805f9b34fb`.
+- ESP-IDF v6.0.2 completed compile, link, partition-size validation, and merged
+  factory-image generation for all seven supported targets. SHA-256 values
+  below were recalculated from the checked-in v0.3.2 files.
+- The original office 2.4 GHz SSID remained marginal at the test location, so
+  reliable standalone operation still requires moving the device or providing
+  a stronger 2.4 GHz signal. The temporary hotspot was stopped, the original
+  `EXAMPLE_OFFICE14_4F` configuration was restored with MQTT secrets preserved, and
+  a device restart proved that configuration persisted. The recovery portal
+  then reported the original network at `-87 dBm`. AX1800 was not reconfigured.
+  A live iPhone pairing and ANCS notification capture were not performed in
+  this validation pass.
+
+| Target | Merged bytes | SHA-256 | Validation level |
+| --- | ---: | --- | --- |
+| `esp32` | 1,421,040 | `74229e987afebf2164cae7f37d49d11e82897f77b51055565a55b3b1a047db6a` | v0.3.2 COM7 flash, Unity, MQTT, HA Discovery, and BLE enrollment verified |
+| `esp32c2` | 1,440,224 | `09150778d91c64420defe13f30c36b801f08725b6124e65564b181bdc52f8eaa` | v0.3.2 build verified |
+| `esp32c3` | 1,629,280 | `2d95b1ba58c733eded295843b78870425fe7dca07e7eb3817bf44433078655e6` | v0.3.2 build verified |
+| `esp32c5` | 1,774,400 | `2a150e750617e074e5a0a80ece0a0473db5de9098e967ab3c34cce9080212673` | v0.3.2 build verified |
+| `esp32c6` | 1,774,416 | `da1b4bd591a048a0816ba7c491dc4ce7fa9ce6dafb42eb602c93206b85a4d117` | v0.3.2 build verified; v0.3.0 hardware evidence is historical |
+| `esp32c61` | 1,717,552 | `300f0f4dd0e41b22093f2f87f676709c2c443626cc100ba3aac539a7dd880896` | v0.3.2 build verified |
+| `esp32s3` | 1,402,928 | `bcabdc144d857648907034bc43e89b96302d06500a75c9fe7e58647631cfd18a` | v0.3.2 build verified |
+
 ## Lowercase setup AP and Home Assistant diagnostics v0.3.1
 
 - The setup AP keeps the uppercase MAC suffix in its SSID and now derives its
