@@ -6,17 +6,17 @@ Multi-target ESP32 firmware for a power-only iOS ANCS notification relay. The de
 
 Open the [ANCS Flash Station](https://1bobby-git.github.io/ios-ancs/) in Chrome or Edge on a desktop computer, connect the ESP board with a USB data cable, select the model for guidance, and press **USB 장치 자동 감지 후 설치**. A unified ESP Web Tools manifest detects the connected chip and selects the matching checked-in factory image, so ESP-IDF is not required for installation.
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.1 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-C6 v0.3.0 on `COM9` also has historical hardware verification; a v0.3.1 build-verified image is not yet a claim of physical-board validation.
+The shared firmware uses a 4 MB minimum flash layout. All v0.3.2 images shown in the installer are compile, link, partition, and merged-image verified. ESP32/WROOM v0.3.2 is hardware-verified on `COM7`; ESP32-C6 v0.3.0 on `COM9` remains historical hardware evidence.
 
 | Target | Typical module/board | Factory image | Validation |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,420,944 bytes | v0.3.1 build verified |
-| `esp32c2` | ESP32-C2 | 1,440,144 bytes | v0.3.1 build verified |
-| `esp32c3` | ESP32-C3 | 1,629,184 bytes | v0.3.1 build verified |
-| `esp32c5` | ESP32-C5 | 1,774,304 bytes | v0.3.1 build verified |
-| `esp32c6` | ESP32-C6 | 1,774,336 bytes | v0.3.1 build verified; v0.3.0 hardware evidence remains historical |
-| `esp32c61` | ESP32-C61 | 1,717,456 bytes | v0.3.1 build verified |
-| `esp32s3` | ESP32-S3 | 1,402,832 bytes | v0.3.1 build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,421,040 bytes | v0.3.2 COM7 flash, Unity, MQTT, and BLE enrollment verified |
+| `esp32c2` | ESP32-C2 | 1,440,224 bytes | v0.3.2 build verified |
+| `esp32c3` | ESP32-C3 | 1,629,280 bytes | v0.3.2 build verified |
+| `esp32c5` | ESP32-C5 | 1,774,400 bytes | v0.3.2 build verified |
+| `esp32c6` | ESP32-C6 | 1,774,416 bytes | v0.3.2 build verified; v0.3.0 hardware evidence remains historical |
+| `esp32c61` | ESP32-C61 | 1,717,552 bytes | v0.3.2 build verified |
+| `esp32s3` | ESP32-S3 | 1,402,928 bytes | v0.3.2 build verified |
 
 ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
