@@ -552,7 +552,6 @@ def test_task7_embedded_portal_assets_and_controls():
         'id="mqtt-password"',
         'id="mqtt-tls"',
         'id="mqtt-ca"',
-        'id="enroll"',
         'id="replace-confirmation"',
         'id="replace-enrollment"',
         'id="restart"',
@@ -567,6 +566,22 @@ def test_task7_embedded_portal_assets_and_controls():
     assert "const confirmation = $('reset-confirmation').value" in js
     assert "JSON.stringify({ confirmation: 'REPLACE ENROLLMENT' })" not in js
     assert "JSON.stringify({ confirmation: 'RESET PROVISIONING' })" not in js
+
+
+def test_portal_moves_ordinary_enrollment_to_home_assistant():
+    html = read("components/portal_http/portal.html")
+    script = read("components/portal_http/portal.js")
+    source = read("components/portal_http/portal_http.c")
+    header = read("components/portal_http/include/portal_http.h")
+
+    assert 'id="enroll"' not in html
+    assert "$('enroll').addEventListener" not in script
+    assert '"/api/ble/enroll"' not in source
+    assert "ble_enroll" not in header
+    assert 'id="replace-enrollment"' in html
+    assert '"/api/ble/replace"' in source
+    assert "Home Assistant" in html
+    assert "BOOT" in html
 
 
 def test_portal_exposes_a_compact_korean_guided_setup():
@@ -677,7 +692,6 @@ def test_task7_http_routes_and_captive_probes():
         '"/api/wifi/scan"',
         '"/api/config"',
         '"/api/mqtt/test"',
-        '"/api/ble/enroll"',
         '"/api/ble/replace"',
         '"/api/restart"',
         '"/api/reset"',
@@ -694,7 +708,6 @@ def test_task7_http_routes_and_captive_probes():
     assert "portal_http_handlers_t" in header
     assert "mqtt_test" in header
     assert "reconnect" in header
-    assert "ble_enroll" in header
     assert "ble_replace" in header
 
 
