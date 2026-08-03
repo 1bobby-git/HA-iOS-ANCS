@@ -21,6 +21,11 @@ Discovery sensors.
   - Wi-Fi SSID
   - Wi-Fi IP address
   - Wi-Fi signal strength in dBm
+- The Home Assistant device entry also reports:
+  - manufacturer: `Espressif Systems`
+  - model: the compiled ESP32 chip family, such as `ESP32` or `ESP32-C6`
+  - firmware version: the semantic release version embedded in the image
+  - hardware version: the runtime chip revision reported by ESP-IDF
 - No Wi-Fi password, MQTT password, certificate, or other credential is
   serialized into MQTT state or Discovery payloads.
 
@@ -52,6 +57,12 @@ station IP address, and RSSI. The application coordinator transfers that
 snapshot to the MQTT relay. The MQTT relay owns JSON serialization, retained
 state publication, and Home Assistant Discovery.
 
+The platform identity component remains the owner of target-family names. The
+application obtains the release version from the ESP-IDF application descriptor
+and the chip revision from ESP-IDF chip information, then supplies a bounded
+device-information snapshot to the MQTT relay. Discovery builders consume this
+snapshot instead of guessing a board-module name from the generic ESP32 target.
+
 This boundary prevents the MQTT component from directly managing Wi-Fi or
 network interfaces and keeps credentials in the provisioning configuration
 owner. The snapshot contains no password field.
@@ -81,6 +92,20 @@ Discovery publishes retained configurations for:
 All three configurations use the existing availability topic and device
 identifier. They are marked as diagnostic entities. The RSSI sensor has unit
 `dBm`, device class `signal_strength`, and state class `measurement`.
+
+## Home Assistant device information
+
+Every aggregate sensor, field sensor, diagnostic sensor, and enrollment button
+publishes the same complete Discovery `device` object. It contains the existing
+identifier and name plus `manufacturer`, `model`, `sw_version`, and
+`hw_version`. This fills the manufacturer and model columns shown in Home
+Assistant and keeps all entities attached to one device.
+
+The classic `esp32` target is reported as `ESP32`, not as `WROOM-D32`, because
+ESP-IDF cannot reliably distinguish every module or third-party board that uses
+the same chip. More specific targets are reported as `ESP32-C2`, `ESP32-C3`,
+`ESP32-C5`, `ESP32-C6`, `ESP32-C61`, or `ESP32-S3`. The hardware version is the
+actual runtime chip revision rather than a fabricated board revision.
 
 ## Update behavior
 
@@ -115,15 +140,18 @@ Implementation follows test-driven development:
 2. Add failing MQTT tests for the three Discovery topics and payloads.
 3. Add a failing state-payload test for SSID, IP, and RSSI and assert that no
    credential fields appear.
-4. Add failing coordinator/runtime contract tests for initial and 60-second
-   refresh behavior.
-5. Implement the minimum code required to pass each test, then run the complete
+4. Add failing Discovery tests that require identical manufacturer, model,
+   semantic firmware version, and runtime chip revision metadata on every
+   entity type.
+5. Add failing coordinator/runtime contract tests for initial and 60-second
+   refresh behavior and bounded device-information propagation.
+6. Implement the minimum code required to pass each test, then run the complete
    host test suite and all supported firmware builds.
-6. Re-identify the chip on COM9, flash the C6 without erasing provisioning NVS,
+7. Re-identify the chip on COM9, flash the C6 without erasing provisioning NVS,
    update only the DAISO setup-AP profile to the lowercase password, and verify
    setup AP access, station/MQTT connectivity, retained state, and the three
-   Home Assistant entities.
-7. Restore temporary network paths after verification, confirm AX1800 remains
+   Home Assistant entities plus device metadata.
+8. Restore temporary network paths after verification, confirm AX1800 remains
    unchanged, publish the release artifacts, and verify GitHub Pages manifests
    and binary hashes.
 
@@ -132,4 +160,5 @@ Implementation follows test-driven development:
 The change is complete only when the known C6 accepts `ancs-abc123`, rejects the
 old uppercase setup password, continues to use the stored infrastructure Wi-Fi
 password unchanged, and Home Assistant shows live SSID, IP, and RSSI diagnostic
-sensors under the registered ESP32 device without exposing secrets.
+sensors plus manufacturer, model, firmware version, and chip revision under the
+registered ESP32 device without exposing secrets.
