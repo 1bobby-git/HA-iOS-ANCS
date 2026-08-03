@@ -157,11 +157,27 @@ def _default_capture_path(output_path):
     return output.with_name(output.name + ".capture.json")
 
 
+def _open_serial_connection(serial_module, *, port, baud, timeout):
+    connection = serial_module.Serial()
+    connection.port = port
+    connection.baudrate = baud
+    connection.timeout = timeout
+    connection.dtr = False
+    connection.rts = False
+    connection.open()
+    return connection
+
+
 def _serial_lines(port, baud, timeout_seconds):
     import serial
 
     deadline = time.monotonic() + timeout_seconds
-    with serial.Serial(port=port, baudrate=baud, timeout=0.25) as connection:
+    with _open_serial_connection(
+        serial,
+        port=port,
+        baud=baud,
+        timeout=0.25,
+    ) as connection:
         while time.monotonic() < deadline:
             line = connection.readline()
             if line:
