@@ -229,3 +229,24 @@ def test_no_secret_logging_or_state_discovery_serialization():
     state_discovery = read("mqtt_relay.c")
     assert "mqtt_password" not in state_discovery.split("mqtt_relay_build_state_payload", 1)[1]
     assert "mqtt_ca" not in state_discovery.split("mqtt_relay_build_discovery_payload", 1)[1]
+
+
+def test_device_metadata_and_wifi_discovery_contracts_are_present():
+    header = read("include/mqtt_relay.h")
+    source = read("mqtt_relay.c")
+
+    assert "mqtt_relay_device_info_t" in header
+    for field in ("manufacturer", "model", "sw_version", "hw_version"):
+        assert field in header
+    assert "append_device_json" in source
+    assert "mqtt_relay_wifi_discovery_field_count" in header
+    assert "mqtt_relay_wifi_discovery_field_key" in header
+    assert "mqtt_relay_build_wifi_discovery_topic" in header
+    assert "mqtt_relay_build_wifi_discovery_payload" in header
+    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+        assert f'.key = "{key}"' in source
+    assert r'\"entity_category\":\"diagnostic\"' in source
+    assert 'signal_strength' in source
+    assert 'measurement' in source
+    assert 'unit_of_measurement' in source
+    assert 'dBm' in source
