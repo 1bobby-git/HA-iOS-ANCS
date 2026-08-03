@@ -66,6 +66,18 @@ def test_discovery_and_payload_contracts_are_present():
     assert "discovery_id_is_safe" in source
 
 
+def test_home_assistant_enroll_button_is_retained_and_command_is_subscribed():
+    header = read("include/mqtt_relay.h")
+    source = read("mqtt_relay.c")
+    assert "MQTT_RELAY_EVENT_ENROLL_REQUEST" in header
+    assert "homeassistant/button/%s/enroll/config" in source
+    assert '\"payload_press\":' in source
+    assert "esp_mqtt_client_subscribe" in source
+    assert "MQTT_RELAY_ENROLL_COMMAND_QOS" in source
+    assert "MQTT_EVENT_DATA" in source
+    assert "mqtt_relay_is_enroll_command" in source
+
+
 def test_offline_no_replay_and_cleanup_paths_are_explicit():
     source = read("mqtt_relay.c")
     assert "if (!s_ctx.accepting_observers || !s_ctx.wifi_connected || !s_ctx.mqtt_connected)" in source
