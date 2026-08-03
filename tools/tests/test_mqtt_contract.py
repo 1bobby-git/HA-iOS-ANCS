@@ -71,7 +71,7 @@ def test_home_assistant_enroll_button_is_retained_and_command_is_subscribed():
     source = read("mqtt_relay.c")
     assert "MQTT_RELAY_EVENT_ENROLL_REQUEST" in header
     assert "homeassistant/button/%s/enroll/config" in source
-    assert '\"payload_press\":' in source
+    assert r'\"payload_press\":' in source
     assert "esp_mqtt_client_subscribe" in source
     assert "MQTT_RELAY_ENROLL_COMMAND_QOS" in source
     assert "MQTT_EVENT_DATA" in source

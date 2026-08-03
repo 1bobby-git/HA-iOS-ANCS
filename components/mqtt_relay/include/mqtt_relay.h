@@ -20,6 +20,7 @@ extern "C" {
 #define MQTT_RELAY_NOTIFICATION_RETAIN false
 #define MQTT_RELAY_RETAINED_QOS 1
 #define MQTT_RELAY_RETAINED_RETAIN true
+#define MQTT_RELAY_ENROLL_COMMAND_QOS 1
 
 typedef struct mqtt_payload_item_t {
     char *topic;
@@ -42,6 +43,7 @@ typedef enum {
     MQTT_RELAY_EVENT_CONNECTED = 0,
     MQTT_RELAY_EVENT_DISCONNECTED,
     MQTT_RELAY_EVENT_FAILED,
+    MQTT_RELAY_EVENT_ENROLL_REQUEST,
 } mqtt_relay_event_t;
 
 typedef void (*mqtt_relay_event_callback_t)(mqtt_relay_event_t event,
@@ -71,6 +73,28 @@ esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
                                              const char *availability_topic,
                                              char *out,
                                              size_t out_size);
+esp_err_t mqtt_relay_build_enroll_command_topic(
+    const provision_config_t *config,
+    char *out,
+    size_t out_size);
+esp_err_t mqtt_relay_build_enroll_discovery_topic(
+    const provision_config_t *config,
+    char *out,
+    size_t out_size);
+esp_err_t mqtt_relay_build_enroll_discovery_payload(
+    const provision_config_t *config,
+    const char *command_topic,
+    const char *availability_topic,
+    char *out,
+    size_t out_size);
+bool mqtt_relay_is_enroll_command(const char *expected_topic,
+                                  const char *topic,
+                                  size_t topic_len,
+                                  const char *payload,
+                                  size_t payload_len,
+                                  size_t total_payload_len,
+                                  size_t current_data_offset,
+                                  bool retained);
 size_t mqtt_relay_discovery_field_count(void);
 const char *mqtt_relay_discovery_field_key(size_t field_index);
 esp_err_t mqtt_relay_build_field_discovery_topic(

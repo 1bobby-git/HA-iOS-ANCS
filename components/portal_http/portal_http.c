@@ -640,14 +640,6 @@ static esp_err_t handle_mqtt_test_post(httpd_req_t *req)
                                     "mqtt test failed");
 }
 
-static esp_err_t handle_ble_enroll_post(httpd_req_t *req)
-{
-    return handle_empty_action_post(req,
-                                    s_handlers.ble_enroll,
-                                    "enroll unavailable",
-                                    "enroll failed");
-}
-
 static esp_err_t handle_ble_replace_post(httpd_req_t *req)
 {
     esp_err_t guard_err = require_ap_local_request(req);
@@ -750,7 +742,6 @@ static esp_err_t register_all_routes(httpd_handle_t server)
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/wifi/scan", HTTP_GET, handle_wifi_scan_get), TAG, "scan");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/config", HTTP_POST, handle_config_post), TAG, "config");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/mqtt/test", HTTP_POST, handle_mqtt_test_post), TAG, "mqtt test");
-    ESP_RETURN_ON_ERROR(register_uri(server, "/api/ble/enroll", HTTP_POST, handle_ble_enroll_post), TAG, "ble enroll");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/ble/replace", HTTP_POST, handle_ble_replace_post), TAG, "ble replace");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/restart", HTTP_POST, handle_restart_post), TAG, "restart");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/reset", HTTP_POST, handle_reset_post), TAG, "reset");

@@ -82,10 +82,10 @@ function applyStatus(status) {
     $('ble-guidance').textContent = `등록 신호를 보내고 있습니다. iPhone Bluetooth 설정에서 ${bluetoothName}을 선택하고, 표시되면 코드 123456을 입력하세요.`;
   } else if (system.ble_bonded) {
     updateTile('status-ble', 'pending', '등록됨 · 연결 대기', '등록된 iPhone을 찾고 있습니다');
-    $('ble-guidance').textContent = '등록된 iPhone만 자동으로 다시 연결됩니다. 버튼을 누르면 기존 iPhone 연결 신호를 즉시 보냅니다.';
+    $('ble-guidance').textContent = '등록된 iPhone만 자동으로 다시 연결됩니다. Home Assistant 버튼 또는 BOOT 3초 길게 누르기로 재연결 신호를 보낼 수 있습니다.';
   } else {
     updateTile('status-ble', 'neutral', '미등록 · 광고 꺼짐', '등록 시작 전에는 Bluetooth 등록 신호를 보내지 않습니다');
-    $('ble-guidance').textContent = 'iPhone 등록 시작을 누르면 Bluetooth 등록 신호를 보냅니다. 이후에는 등록된 iPhone만 자동으로 다시 연결됩니다.';
+    $('ble-guidance').textContent = 'Home Assistant의 iPhone 등록 시작 버튼을 누르거나 BOOT 버튼을 3초 동안 누르면 Bluetooth 등록 신호를 보냅니다.';
   }
 
   const published = Number(system.notifications_published || 0);
@@ -217,12 +217,6 @@ $('mqtt-config').addEventListener('submit', async (event) => {
 $('mqtt-test').addEventListener('click', () => runButton('mqtt-test', '테스트 중', async () => {
   await api('/api/mqtt/test', { method: 'POST', body: '{}' });
   setMessage('MQTT 연결 테스트를 시작했습니다. 잠시 후 상태를 새로고침하세요.', 'success');
-}));
-
-$('enroll').addEventListener('click', () => runButton('enroll', '등록 신호 전송 중', async () => {
-  await api('/api/ble/enroll', { method: 'POST', body: '{}' });
-  setMessage('iPhone 등록 신호를 시작했습니다.', 'success');
-  setTimeout(() => loadStatus().catch(() => {}), 500);
 }));
 
 $('replace-enrollment').addEventListener('click', () => {
