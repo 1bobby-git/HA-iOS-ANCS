@@ -9,6 +9,7 @@ from tools.verify_capture import (
     CaptureNotReadyError,
     CaptureTimeoutError,
     CaptureValidationError,
+    _open_serial_connection,
     consume_log_stream,
     validate_notification,
 )
@@ -135,3 +136,46 @@ def test_ready_without_notification_reports_timeout():
             output_path=io.StringIO(),
             capture_path=None,
         )
+
+
+def test_serial_control_lines_are_inactive_before_port_open():
+    class FakeConnection:
+        def __init__(self):
+            self.port = None
+            self.baudrate = None
+            self.timeout = None
+            self.dtr = True
+            self.rts = True
+            self.open_snapshot = None
+
+        def open(self):
+            self.open_snapshot = {
+                "port": self.port,
+                "baudrate": self.baudrate,
+                "timeout": self.timeout,
+                "dtr": self.dtr,
+                "rts": self.rts,
+            }
+
+    connection = FakeConnection()
+
+    class FakeSerialModule:
+        @staticmethod
+        def Serial():
+            return connection
+
+    result = _open_serial_connection(
+        FakeSerialModule,
+        port="COM9",
+        baud=115200,
+        timeout=0.25,
+    )
+
+    assert result is connection
+    assert connection.open_snapshot == {
+        "port": "COM9",
+        "baudrate": 115200,
+        "timeout": 0.25,
+        "dtr": False,
+        "rts": False,
+    }
