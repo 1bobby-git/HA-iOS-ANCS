@@ -827,3 +827,37 @@ def test_task7_reuses_large_config_buffers_and_rolls_back_partial_start():
                         source.index("esp_err_t portal_http_stop")]
     assert "httpd_stop(server)" in init_block
     assert "s_server = NULL" in init_block
+
+
+def test_setup_ap_password_is_lowercase_without_normalizing_station_password():
+    header = read("components/provisioning/include/provisioning_runtime.h")
+    runtime = read("components/provisioning/provisioning_runtime.c")
+
+    assert '#define PROVISIONING_RUNTIME_AP_PASSWORD_PREFIX "ancs-"' in header
+
+    identity = runtime.split("static esp_err_t make_ap_identity", 1)[1].split(
+        "static void fill_ap_config", 1
+    )[0]
+    assert '"%02X%02X%02X"' in identity
+    assert '"%02x%02x%02x"' in identity
+
+    start_sta = runtime.split(
+        "esp_err_t provisioning_runtime_start_sta", 1
+    )[1].split("esp_err_t provisioning_runtime_stop_sta", 1)[0]
+    assert "config->wifi_password" in start_sta
+    assert "tolower" not in start_sta
+
+
+def test_platform_identity_defines_home_assistant_model_for_every_target():
+    identity = read("components/platform_identity/include/platform_identity.h")
+
+    for model in (
+        "ESP32",
+        "ESP32-C2",
+        "ESP32-C3",
+        "ESP32-C5",
+        "ESP32-C6",
+        "ESP32-C61",
+        "ESP32-S3",
+    ):
+        assert f'#define ANCS_DEVICE_MODEL "{model}"' in identity

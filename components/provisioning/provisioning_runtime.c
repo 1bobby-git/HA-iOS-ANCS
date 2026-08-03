@@ -219,18 +219,30 @@ static esp_err_t make_ap_identity(void)
                         TAG,
                         "read base Wi-Fi MAC");
 
-    char suffix[7] = {0};
-    (void)snprintf(suffix, sizeof(suffix), "%02X%02X%02X", mac[3], mac[4], mac[5]);
+    char ssid_suffix[7] = {0};
+    char password_suffix[7] = {0};
+    (void)snprintf(ssid_suffix,
+                   sizeof(ssid_suffix),
+                   "%02X%02X%02X",
+                   mac[3],
+                   mac[4],
+                   mac[5]);
+    (void)snprintf(password_suffix,
+                   sizeof(password_suffix),
+                   "%02x%02x%02x",
+                   mac[3],
+                   mac[4],
+                   mac[5]);
     (void)snprintf(s_ap_ssid,
                    sizeof(s_ap_ssid),
                    "%s%s",
                    PROVISIONING_RUNTIME_AP_SSID_PREFIX,
-                   suffix);
+                   ssid_suffix);
     (void)snprintf(s_ap_password,
                    sizeof(s_ap_password),
                    "%s%s",
                    PROVISIONING_RUNTIME_AP_PASSWORD_PREFIX,
-                   suffix);
+                   password_suffix);
     return ESP_OK;
 }
 
