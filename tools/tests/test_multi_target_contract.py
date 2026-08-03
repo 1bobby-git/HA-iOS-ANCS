@@ -241,7 +241,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
     builds = manifest["builds"]
     families = [build["chipFamily"] for build in builds]
 
-    assert manifest["version"] == "0.3.1"
+    assert manifest["version"] == "0.3.2"
     assert len(families) == 7
     assert len(families) == len(set(families))
     assert "ESP32" in families
@@ -253,7 +253,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
         assert len(build["parts"]) == 1
         part = build["parts"][0]
         assert part["offset"] == 0
-        assert "-v0.3.1.factory.bin" in part["path"]
+        assert "-v0.3.2.factory.bin" in part["path"]
         binary = (MULTI_MANIFEST.parent / part["path"]).resolve()
         assert binary.is_file()
         assert binary.stat().st_size > 0
@@ -276,9 +276,9 @@ def test_c6_manifest_points_existing_users_to_current_image():
     part = build["parts"][0]
     binary = (LEGACY_C6_MANIFEST.parent / part["path"]).resolve()
 
-    assert manifest["version"] == "0.3.1"
+    assert manifest["version"] == "0.3.2"
     assert build["chipFamily"] == "ESP32-C6"
-    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.1.factory.bin"
+    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.2.factory.bin"
     assert binary.is_file()
     assert not (
         ROOT
@@ -341,7 +341,7 @@ def test_v031_release_guidance_documents_lowercase_setup_and_ha_diagnostics():
     troubleshooting = read(ROOT / "docs" / "TROUBLESHOOTING.md")
 
     for source in (matrix, build_ps1, build_sh, installer):
-        assert "0.3.1" in source
+        assert "0.3.2" in source
     for source in (readme, pairing, troubleshooting):
         assert "ancs-<lowercase_suffix>" in source
         assert "case-sensitive" in source

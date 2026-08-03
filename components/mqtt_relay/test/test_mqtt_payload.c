@@ -59,7 +59,8 @@ static mqtt_relay_event_t s_last_event;
 static int s_event_count;
 static int s_discovery_publish_calls;
 static int s_wifi_discovery_publish_calls;
-static unsigned int s_wifi_transient_failure_mask;
+static int s_retained_failure_calls;
+static int s_publish_after_retained_failure_calls;
 static int s_wifi_discovery_success_calls;
 
 static int capture_publish(const char *topic,
@@ -85,32 +86,26 @@ static int capture_publish(const char *topic,
     return s_next_msg_id++;
 }
 
-static int capture_publish_with_transient_wifi_failures(const char *topic,
-                                                        const char *payload,
-                                                        int length,
-                                                        int qos,
-                                                        int retain)
+static int capture_publish_with_wifi_outbox_failure(const char *topic,
+                                                    const char *payload,
+                                                    int length,
+                                                    int qos,
+                                                    int retain)
 {
     (void)payload;
     (void)length;
     (void)qos;
     (void)retain;
-    static const char *wifi_topics[] = {
-        "/wifi_ssid/config",
-        "/wifi_ip/config",
-        "/wifi_rssi/config",
-    };
-    for (size_t index = 0; index < 3U; ++index) {
-        if (strstr(topic, wifi_topics[index]) == NULL) {
-            continue;
-        }
-        const unsigned int bit = 1U << index;
-        if ((s_wifi_transient_failure_mask & bit) == 0U) {
-            s_wifi_transient_failure_mask |= bit;
-            return -1;
-        }
+    if (strstr(topic, "/wifi_ssid/config") != NULL) {
+        s_retained_failure_calls++;
+        return -1;
+    }
+    if (s_retained_failure_calls > 0) {
+        s_publish_after_retained_failure_calls++;
+    }
+    if (strstr(topic, "/wifi_ip/config") != NULL ||
+        strstr(topic, "/wifi_rssi/config") != NULL) {
         s_wifi_discovery_success_calls++;
-        break;
     }
     return s_next_msg_id++;
 }
@@ -127,7 +122,8 @@ static void reset_relay_for_ownership_test(void)
     s_event_count = 0;
     s_discovery_publish_calls = 0;
     s_wifi_discovery_publish_calls = 0;
-    s_wifi_transient_failure_mask = 0U;
+    s_retained_failure_calls = 0;
+    s_publish_after_retained_failure_calls = 0;
     s_wifi_discovery_success_calls = 0;
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config, &device_info));
     mqtt_relay_set_publish_for_test(capture_publish);
@@ -539,18 +535,20 @@ TEST_CASE("live Wi-Fi status update republishes only retained state", "[mqtt_rel
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
 }
 
-TEST_CASE("retained discovery retries transient MQTT outbox failures",
+TEST_CASE("retained discovery aborts after one MQTT outbox failure",
           "[mqtt_relay]")
 {
     reset_relay_for_ownership_test();
-    s_wifi_transient_failure_mask = 0U;
+    s_retained_failure_calls = 0;
+    s_publish_after_retained_failure_calls = 0;
     s_wifi_discovery_success_calls = 0;
-    mqtt_relay_set_publish_for_test(capture_publish_with_transient_wifi_failures);
+    mqtt_relay_set_publish_for_test(capture_publish_with_wifi_outbox_failure);
 
     mqtt_relay_publish_retained_for_test();
 
-    TEST_ASSERT_EQUAL_HEX32(0x07U, s_wifi_transient_failure_mask);
-    TEST_ASSERT_EQUAL(3, s_wifi_discovery_success_calls);
+    TEST_ASSERT_EQUAL(1, s_retained_failure_calls);
+    TEST_ASSERT_EQUAL(0, s_publish_after_retained_failure_calls);
+    TEST_ASSERT_EQUAL(0, s_wifi_discovery_success_calls);
 }
 
 TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]")
