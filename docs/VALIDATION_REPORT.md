@@ -2,6 +2,36 @@
 
 Validation date: 2026-08-03 (Asia/Seoul)
 
+## Lowercase setup AP and Home Assistant diagnostics v0.3.1
+
+- The setup AP keeps the uppercase MAC suffix in its SSID and now derives its
+  WPA2 password as `ancs-<lowercase_suffix>`.
+- Infrastructure Wi-Fi passwords remain case-sensitive and are stored exactly
+  as entered; the lowercase rule applies only to the generated setup password.
+- MQTT Discovery now groups all entities under a device record containing
+  `manufacturer`, `model`, `sw_version`, and `hw_version`.
+- Retained diagnostics expose `wifi_ssid`, `wifi_ip`, and `wifi_rssi` without
+  publishing Wi-Fi or MQTT secrets. The coordinator refreshes this snapshot
+  every 60 seconds while MQTT is connected.
+- ESP-IDF v6.0.2 completed compile, link, partition-size validation, and merged
+  factory-image generation for all seven supported targets. SHA-256 values
+  below were recalculated from the checked-in v0.3.1 files.
+- `python -m pytest tools/tests -q` reports `111 passed`; the focused release
+  contract reports `16 passed`.
+- Physical-board flash, boot, AP, live MQTT, and Home Assistant acceptance for
+  v0.3.1 remain pending. The v0.3.0 COM9 evidence below is historical and is
+  not transferred to these binaries.
+
+| Target | Merged bytes | SHA-256 | Validation level |
+| --- | ---: | --- | --- |
+| `esp32` | 1,420,944 | `abe51f202323b6a11069a74019bad78c6dc811b9f0874212150c06d243e67041` | v0.3.1 build verified |
+| `esp32c2` | 1,440,144 | `a260e48c3e27735af088f593f99eb7c6916638940fd2cb94a448841810a144b4` | v0.3.1 build verified |
+| `esp32c3` | 1,629,184 | `f71aeb4b5f78a5a374de4b202cb5375751cb73d907ba0c3d189da8ac9db9efe3` | v0.3.1 build verified |
+| `esp32c5` | 1,774,304 | `bf804ae3e83f6e8819df616b18499a2ee49550b25f576761a5f6ddadd9117426` | v0.3.1 build verified |
+| `esp32c6` | 1,774,336 | `4145335ac30c3785864a5a98375ab60a14008cbbb7a119eff17edb88312d24ac` | v0.3.1 build verified; v0.3.0 hardware evidence is historical |
+| `esp32c61` | 1,717,456 | `1bc79cbaa9500016ea9988f1e6fa345e58104826305241de4d09a07303d45dd2` | v0.3.1 build verified |
+| `esp32s3` | 1,402,832 | `d585f7eefb6621d5a238fc96172416c16818a7c809d3ee623f4d2847c00221d3` | v0.3.1 build verified |
+
 ## Home Assistant enrollment control v0.3.0
 
 - The captive portal no longer exposes the ordinary iPhone Enroll action.
