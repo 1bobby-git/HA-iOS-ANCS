@@ -7,6 +7,7 @@
 /output/
 /.omx/
 /.playwright-cli/
+/.worktrees/
 /.pytest_cache/
 /**/__pycache__/
 /**/*.py[cod]
