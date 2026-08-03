@@ -14,7 +14,7 @@ The shared firmware uses a 4 MB minimum flash layout. ESP32-C6 on `COM9` is hard
 | `esp32c2` | ESP32-C2 | 1,434,784 bytes | v0.3.0 build verified |
 | `esp32c3` | ESP32-C3 | 1,623,824 bytes | v0.3.0 build verified |
 | `esp32c5` | ESP32-C5 | 1,768,688 bytes | v0.3.0 build verified |
-| `esp32c6` | ESP32-C6 | 1,768,896 bytes | v0.3.0 COM9 flash, boot, AP, portal, and BOOT-hold GPIO verified |
+| `esp32c6` | ESP32-C6 | 1,768,896 bytes | v0.3.0 COM9 flash, AP/portal, BOOT, live MQTT/HA button, and BLE advertising verified |
 | `esp32c61` | ESP32-C61 | 1,711,888 bytes | v0.3.0 build verified |
 | `esp32s3` | ESP32-S3 | 1,398,064 bytes | v0.3.0 build verified |
 

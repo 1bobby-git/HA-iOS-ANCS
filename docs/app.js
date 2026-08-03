@@ -3,7 +3,7 @@ const boards = {
     chip: "C6",
     name: "ESP32-C6",
     boot: "GPIO 9",
-    validation: "v0.3.0 COM9 플래시·포털 검증",
+    validation: "v0.3.0 COM9 MQTT·HA·BLE 검증",
     status: "HARDWARE VERIFIED",
     description:
       "Home Assistant 등록 버튼과 BOOT 3초 길게 누르기로 안전하게 iPhone 등록을 시작합니다.",
