@@ -24,10 +24,16 @@ Validation date: 2026-08-03 (Asia/Seoul)
   no ordinary Enroll button, `id="enroll"`, or `/api/ble/enroll`; it retains
   Home Assistant/BOOT guidance and the confirmation-protected replacement
   action.
+- Holding the board's BOOT GPIO9 low for 3.5 seconds through its USB-UART DTR
+  path changed the live UART state to `advertising`; `/api/status` then
+  reported `enroll_window_open=true`. This electrically verifies the same
+  input path used by the physical BOOT button without erasing any bond.
 - The current office Wi-Fi did not complete association at the device's weak
   `-83` to `-89 dBm` RSSI, so live MQTT subscription, Home Assistant button
-  creation, and physical BOOT-button exercise remain pending rather than
-  claimed. Older evidence is retained in later historical sections.
+  creation, and command receipt remain pending rather than claimed. The
+  original `EDENARI` Wi-Fi identity and stored MQTT endpoint were restored
+  after the office-network test. Older evidence is retained in later
+  historical sections.
 
 | Target | Merged bytes | SHA-256 | Validation level |
 | --- | ---: | --- | --- |
@@ -35,7 +41,7 @@ Validation date: 2026-08-03 (Asia/Seoul)
 | `esp32c2` | 1,434,784 | `1fbd72b18bcf1826f6dbea34c65f9f3fe8f5e23628d5343f219054a7174b6366` | v0.3.0 build verified |
 | `esp32c3` | 1,623,824 | `8ae37d65304ce8c11242ed82bc48e5faa089c2ed54ebf33d3f6e413938ceaa53` | v0.3.0 build verified |
 | `esp32c5` | 1,768,688 | `647cddd5ff45e13b77f132fccb6c36f71a494477c6ce01ab94f38ba15bc3891b` | v0.3.0 build verified |
-| `esp32c6` | 1,768,896 | `a1730f7937b12b9ba524395eb3b09da64ae538c3f7d029c0dbe548a591b07237` | v0.3.0 COM9 flash, boot, AP, and portal verified; MQTT/HA pending |
+| `esp32c6` | 1,768,896 | `a1730f7937b12b9ba524395eb3b09da64ae538c3f7d029c0dbe548a591b07237` | v0.3.0 COM9 flash, boot, AP, portal, and BOOT GPIO verified; MQTT/HA pending |
 | `esp32c61` | 1,711,888 | `4787e34fc66a352c0ec3f645ee7ad64b1f550b36da9786d6822cd7cbffb36a81` | v0.3.0 build verified |
 | `esp32s3` | 1,398,064 | `7b2efb8efec8d084ed38cf3e229e2291d002b006cbf9813fe2fc81496d5b500b` | v0.3.0 build verified |
 
