@@ -491,3 +491,58 @@ TEST_CASE("disconnect frees queued and pending items without PUBACK", "[mqtt_rel
     mqtt_relay_get_counters(&counters);
     TEST_ASSERT_EQUAL_UINT32(1, counters.dropped_offline);
 }
+
+TEST_CASE("enroll button topics and discovery are stable", "[mqtt_relay]")
+{
+    provision_config_t config = valid_config();
+    char command[MQTT_RELAY_TOPIC_MAX];
+    char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char payload[1536];
+
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_build_enroll_command_topic(
+                          &config, command, sizeof(command)));
+    TEST_ASSERT_EQUAL_STRING("ios-ancs/2b20/command/enroll", command);
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_build_enroll_discovery_topic(
+                          &config, discovery_topic, sizeof(discovery_topic)));
+    TEST_ASSERT_EQUAL_STRING(
+        "homeassistant/button/ios_ancs_c6_2b20/enroll/config",
+        discovery_topic);
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_relay_build_enroll_discovery_payload(
+                          &config,
+                          command,
+                          "ios-ancs/2b20/availability",
+                          payload,
+                          sizeof(payload)));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"payload_press\":\"ENROLL\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"retain\":false"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"entity_category\":\"config\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"unique_id\":\"ios_ancs_c6_2b20_enroll\""));
+    TEST_ASSERT_NULL(strstr(payload, "secret"));
+}
+
+TEST_CASE("enroll command rejects retained partial and malformed input",
+          "[mqtt_relay]")
+{
+    const char *topic = "ios-ancs/2b20/command/enroll";
+    const char *wrong_topic = "ios-ancs/2b20/command/replace";
+    TEST_ASSERT_TRUE(mqtt_relay_is_enroll_command(
+        topic, topic, strlen(topic), "ENROLL", 6, 6, 0, false));
+    TEST_ASSERT_FALSE(mqtt_relay_is_enroll_command(
+        topic, topic, strlen(topic), "ENROLL", 6, 6, 0, true));
+    TEST_ASSERT_FALSE(mqtt_relay_is_enroll_command(
+        topic, topic, strlen(topic), "ENR", 3, 6, 0, false));
+    TEST_ASSERT_FALSE(mqtt_relay_is_enroll_command(
+        topic, topic, strlen(topic), "enroll", 6, 6, 0, false));
+    TEST_ASSERT_FALSE(mqtt_relay_is_enroll_command(
+        topic,
+        wrong_topic,
+        strlen(wrong_topic),
+        "ENROLL",
+        6,
+        6,
+        0,
+        false));
+}
