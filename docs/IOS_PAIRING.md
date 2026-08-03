@@ -5,11 +5,11 @@ This device uses explicit BLE enrollment. It does not advertise for a new iPhone
 ## Before Pairing
 
 1. Power the ESP32 board from USB.
-2. If provisioning is not complete, join `IOS-ANCS-SETUP-<SUFFIX>` with password `ANCS-<SUFFIX>`.
+2. If provisioning is not complete, join `IOS-ANCS-SETUP-<SUFFIX>` with password `ancs-<lowercase_suffix>`.
 3. Open `http://192.168.4.1`.
 4. Configure Wi-Fi and MQTT. Home Assistant creates the Enroll button after MQTT connects.
 
-For the current board, `<SUFFIX>` is `ABC123`, so the AP is `IOS-ANCS-SETUP-ABC123` and the password is `ANCS-ABC123`.
+For the current board, `<SUFFIX>` is `ABC123`, so the AP is `IOS-ANCS-SETUP-ABC123` and the password is `ancs-abc123`. Infrastructure Wi-Fi passwords remain case-sensitive and must be entered exactly as configured on the access point.
 
 ## Enroll A First iPhone
 

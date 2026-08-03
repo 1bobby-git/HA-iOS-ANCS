@@ -2,6 +2,68 @@
 
 Validation date: 2026-08-03 (Asia/Seoul)
 
+## Lowercase setup AP and Home Assistant diagnostics v0.3.1
+
+- The setup AP keeps the uppercase MAC suffix in its SSID and now derives its
+  WPA2 password as `ancs-<lowercase_suffix>`.
+- Infrastructure Wi-Fi passwords remain case-sensitive and are stored exactly
+  as entered; the lowercase rule applies only to the generated setup password.
+- MQTT Discovery now groups all entities under a device record containing
+  `manufacturer`, `model`, `sw_version`, and `hw_version`.
+- Retained diagnostics expose `wifi_ssid`, `wifi_ip`, and `wifi_rssi` without
+  publishing Wi-Fi or MQTT secrets. The coordinator refreshes this snapshot
+  every 60 seconds while MQTT is connected.
+- A COM7 hardware run exposed MQTT outbox pressure during connection startup:
+  the final three Wi-Fi Discovery records could be omitted when roughly 30
+  retained QoS 1 records were queued inside the MQTT callback. Retained
+  publication now runs in the relay worker, paces each record, and retries a
+  transient queue failure up to five times.
+- ESP-IDF v6.0.2 completed compile, link, partition-size validation, and merged
+  factory-image generation for all seven supported targets. SHA-256 values
+  below were recalculated from the checked-in v0.3.1 files.
+- `python -m pytest tools/tests -q` reports `112 passed`. The ESP-IDF Unity test
+  image ran on the attached ESP32-D0WD-V3 and reported `77 Tests 0 Failures 0
+  Ignored` before the production image was restored.
+- COM7 was freshly identified as ESP32-D0WD-V3 revision 3.1 with base MAC
+  `a8:42:e3:aa:f7:38`. The v0.3.1 ESP32 production image was written and
+  hash-verified without erasing NVS, then booted as target `esp32`.
+- The device exposed `IOS-ANCS-SETUP-AAF738`. Windows connected with the new
+  lowercase password `ancs-aaf738`; the obsolete uppercase `ANCS-AAF738` was
+  rejected. The status and Wi-Fi scan APIs remained reachable at
+  `http://192.168.4.1`.
+- With no BLE bond, the production image did not advertise unless enrollment
+  was explicitly requested. The portal contains no ordinary enrollment button;
+  Home Assistant and the three-second BOOT action remain the supported paths.
+- A temporary Windows 2.4 GHz hotspot gave the WROOM-D32 address
+  `192.168.137.129`. The stored broker connected successfully and retained all
+  three Wi-Fi Discovery records, the diagnostic state, and availability. The
+  state reported SSID `TOISS_WROVER_CAM`, IP `192.168.137.129`, and RSSI
+  `-56 dBm`.
+- Home Assistant registered the enabled MQTT enroll button and all three Wi-Fi
+  sensors under one device. The device registry reported manufacturer
+  `Espressif Systems`, model `ESP32`, software `0.3.1`, and hardware
+  `rev 3.1`.
+- After validation, the Windows hotspot was stopped and the device was restored
+  to its original `EXAMPLE_OFFICE14_4F` Wi-Fi configuration with MQTT secrets
+  preserved. Boot logs proved the restored SSID was used; association failed
+  only because the local signal was weak (`-83` to `-87 dBm`), so the protected
+  setup AP remained available. AX1800 stayed connected to `EXAMPLE_OFFICE14_5F` and
+  was never reconfigured.
+- ESP32-C6 v0.3.1 physical validation remains pending because the known COM9
+  device is absent. The v0.3.0 C6 evidence below is historical and is not
+  transferred to the current C6 binary. No live iPhone ANCS notification was
+  generated during this WROOM-D32 pass.
+
+| Target | Merged bytes | SHA-256 | Validation level |
+| --- | ---: | --- | --- |
+| `esp32` | 1,421,056 | `9f3012492cdbc1c093118edb1a8f4022c7c4fca425440074cdb15a9ace2526d6` | v0.3.1 COM7 flash, boot, AP, portal, MQTT, HA diagnostics, and Unity verified |
+| `esp32c2` | 1,440,320 | `9abba1ffc10ee88437166d47741737be6ea0c4d77c564c1fe73fc2b197c5f416` | v0.3.1 build verified |
+| `esp32c3` | 1,629,360 | `a1c50ff7905f54085d5a6eba94b4eaaf76e06a1a006ffea8f13abd355bffb9dd` | v0.3.1 build verified |
+| `esp32c5` | 1,774,480 | `233eac5ec22dcaf0e3f1babb39ddfed8882b8f648a4c4441d356bb5c5b02c10e` | v0.3.1 build verified |
+| `esp32c6` | 1,774,512 | `c2561fe937db44b37fadd9f3fcdbeb79c5cedec2d3afa759dc9cfddb728ae14d` | v0.3.1 build verified; v0.3.0 hardware evidence is historical |
+| `esp32c61` | 1,717,632 | `ca7ec18aece10b5c0602ea2a5c279777a80823f36cdff3705f7396307a82bb1f` | v0.3.1 build verified |
+| `esp32s3` | 1,402,944 | `9daf0ef3df2cfda4ca60ad6d313ccb8095363874ed39466f5f1a40f175885351` | v0.3.1 build verified |
+
 ## Home Assistant enrollment control v0.3.0
 
 - The captive portal no longer exposes the ordinary iPhone Enroll action.

@@ -228,3 +228,72 @@ def test_main_component_declares_all_lifecycle_dependencies():
         "provisioning",
     ):
         assert component in cmake
+
+
+def test_device_metadata_and_wifi_refresh_are_owned_by_the_coordinator():
+    source = read("main/app_main.c")
+
+    assert "#define APP_WIFI_STATUS_REFRESH_MS 60000" in source
+    assert "APP_EVENT_WIFI_STATUS_REFRESH" in source
+    assert "wifi_status_timer_callback" in source
+    assert "provisioning_runtime_get_wifi_snapshot" in source
+    assert "mqtt_relay_update_wifi_status" in source
+    assert "esp_app_get_description" in source
+    assert "esp_chip_info" in source
+    assert "ANCS_DEVICE_MODEL" in source
+
+    callback = source.split("static void wifi_status_timer_callback", 1)[1].split(
+        "static void restart_timer_callback", 1
+    )[0]
+    assert "app_post(&message)" in callback
+    assert "provisioning_runtime_get_wifi_snapshot" not in callback
+    assert "mqtt_relay_update_wifi_status" not in callback
+
+    refresh = source.split("static esp_err_t refresh_wifi_status", 1)[1].split(
+        "static esp_err_t start_or_reconnect_mqtt", 1
+    )[0]
+    assert "provisioning_runtime_get_wifi_snapshot" in refresh
+    assert "mqtt_relay_update_wifi_status" in refresh
+
+    coordinator = source.split("static void coordinator_task", 1)[1].split(
+        "static esp_err_t initialize_coordinator", 1
+    )[0]
+    assert "case APP_EVENT_WIFI_STATUS_REFRESH:" in coordinator
+    assert "refresh_wifi_status()" in coordinator
+
+
+def test_wifi_refresh_timer_tracks_mqtt_lifecycle():
+    source = read("main/app_main.c")
+
+    mqtt_handler = source.split("static void handle_mqtt_event", 1)[1].split(
+        "static void handle_config_changed", 1
+    )[0]
+    connected = mqtt_handler.split("MQTT_RELAY_EVENT_CONNECTED", 1)[1].split(
+        "return;", 1
+    )[0]
+    assert "xTimerReset(s_wifi_status_timer" in connected
+
+    stop_mqtt = source.split("static void stop_mqtt", 1)[1].split(
+        "static void schedule_mqtt_retry", 1
+    )[0]
+    assert "xTimerStop(s_wifi_status_timer" in stop_mqtt
+
+    provisioning_handler = source.split(
+        "static void handle_provisioning_event", 1
+    )[1].split("static void handle_mqtt_event", 1)[0]
+    mqtt_failed = provisioning_handler.split(
+        "case PROVISION_EVENT_MQTT_FAILED:", 1
+    )[1].split("break;", 1)[0]
+    assert "xTimerStop(s_wifi_status_timer" in mqtt_failed
+
+    initializer = source.split("static esp_err_t initialize_coordinator", 1)[1].split(
+        "static void log_error", 1
+    )[0]
+    assert 'xTimerCreate("wifi_status"' in initializer
+    assert "pdTRUE" in initializer
+
+
+def test_main_declares_device_information_dependencies():
+    cmake = read("main/CMakeLists.txt")
+    for component in ("esp_app_format", "esp_system", "platform_identity"):
+        assert component in cmake

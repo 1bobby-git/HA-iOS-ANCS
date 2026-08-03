@@ -12,7 +12,9 @@ typedef int (*mqtt_relay_publish_for_test_t)(const char *topic,
                                              int qos,
                                              int retain);
 
-esp_err_t mqtt_relay_reset_for_test(const provision_config_t *config);
+esp_err_t mqtt_relay_reset_for_test(
+    const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info);
 void mqtt_relay_set_publish_for_test(mqtt_relay_publish_for_test_t publish);
 void mqtt_relay_simulate_connected_for_test(bool connected);
 void mqtt_relay_publish_retained_for_test(void);
