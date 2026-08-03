@@ -241,7 +241,8 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
     builds = manifest["builds"]
     families = [build["chipFamily"] for build in builds]
 
-    assert len(families) >= 4
+    assert manifest["version"] == "0.3.0"
+    assert len(families) == 7
     assert len(families) == len(set(families))
     assert "ESP32" in families
     assert "ESP32-C3" in families
@@ -252,6 +253,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
         assert len(build["parts"]) == 1
         part = build["parts"][0]
         assert part["offset"] == 0
+        assert "-v0.3.0.factory.bin" in part["path"]
         binary = (MULTI_MANIFEST.parent / part["path"]).resolve()
         assert binary.is_file()
         assert binary.stat().st_size > 0
@@ -268,15 +270,15 @@ def test_installer_build_proof_matches_each_published_binary():
         assert f"SHA256 {digest_prefix}" in javascript
 
 
-def test_legacy_c6_manifest_redirects_existing_users_to_current_image():
+def test_c6_manifest_points_existing_users_to_current_image():
     manifest = json.loads(read(LEGACY_C6_MANIFEST))
     build = manifest["builds"][0]
     part = build["parts"][0]
     binary = (LEGACY_C6_MANIFEST.parent / part["path"]).resolve()
 
-    assert manifest["version"] == "0.2.1"
+    assert manifest["version"] == "0.3.0"
     assert build["chipFamily"] == "ESP32-C6"
-    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.2.1.factory.bin"
+    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.0.factory.bin"
     assert binary.is_file()
     assert not (
         ROOT
