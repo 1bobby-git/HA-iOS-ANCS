@@ -143,6 +143,7 @@ esp_err_t mqtt_relay_build_wifi_discovery_payload(
     size_t out_size);
 esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
                                          bool connected,
+                                         const mqtt_relay_wifi_status_t *wifi_status,
                                          char *out,
                                          size_t out_size);
 
@@ -161,6 +162,7 @@ esp_err_t mqtt_relay_reconfigure(const provision_config_t *config);
 esp_err_t mqtt_relay_deinit(void);
 esp_err_t mqtt_relay_register_event_callback(mqtt_relay_event_callback_t callback,
                                              void *context);
+esp_err_t mqtt_relay_update_wifi_status(const mqtt_relay_wifi_status_t *status);
 void mqtt_relay_set_wifi_connected(bool connected);
 void mqtt_relay_observe_notification(const ancs_notification_t *notification,
                                      const char *device_name,

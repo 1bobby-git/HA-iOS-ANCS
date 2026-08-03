@@ -250,3 +250,27 @@ def test_device_metadata_and_wifi_discovery_contracts_are_present():
     assert 'measurement' in source
     assert 'unit_of_measurement' in source
     assert 'dBm' in source
+
+
+def test_retained_wifi_state_update_is_bounded_and_secret_free():
+    header = read("include/mqtt_relay.h")
+    source = read("mqtt_relay.c")
+
+    assert "mqtt_relay_wifi_status_t wifi_status" in source
+    assert "mqtt_relay_update_wifi_status" in header
+    state_builder = source.split("esp_err_t mqtt_relay_build_state_payload", 1)[1].split(
+        "static void mqtt_relay_lock", 1
+    )[0]
+    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+        assert key in state_builder
+    assert "password" not in state_builder
+
+    updater = source.split("esp_err_t mqtt_relay_update_wifi_status", 1)[1].split(
+        "void mqtt_relay_set_wifi_connected", 1
+    )[0]
+    assert "s_ctx.wifi_status = *status" in updater
+    assert "mqtt_relay_build_state_payload" in updater
+    assert "mqtt_relay_publish_raw" in updater
+    assert "mqtt_relay_publish_retained_status" not in updater
+    assert "mqtt_password" not in updater
+    assert "mqtt_ca" not in updater

@@ -312,6 +312,18 @@ static bool device_info_is_valid(const mqtt_relay_device_info_t *device_info)
                                  sizeof(device_info->hw_version));
 }
 
+static bool wifi_status_is_valid(const mqtt_relay_wifi_status_t *status)
+{
+    if (status == NULL) {
+        return false;
+    }
+    if (!status->connected) {
+        return true;
+    }
+    return bounded_required_text(status->ssid, sizeof(status->ssid)) &&
+           bounded_required_text(status->ip, sizeof(status->ip));
+}
+
 static esp_err_t append_device_json(char **cursor,
                                     size_t *remaining,
                                     const provision_config_t *config,
@@ -979,27 +991,59 @@ esp_err_t mqtt_relay_build_wifi_discovery_payload(
 
 esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
                                          bool connected,
+                                         const mqtt_relay_wifi_status_t *wifi_status,
                                          char *out,
                                          size_t out_size)
 {
-    if (counters == NULL || out == NULL || out_size == 0U) {
+    if (counters == NULL || !wifi_status_is_valid(wifi_status) || out == NULL ||
+        out_size == 0U) {
         return ESP_ERR_INVALID_ARG;
     }
-    const int written =
-        snprintf(out,
-                 out_size,
+
+    char *cursor = out;
+    size_t remaining = out_size;
+    int written =
+        snprintf(cursor,
+                 remaining,
                  "{\"connected\":%s,\"accepted\":%" PRIu32
                  ",\"published_ack\":%" PRIu32 ",\"dropped_offline\":%" PRIu32
                  ",\"dropped_enqueue\":%" PRIu32 ",\"dropped_policy\":%" PRIu32
-                 "}",
+                 ",\"wifi_ssid\":",
                  connected ? "true" : "false",
                  counters->accepted,
                  counters->published_ack,
                  counters->dropped_offline,
                  counters->dropped_enqueue,
                  counters->dropped_policy);
-    return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
-                                                        : ESP_OK;
+    if (written < 0 || (size_t)written >= remaining) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    cursor += written;
+    remaining -= (size_t)written;
+
+    const char *ssid = wifi_status->connected ? wifi_status->ssid : "";
+    const char *ip = wifi_status->connected ? wifi_status->ip : "";
+    esp_err_t err = json_write_string(&cursor, &remaining, ssid);
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"wifi_ip\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, ip);
+    }
+    if (err == ESP_OK) {
+        if (wifi_status->connected) {
+            written = snprintf(cursor,
+                               remaining,
+                               ",\"wifi_rssi\":%" PRId32 "}",
+                               wifi_status->rssi);
+        } else {
+            written = snprintf(cursor, remaining, ",\"wifi_rssi\":null}");
+        }
+        if (written < 0 || (size_t)written >= remaining) {
+            err = ESP_ERR_INVALID_SIZE;
+        }
+    }
+    return err;
 }
 
 static void mqtt_relay_lock(void)
@@ -1158,6 +1202,7 @@ static void mqtt_relay_publish_retained_status(void)
     }
     mqtt_relay_counters_t counters;
     mqtt_relay_device_info_t device_info;
+    mqtt_relay_wifi_status_t wifi_status;
     bool connected;
     char notification_topic[MQTT_RELAY_TOPIC_MAX];
     char availability_topic[MQTT_RELAY_TOPIC_MAX];
@@ -1172,6 +1217,7 @@ static void mqtt_relay_publish_retained_status(void)
                   sizeof(discovery_config->mqtt_client_id));
     counters = s_ctx.counters;
     device_info = s_ctx.device_info;
+    wifi_status = s_ctx.wifi_status;
     connected = s_ctx.mqtt_connected;
     (void)strlcpy(notification_topic, s_ctx.notification_topic, sizeof(notification_topic));
     (void)strlcpy(availability_topic, s_ctx.availability_topic, sizeof(availability_topic));
@@ -1185,7 +1231,7 @@ static void mqtt_relay_publish_retained_status(void)
                   sizeof(enroll_discovery_topic));
     mqtt_relay_unlock();
 
-    char state[256];
+    char state[512];
     if (mqtt_relay_build_discovery_payload(discovery_config,
                                            &device_info,
                                            notification_topic,
@@ -1234,8 +1280,32 @@ static void mqtt_relay_publish_retained_status(void)
                                      MQTT_RELAY_RETAINED_QOS,
                                      MQTT_RELAY_RETAINED_RETAIN);
     }
+    for (size_t field_index = 0;
+         field_index < mqtt_relay_wifi_discovery_field_count();
+         ++field_index) {
+        if (mqtt_relay_build_wifi_discovery_topic(discovery_config,
+                                                  field_index,
+                                                  discovery_topic,
+                                                  sizeof(discovery_topic)) != ESP_OK ||
+            mqtt_relay_build_wifi_discovery_payload(
+                discovery_config,
+                &device_info,
+                state_topic,
+                availability_topic,
+                field_index,
+                discovery,
+                MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK) {
+            continue;
+        }
+        (void)mqtt_relay_publish_raw(discovery_topic,
+                                     discovery,
+                                     0,
+                                     MQTT_RELAY_RETAINED_QOS,
+                                     MQTT_RELAY_RETAINED_RETAIN);
+    }
     if (mqtt_relay_build_state_payload(&counters,
                                        connected,
+                                       &wifi_status,
                                        state,
                                        sizeof(state)) == ESP_OK) {
         (void)mqtt_relay_publish_raw(state_topic,
@@ -1888,6 +1958,44 @@ esp_err_t mqtt_relay_register_event_callback(mqtt_relay_event_callback_t callbac
     s_ctx.event_context = context;
     mqtt_relay_unlock();
     return ESP_OK;
+}
+
+esp_err_t mqtt_relay_update_wifi_status(const mqtt_relay_wifi_status_t *status)
+{
+    if (!wifi_status_is_valid(status)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    mqtt_relay_counters_t counters;
+    bool mqtt_connected;
+    char state_topic[MQTT_RELAY_TOPIC_MAX];
+    mqtt_relay_lock();
+    s_ctx.wifi_status = *status;
+    counters = s_ctx.counters;
+    mqtt_connected = s_ctx.mqtt_connected;
+    (void)strlcpy(state_topic, s_ctx.state_topic, sizeof(state_topic));
+    mqtt_relay_unlock();
+
+    if (!mqtt_connected) {
+        return ESP_OK;
+    }
+
+    char state[512];
+    esp_err_t err = mqtt_relay_build_state_payload(&counters,
+                                                   mqtt_connected,
+                                                   status,
+                                                   state,
+                                                   sizeof(state));
+    if (err != ESP_OK) {
+        return err;
+    }
+    return mqtt_relay_publish_raw(state_topic,
+                                  state,
+                                  0,
+                                  MQTT_RELAY_RETAINED_QOS,
+                                  MQTT_RELAY_RETAINED_RETAIN) < 0
+               ? ESP_FAIL
+               : ESP_OK;
 }
 
 void mqtt_relay_set_wifi_connected(bool connected)
