@@ -17,6 +17,9 @@
 #define MQTT_RELAY_WORKER_STACK 4096
 #define MQTT_RELAY_WORKER_PRIORITY 5
 #define MQTT_RELAY_DISCOVERY_PAYLOAD_MAX 1536
+#define MQTT_RELAY_RETAINED_PUBLISH_ATTEMPTS 5U
+#define MQTT_RELAY_RETAINED_RETRY_DELAY_MS 100U
+#define MQTT_RELAY_RETAINED_PACE_MS 20U
 
 static const char MQTT_RELAY_ENROLL_PAYLOAD[] = "ENROLL";
 
@@ -34,6 +37,7 @@ typedef struct {
     bool accepting_observers;
     bool publish_allowed;
     uint32_t publish_in_flight;
+    bool retained_refresh_pending;
     bool wifi_connected;
     bool mqtt_connected;
     mqtt_relay_event_callback_t event_callback;
@@ -1191,6 +1195,36 @@ static void mqtt_relay_wait_publish_idle(void)
     }
 }
 
+static int mqtt_relay_publish_retained_with_retry(const char *topic,
+                                                  const char *payload)
+{
+    for (size_t attempt = 0; attempt < MQTT_RELAY_RETAINED_PUBLISH_ATTEMPTS;
+         ++attempt) {
+        const int result = mqtt_relay_publish_raw(topic,
+                                                  payload,
+                                                  0,
+                                                  MQTT_RELAY_RETAINED_QOS,
+                                                  MQTT_RELAY_RETAINED_RETAIN);
+        if (result >= 0) {
+            if (s_publish_for_test == NULL) {
+                vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_RETAINED_PACE_MS));
+            }
+            return result;
+        }
+
+        mqtt_relay_lock();
+        const bool can_retry = s_ctx.mqtt_connected && s_ctx.publish_allowed;
+        mqtt_relay_unlock();
+        if (!can_retry) {
+            return result;
+        }
+        if (s_publish_for_test == NULL) {
+            vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_RETAINED_RETRY_DELAY_MS));
+        }
+    }
+    return -1;
+}
+
 static void mqtt_relay_publish_retained_status(void)
 {
     provision_config_t *discovery_config = calloc(1, sizeof(*discovery_config));
@@ -1238,11 +1272,7 @@ static void mqtt_relay_publish_retained_status(void)
                                            availability_topic,
                                            discovery,
                                            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        (void)mqtt_relay_publish_raw(discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(discovery_topic, discovery);
     }
     if (mqtt_relay_build_enroll_discovery_payload(
             discovery_config,
@@ -1251,11 +1281,8 @@ static void mqtt_relay_publish_retained_status(void)
             availability_topic,
             discovery,
             MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        (void)mqtt_relay_publish_raw(enroll_discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(enroll_discovery_topic,
+                                                     discovery);
     }
     for (size_t field_index = 0;
          field_index < mqtt_relay_discovery_field_count();
@@ -1274,11 +1301,7 @@ static void mqtt_relay_publish_retained_status(void)
             ESP_OK) {
             continue;
         }
-        (void)mqtt_relay_publish_raw(discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(discovery_topic, discovery);
     }
     for (size_t field_index = 0;
          field_index < mqtt_relay_wifi_discovery_field_count();
@@ -1297,28 +1320,16 @@ static void mqtt_relay_publish_retained_status(void)
                 MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK) {
             continue;
         }
-        (void)mqtt_relay_publish_raw(discovery_topic,
-                                     discovery,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(discovery_topic, discovery);
     }
     if (mqtt_relay_build_state_payload(&counters,
                                        connected,
                                        &wifi_status,
                                        state,
                                        sizeof(state)) == ESP_OK) {
-        (void)mqtt_relay_publish_raw(state_topic,
-                                     state,
-                                     0,
-                                     MQTT_RELAY_RETAINED_QOS,
-                                     MQTT_RELAY_RETAINED_RETAIN);
+        (void)mqtt_relay_publish_retained_with_retry(state_topic, state);
     }
-    (void)mqtt_relay_publish_raw(availability_topic,
-                                 "online",
-                                 0,
-                                 MQTT_RELAY_RETAINED_QOS,
-                                 MQTT_RELAY_RETAINED_RETAIN);
+    (void)mqtt_relay_publish_retained_with_retry(availability_topic, "online");
     free(discovery);
     free(discovery_config);
 }
@@ -1368,7 +1379,19 @@ static void mqtt_relay_worker(void *arg)
             mqtt_relay_unlock();
             vTaskDelete(NULL);
         }
+        const bool publish_retained = s_ctx.retained_refresh_pending &&
+                                      s_ctx.mqtt_connected;
+        if (publish_retained) {
+            s_ctx.retained_refresh_pending = false;
+            s_ctx.worker_busy = true;
+        }
         mqtt_relay_unlock();
+        if (publish_retained) {
+            mqtt_relay_publish_retained_status();
+            mqtt_relay_lock();
+            s_ctx.worker_busy = false;
+            mqtt_relay_unlock();
+        }
         mqtt_relay_drain_queue();
     }
 }
@@ -1447,6 +1470,7 @@ static esp_err_t mqtt_relay_ensure_worker(void)
 static void mqtt_relay_handle_disconnect_locked(void)
 {
     s_ctx.mqtt_connected = false;
+    s_ctx.retained_refresh_pending = false;
     mqtt_relay_free_queue_locked();
     mqtt_relay_free_pending_locked();
 }
@@ -1520,6 +1544,7 @@ static void mqtt_relay_event_handler(void *handler_args,
         char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
         mqtt_relay_lock();
         s_ctx.mqtt_connected = true;
+        s_ctx.retained_refresh_pending = true;
         (void)strlcpy(enroll_command_topic,
                       s_ctx.enroll_command_topic,
                       sizeof(enroll_command_topic));
@@ -1535,7 +1560,6 @@ static void mqtt_relay_event_handler(void *handler_args,
             mqtt_relay_emit_event(MQTT_RELAY_EVENT_FAILED);
             return;
         }
-        mqtt_relay_publish_retained_status();
         mqtt_relay_notify_worker();
         mqtt_relay_emit_event(MQTT_RELAY_EVENT_CONNECTED);
         return;
