@@ -10,13 +10,13 @@ The shared firmware uses a 4 MB minimum flash layout. ESP32-C6 on `COM9` is hard
 
 | Target | Typical module/board | Factory image | Validation |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,414,080 bytes | v0.2.1 build verified |
-| `esp32c2` | ESP32-C2 | 1,432,336 bytes | v0.2.1 build verified |
-| `esp32c3` | ESP32-C3 | 1,511,936 bytes | v0.2.1 build verified |
-| `esp32c5` | ESP32-C5 | 1,766,240 bytes | v0.2.1 build verified |
-| `esp32c6` | ESP32-C6 | 1,766,448 bytes | v0.2.1 build verified; v0.2.0 COM9 hardware verified |
-| `esp32c61` | ESP32-C61 | 1,709,408 bytes | v0.2.1 build verified |
-| `esp32s3` | ESP32-S3 | 1,395,808 bytes | v0.2.1 build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,416,192 bytes | v0.3.0 build verified |
+| `esp32c2` | ESP32-C2 | 1,434,784 bytes | v0.3.0 build verified |
+| `esp32c3` | ESP32-C3 | 1,623,824 bytes | v0.3.0 build verified |
+| `esp32c5` | ESP32-C5 | 1,768,688 bytes | v0.3.0 build verified |
+| `esp32c6` | ESP32-C6 | 1,768,896 bytes | v0.3.0 COM9 flash, boot, AP, and portal verified |
+| `esp32c61` | ESP32-C61 | 1,711,888 bytes | v0.3.0 build verified |
+| `esp32s3` | ESP32-S3 | 1,398,064 bytes | v0.3.0 build verified |
 
 ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
@@ -71,13 +71,13 @@ If the `provision` NVS partition is empty or invalid, the device automatically s
 
 TLS mode requires a CA certificate. Empty Wi-Fi password, MQTT password, and CA fields preserve already stored secret values. Status APIs and reports must show only configured/unconfigured flags for secrets, not secret bodies.
 
-The setup AP stays available while Wi-Fi or MQTT is unhealthy, and also remains available when the network is ready but no BLE bond exists so that Enroll can be started from the portal. The AP closes only after Wi-Fi, MQTT, and an existing BLE bond are all ready.
+The setup AP stays available while Wi-Fi or MQTT is unhealthy, and also remains available when the network is ready but no BLE bond exists. The ordinary Enroll action is intentionally not exposed in the portal; use the Home Assistant button or BOOT instead. The AP closes only after Wi-Fi, MQTT, and an existing BLE bond are all ready.
 
 ## BLE Enrollment
 
 BLE pairing is explicit. An unbonded device does not advertise for ANCS/HID pairing until an Enroll window is opened.
 
-- With no stored bond, press BOOT for 3 seconds or press **Enroll** in the portal to open a 120-second pairing window.
+- With no stored bond, press BOOT for 3 seconds or press the discovered Home Assistant **iPhone 등록 시작** button to open a 120-second pairing window.
 - With a stored bond, the same actions request reconnect to that known iPhone only; they do not permit an unknown phone to pair.
 - Pair from iOS Bluetooth settings with PIN `123456`.
 - Allow iOS notification sharing when prompted.
@@ -100,6 +100,8 @@ Published topics:
 <base>/state
 homeassistant/sensor/<device_id>/last_notification/config
 homeassistant/sensor/<device_id>/<field>/config
+homeassistant/button/<device_id>/enroll/config
+<base>/command/enroll
 ```
 
 Contracts:
@@ -109,6 +111,9 @@ Contracts:
 - `<base>/state`: counters and diagnostics; QoS 1; retained true.
 - Discovery configs: retained true. The aggregate sensor uses `relay_id` as
   its state, and each field sensor extracts one JSON value.
+- The Enroll button publishes the exact payload `ENROLL` to
+  `<base>/command/enroll` with QoS 1. Retained, partial, and malformed commands
+  are ignored.
 
 Notifications received while Wi-Fi or MQTT is disconnected are dropped immediately and are not replayed after reconnect. `pre_existing`, incomplete, invalid, duplicate, removed, and marked Home Assistant echo notifications are excluded from MQTT.
 
@@ -123,6 +128,10 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, sends `notify.mobile_app_example_phone`, and prefixes the mobile notification title with `[C6→HA]`.
 
 The firmware drops every ANCS event whose `app_id` is `io.robbie.HomeAssistant`. The title marker is retained for operator visibility, but the app-level exclusion is the loop-prevention boundary, so marked and unmarked Home Assistant notifications are never published back to MQTT.
+
+MQTT Discovery also creates an **iPhone 등록 시작** button. Pressing it starts
+new-iPhone advertising only when no bond exists. If a bond already exists, it
+only requests a reconnect to that known iPhone and never deletes the bond.
 
 MQTT Discovery creates one aggregate `last notification` sensor plus 33
 individual field sensors per device. The aggregate sensor state is the latest
