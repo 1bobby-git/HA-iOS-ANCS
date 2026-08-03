@@ -153,7 +153,9 @@ def test_connected_event_defers_retained_discovery_to_the_worker():
     assert "mqtt_relay_publish_retained_status();" not in connected
     assert "s_ctx.retained_refresh_pending" in worker
     assert "mqtt_relay_publish_retained_status();" in worker
-    assert "mqtt_relay_publish_retained_with_retry" in source
+    assert "mqtt_relay_publish_retained_once" in source
+    assert "MQTT_RELAY_RETAINED_PUBLISH_ATTEMPTS" not in source
+    assert "MQTT_RELAY_RETAINED_RETRY_DELAY_MS" not in source
     assert "SemaphoreHandle_t lifecycle_lock" in source
     assert "mqtt_relay_lifecycle_lock();" in source
     assert "mqtt_relay_lifecycle_unlock();" in source
