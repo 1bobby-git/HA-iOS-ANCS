@@ -82,7 +82,7 @@ def test_discovery_and_payload_contracts_are_present():
     assert "json_attributes_topic" in source
     assert "homeassistant/sensor/" in source
     assert "%s_last_notification" in source
-    assert "%s last notification" in source
+    assert "최근 알림" in source
     assert '\\"object_id\\":' in source
     assert "topic_has_publish_wildcard" in source
     assert "discovery_id_is_safe" in source
@@ -290,7 +290,7 @@ def test_no_secret_logging_or_state_discovery_serialization():
     assert "mqtt_ca" not in state_discovery.split("mqtt_relay_build_discovery_payload", 1)[1]
 
 
-def test_device_metadata_and_wifi_discovery_contracts_are_present():
+def test_device_metadata_and_compact_status_discovery_contracts_are_present():
     header = read("include/mqtt_relay.h")
     source = read("mqtt_relay.c")
 
@@ -298,17 +298,16 @@ def test_device_metadata_and_wifi_discovery_contracts_are_present():
     for field in ("manufacturer", "model", "sw_version", "hw_version"):
         assert field in header
     assert "append_device_json" in source
-    assert "mqtt_relay_wifi_discovery_field_count" in header
-    assert "mqtt_relay_wifi_discovery_field_key" in header
-    assert "mqtt_relay_build_wifi_discovery_topic" in header
-    assert "mqtt_relay_build_wifi_discovery_payload" in header
-    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+    assert "mqtt_relay_build_status_discovery_topic" in header
+    assert "mqtt_relay_build_status_discovery_payload" in header
+    assert "mqtt_relay_legacy_discovery_count" in header
+    assert "mqtt_relay_build_legacy_discovery_topic" in header
+    for key in ("notification_title", "notification_message", "app_name"):
         assert f'.key = "{key}"' in source
+    for name in ("알림 제목", "알림 내용", "앱 이름", "장치 상태"):
+        assert name in source
     assert r'\"entity_category\":\"diagnostic\"' in source
-    assert 'signal_strength' in source
-    assert 'measurement' in source
-    assert 'unit_of_measurement' in source
-    assert 'dBm' in source
+    assert 'connectivity' in source
 
 
 def test_retained_wifi_state_update_is_bounded_and_secret_free():
