@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mqtt_app_name.h"
 #include "notification_sink.h"
 #include "platform_identity.h"
 
@@ -21,7 +22,9 @@ esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notificatio
     *out_payload = NULL;
     *out_length = 0;
 
+    const char *app_name = mqtt_app_name_lookup(notification->app_id);
     const size_t text_length = strlen(notification->app_id) +
+                               strlen(app_name) +
                                strlen(notification->title) +
                                strlen(notification->subtitle) +
                                strlen(notification->message) +
@@ -54,9 +57,10 @@ esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notificatio
 
     const int written = snprintf(payload + length - 1U,
                                  capacity - length + 1U,
-                                 ",\"relay_id\":\"%s\",\"source\":\""
+                                 ",\"app_name\":\"%s\",\"relay_id\":\"%s\",\"source\":\""
                                  ANCS_SOURCE_ID
                                  "\",\"published_at_ms\":%" PRIu64 "}",
+                                 app_name,
                                  relay_id,
                                  uptime_ms);
     if (written < 0 || (size_t)written >= capacity - length + 1U) {
