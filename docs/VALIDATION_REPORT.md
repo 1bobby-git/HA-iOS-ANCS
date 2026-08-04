@@ -9,7 +9,7 @@ Validation date: 2026-08-04 (Asia/Seoul)
   - `release_name: iOS ANCS MQTT Bridge v0.3.3`
   - `release_title: iOS ANCS MQTT Bridge v0.3.3`
   - `checksum_asset_name: release-fingerprints-v0.3.3.sha256`
-- Release metadata verification surface: `gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease`. The immutable commit identity, release URL, draft flag, and prerelease flag are verified from this command and are not hardcoded in this report.
+- Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists. Before publishing the checksum asset or declaring release integrity complete, run `gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease` and verify the returned tag name, release name/title, target commit, release URL, draft flag, and prerelease flag. Those values are intentionally not hardcoded in this report.
 - Checksum asset: `docs/release-fingerprints-v0.3.3.sha256` is a deterministic sha256sum-style list of the publishable factory binaries, using repository-relative paths and full lowercase SHA-256 values.
 - CI gate: GitHub Pages deployment now waits for a Python 3.12 `release_integrity` job that installs only `pytest` and runs the existing multi-target contract plus the v0.3.3 release-integrity contract.
 - Commands:
