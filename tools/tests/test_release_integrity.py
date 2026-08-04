@@ -138,8 +138,16 @@ def test_release_fingerprint_file_exactly_matches_publishable_binaries():
 
 def test_pages_workflow_gates_deploy_on_release_integrity():
     workflow = read_text(ROOT / ".github" / "workflows" / "pages.yml")
+    release_integrity_job = workflow.split("  release_integrity:", 1)[1].split("\n  deploy:", 1)[0]
+    deploy_job = workflow.split("  deploy:", 1)[1]
+    top_level_permissions = workflow.split("concurrency:", 1)[0]
 
     assert "release_integrity:" in workflow
+    assert "permissions:\n  contents: read" in top_level_permissions
+    assert "pages: write" not in top_level_permissions
+    assert "id-token: write" not in top_level_permissions
+    assert "permissions:" not in release_integrity_job
+    assert "permissions:\n      contents: read\n      pages: write\n      id-token: write" in deploy_job
     assert "python-version: '3.12'" in workflow
     assert "python -m pip install pytest" in workflow
     assert "python -m pytest tools/tests/test_multi_target_contract.py tools/tests/test_release_integrity.py -q" in workflow
@@ -155,12 +163,16 @@ def test_validation_report_records_non_self_referential_v033_release_integrity()
     assert "`release_title: iOS ANCS MQTT Bridge v0.3.3`" in report
     assert "`checksum_asset_name: release-fingerprints-v0.3.3.sha256`" in report
     assert f"`docs/release-fingerprints-v{VERSION}.sha256`" in report
+    assert "Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists" in report
+    assert "Before publishing the checksum asset or declaring release integrity complete" in report
     assert "gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease" in report
-    assert "not hardcoded in this report" in report
+    assert "intentionally not hardcoded in this report" in report
     assert "python -m pytest tools/tests/test_release_integrity.py -q" in report
     assert "python -m pytest tools/tests -q" in report
 
     section = report.split("## Release integrity v0.3.3", 1)[1].split("\n## ", 1)[0]
+    assert " are verified from this command" not in section
+    assert "release integrity complete" in section
     assert "git rev-parse HEAD" not in section
     assert "targetCommitish:" not in section
     assert "release_url:" not in section
