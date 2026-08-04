@@ -26,6 +26,7 @@
 #define MQTT_RELAY_DISCOVERY_SETTLE_MS 4000U
 
 static const char MQTT_RELAY_ENROLL_PAYLOAD[] = "ENROLL";
+static const char MQTT_RELAY_RESTART_PAYLOAD[] = "RESTART";
 
 typedef struct {
     provision_config_t config;
@@ -64,6 +65,8 @@ typedef struct {
     char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
     char enroll_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char restart_command_topic[MQTT_RELAY_TOPIC_MAX];
+    char restart_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
 } mqtt_relay_context_t;
 
 typedef struct {
@@ -469,6 +472,28 @@ esp_err_t mqtt_relay_build_enroll_discovery_payload(
     return ESP_OK;
 }
 
+static bool mqtt_relay_is_exact_command(const char *expected_topic,
+                                        const char *expected_payload,
+                                        const char *topic,
+                                        size_t topic_len,
+                                        const char *payload,
+                                        size_t payload_len,
+                                        size_t total_payload_len,
+                                        size_t current_data_offset,
+                                        bool retained)
+{
+    if (expected_topic == NULL || expected_payload == NULL || topic == NULL ||
+        payload == NULL || retained ||
+        current_data_offset != 0U || payload_len != total_payload_len ||
+        payload_len != strlen(expected_payload)) {
+        return false;
+    }
+    const size_t expected_topic_len = strlen(expected_topic);
+    return topic_len == expected_topic_len &&
+           memcmp(topic, expected_topic, topic_len) == 0 &&
+           memcmp(payload, expected_payload, payload_len) == 0;
+}
+
 bool mqtt_relay_is_enroll_command(const char *expected_topic,
                                   const char *topic,
                                   size_t topic_len,
@@ -478,15 +503,147 @@ bool mqtt_relay_is_enroll_command(const char *expected_topic,
                                   size_t current_data_offset,
                                   bool retained)
 {
-    if (expected_topic == NULL || topic == NULL || payload == NULL || retained ||
-        current_data_offset != 0U || payload_len != total_payload_len ||
-        payload_len != sizeof(MQTT_RELAY_ENROLL_PAYLOAD) - 1U) {
-        return false;
+    return mqtt_relay_is_exact_command(expected_topic,
+                                       MQTT_RELAY_ENROLL_PAYLOAD,
+                                       topic,
+                                       topic_len,
+                                       payload,
+                                       payload_len,
+                                       total_payload_len,
+                                       current_data_offset,
+                                       retained);
+}
+
+esp_err_t mqtt_relay_build_restart_command_topic(
+    const provision_config_t *config,
+    char *out,
+    size_t out_size)
+{
+    if (config == NULL || out == NULL || out_size == 0U) {
+        return ESP_ERR_INVALID_ARG;
     }
-    const size_t expected_topic_len = strlen(expected_topic);
-    return topic_len == expected_topic_len &&
-           memcmp(topic, expected_topic, topic_len) == 0 &&
-           memcmp(payload, MQTT_RELAY_ENROLL_PAYLOAD, payload_len) == 0;
+    return append_topic(config->mqtt_base_topic, "command/restart", out, out_size);
+}
+
+esp_err_t mqtt_relay_build_restart_discovery_topic(
+    const provision_config_t *config,
+    char *out,
+    size_t out_size)
+{
+    if (config == NULL || out == NULL || out_size == 0U ||
+        !discovery_id_is_safe(config->mqtt_client_id)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const int written = snprintf(out,
+                                 out_size,
+                                 "homeassistant/button/%s/restart/config",
+                                 config->mqtt_client_id);
+    return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
+                                                        : ESP_OK;
+}
+
+esp_err_t mqtt_relay_build_restart_discovery_payload(
+    const provision_config_t *config,
+    const mqtt_relay_device_info_t *device_info,
+    const char *command_topic,
+    const char *availability_topic,
+    char *out,
+    size_t out_size)
+{
+    if (config == NULL || command_topic == NULL || availability_topic == NULL ||
+        out == NULL || out_size == 0U ||
+        !discovery_id_is_safe(config->mqtt_client_id) ||
+        !device_info_is_valid(device_info) ||
+        topic_has_publish_wildcard(command_topic) ||
+        topic_has_publish_wildcard(availability_topic)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char unique_id[PROVISION_MQTT_CLIENT_ID_MAX + 16];
+    char default_entity_id[PROVISION_MQTT_CLIENT_ID_MAX + 24];
+    int written = snprintf(unique_id,
+                           sizeof(unique_id),
+                           "%s_restart",
+                           config->mqtt_client_id);
+    if (written < 0 || (size_t)written >= sizeof(unique_id)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    written = snprintf(default_entity_id,
+                       sizeof(default_entity_id),
+                       "button.%s",
+                       unique_id);
+    if (written < 0 || (size_t)written >= sizeof(default_entity_id)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    char *cursor = out;
+    size_t remaining = out_size;
+    esp_err_t err = json_write_literal(&cursor, &remaining, "{\"name\":");
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, "장치 재시작");
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"unique_id\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, unique_id);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"default_entity_id\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, default_entity_id);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, ",\"command_topic\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, command_topic);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(
+            &cursor,
+            &remaining,
+            ",\"payload_press\":\"RESTART\",\"availability_topic\":");
+    }
+    if (err == ESP_OK) {
+        err = json_write_string(&cursor, &remaining, availability_topic);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(
+            &cursor,
+            &remaining,
+            ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\""
+            ",\"qos\":1,\"retain\":false,\"entity_category\":\"config\""
+            ",\"icon\":\"mdi:restart\"");
+    }
+    if (err == ESP_OK) {
+        err = append_device_json(&cursor, &remaining, config, device_info);
+    }
+    if (err == ESP_OK) {
+        err = json_write_literal(&cursor, &remaining, "}");
+    }
+    return err;
+}
+
+bool mqtt_relay_is_restart_command(const char *expected_topic,
+                                   const char *topic,
+                                   size_t topic_len,
+                                   const char *payload,
+                                   size_t payload_len,
+                                   size_t total_payload_len,
+                                   size_t current_data_offset,
+                                   bool retained)
+{
+    return mqtt_relay_is_exact_command(expected_topic,
+                                       MQTT_RELAY_RESTART_PAYLOAD,
+                                       topic,
+                                       topic_len,
+                                       payload,
+                                       payload_len,
+                                       total_payload_len,
+                                       current_data_offset,
+                                       retained);
 }
 
 esp_err_t mqtt_relay_build_client_config(const provision_config_t *config,
@@ -1419,6 +1576,8 @@ static void mqtt_relay_publish_retained_status(void)
     char aggregate_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
     char enroll_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char restart_command_topic[MQTT_RELAY_TOPIC_MAX];
+    char restart_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
 
     mqtt_relay_lock();
     (void)strlcpy(discovery_config->mqtt_client_id,
@@ -1442,6 +1601,12 @@ static void mqtt_relay_publish_retained_status(void)
     (void)strlcpy(enroll_discovery_topic,
                   s_ctx.enroll_discovery_topic,
                   sizeof(enroll_discovery_topic));
+    (void)strlcpy(restart_command_topic,
+                  s_ctx.restart_command_topic,
+                  sizeof(restart_command_topic));
+    (void)strlcpy(restart_discovery_topic,
+                  s_ctx.restart_discovery_topic,
+                  sizeof(restart_discovery_topic));
     mqtt_relay_unlock();
     runtime.uptime_seconds = (uint64_t)(esp_timer_get_time() / 1000000);
 
@@ -1529,6 +1694,17 @@ static void mqtt_relay_publish_retained_status(void)
             discovery,
             MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK ||
         !mqtt_relay_publish_discovery_once(enroll_discovery_topic, discovery)) {
+        goto cleanup;
+    }
+
+    if (mqtt_relay_build_restart_discovery_payload(
+            discovery_config,
+            &device_info,
+            restart_command_topic,
+            availability_topic,
+            discovery,
+            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK ||
+        !mqtt_relay_publish_discovery_once(restart_discovery_topic, discovery)) {
         goto cleanup;
     }
 
@@ -1748,17 +1924,32 @@ static void mqtt_relay_event_handler(void *handler_args,
 
     if (event_id == MQTT_EVENT_CONNECTED) {
         char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
+        char restart_command_topic[MQTT_RELAY_TOPIC_MAX];
         mqtt_relay_lock();
         s_ctx.mqtt_connected = true;
         s_ctx.retained_refresh_pending = true;
         (void)strlcpy(enroll_command_topic,
                       s_ctx.enroll_command_topic,
                       sizeof(enroll_command_topic));
+        (void)strlcpy(restart_command_topic,
+                      s_ctx.restart_command_topic,
+                      sizeof(restart_command_topic));
         mqtt_relay_unlock();
-        const int subscription_id = esp_mqtt_client_subscribe(
+        int subscription_id = esp_mqtt_client_subscribe(
             event->client,
             enroll_command_topic,
             MQTT_RELAY_ENROLL_COMMAND_QOS);
+        if (subscription_id < 0) {
+            mqtt_relay_lock();
+            s_ctx.mqtt_connected = false;
+            mqtt_relay_unlock();
+            mqtt_relay_emit_event(MQTT_RELAY_EVENT_FAILED);
+            return;
+        }
+        subscription_id = esp_mqtt_client_subscribe(
+            event->client,
+            restart_command_topic,
+            MQTT_RELAY_RESTART_COMMAND_QOS);
         if (subscription_id < 0) {
             mqtt_relay_lock();
             s_ctx.mqtt_connected = false;
@@ -1776,14 +1967,18 @@ static void mqtt_relay_event_handler(void *handler_args,
             event->total_data_len < 0 || event->current_data_offset < 0) {
             return;
         }
-        char expected_topic[MQTT_RELAY_TOPIC_MAX];
+        char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
+        char restart_command_topic[MQTT_RELAY_TOPIC_MAX];
         mqtt_relay_lock();
-        (void)strlcpy(expected_topic,
+        (void)strlcpy(enroll_command_topic,
                       s_ctx.enroll_command_topic,
-                      sizeof(expected_topic));
+                      sizeof(enroll_command_topic));
+        (void)strlcpy(restart_command_topic,
+                      s_ctx.restart_command_topic,
+                      sizeof(restart_command_topic));
         mqtt_relay_unlock();
         if (mqtt_relay_is_enroll_command(
-                expected_topic,
+                enroll_command_topic,
                 event->topic,
                 (size_t)event->topic_len,
                 event->data,
@@ -1792,6 +1987,16 @@ static void mqtt_relay_event_handler(void *handler_args,
                 (size_t)event->current_data_offset,
                 event->retain != 0)) {
             mqtt_relay_emit_event(MQTT_RELAY_EVENT_ENROLL_REQUEST);
+        } else if (mqtt_relay_is_restart_command(
+                       restart_command_topic,
+                       event->topic,
+                       (size_t)event->topic_len,
+                       event->data,
+                       (size_t)event->data_len,
+                       (size_t)event->total_data_len,
+                       (size_t)event->current_data_offset,
+                       event->retain != 0)) {
+            mqtt_relay_emit_event(MQTT_RELAY_EVENT_RESTART_REQUEST);
         }
         return;
     }
@@ -1855,6 +2060,20 @@ static esp_err_t mqtt_relay_prepare_context(
         config,
         s_ctx.enroll_discovery_topic,
         sizeof(s_ctx.enroll_discovery_topic));
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = mqtt_relay_build_restart_command_topic(
+        config,
+        s_ctx.restart_command_topic,
+        sizeof(s_ctx.restart_command_topic));
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = mqtt_relay_build_restart_discovery_topic(
+        config,
+        s_ctx.restart_discovery_topic,
+        sizeof(s_ctx.restart_discovery_topic));
     if (err != ESP_OK) {
         return err;
     }
@@ -2053,6 +2272,8 @@ esp_err_t mqtt_relay_reconfigure(const provision_config_t *config)
     char next_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char next_enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
     char next_enroll_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char next_restart_command_topic[MQTT_RELAY_TOPIC_MAX];
+    char next_restart_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     esp_err_t err = mqtt_relay_build_topics(config,
                                             next_notification_topic,
                                             sizeof(next_notification_topic),
@@ -2078,6 +2299,22 @@ esp_err_t mqtt_relay_reconfigure(const provision_config_t *config)
         config,
         next_enroll_discovery_topic,
         sizeof(next_enroll_discovery_topic));
+    if (err != ESP_OK) {
+        mqtt_relay_lifecycle_unlock();
+        return err;
+    }
+    err = mqtt_relay_build_restart_command_topic(
+        config,
+        next_restart_command_topic,
+        sizeof(next_restart_command_topic));
+    if (err != ESP_OK) {
+        mqtt_relay_lifecycle_unlock();
+        return err;
+    }
+    err = mqtt_relay_build_restart_discovery_topic(
+        config,
+        next_restart_discovery_topic,
+        sizeof(next_restart_discovery_topic));
     if (err != ESP_OK) {
         mqtt_relay_lifecycle_unlock();
         return err;
@@ -2125,6 +2362,12 @@ esp_err_t mqtt_relay_reconfigure(const provision_config_t *config)
     (void)strlcpy(s_ctx.enroll_discovery_topic,
                   next_enroll_discovery_topic,
                   sizeof(s_ctx.enroll_discovery_topic));
+    (void)strlcpy(s_ctx.restart_command_topic,
+                  next_restart_command_topic,
+                  sizeof(s_ctx.restart_command_topic));
+    (void)strlcpy(s_ctx.restart_discovery_topic,
+                  next_restart_discovery_topic,
+                  sizeof(s_ctx.restart_discovery_topic));
     s_ctx.config = *config;
     s_ctx.discovery_attempted_this_boot = false;
     mqtt_relay_unlock();

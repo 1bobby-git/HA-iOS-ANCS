@@ -100,6 +100,24 @@ def test_home_assistant_enroll_button_is_retained_and_command_is_subscribed():
     assert "mqtt_relay_is_enroll_command" in source
 
 
+def test_home_assistant_restart_button_is_exact_non_retained_and_subscribed():
+    header = read("include/mqtt_relay.h")
+    source = read("mqtt_relay.c")
+    assert "MQTT_RELAY_EVENT_RESTART_REQUEST" in header
+    assert "mqtt_relay_build_restart_command_topic" in header
+    assert "mqtt_relay_build_restart_discovery_topic" in header
+    assert "mqtt_relay_build_restart_discovery_payload" in header
+    assert "homeassistant/button/%s/restart/config" in source
+    assert "장치 재시작" in source
+    assert "RESTART" in source
+    assert "mqtt_relay_is_restart_command" in source
+    connected = source.split("if (event_id == MQTT_EVENT_CONNECTED)", 1)[1].split(
+        "if (event_id == MQTT_EVENT_DATA)", 1
+    )[0]
+    assert connected.count("esp_mqtt_client_subscribe") == 2
+    assert "MQTT_RELAY_RESTART_COMMAND_QOS" in connected
+
+
 def test_offline_no_replay_and_cleanup_paths_are_explicit():
     source = read("mqtt_relay.c")
     assert "if (!s_ctx.accepting_observers || !s_ctx.wifi_connected || !s_ctx.mqtt_connected)" in source

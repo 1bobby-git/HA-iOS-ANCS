@@ -310,13 +310,18 @@ static esp_err_t portal_ble_replace(void *context)
     return ancs_client_replace_enrollment(true);
 }
 
-static esp_err_t portal_restart(void *context)
+static esp_err_t schedule_restart(void)
 {
-    (void)context;
     if (s_restart_timer == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
     return xTimerReset(s_restart_timer, 0) == pdPASS ? ESP_OK : ESP_ERR_TIMEOUT;
+}
+
+static esp_err_t portal_restart(void *context)
+{
+    (void)context;
+    return schedule_restart();
 }
 
 static esp_err_t portal_reset_provisioning(void *context)
@@ -583,6 +588,16 @@ static void handle_provisioning_event(provisioning_event_t event,
 
 static void handle_mqtt_event(mqtt_relay_event_t event)
 {
+    if (event == MQTT_RELAY_EVENT_RESTART_REQUEST) {
+        const esp_err_t error = schedule_restart();
+        if (error != ESP_OK) {
+            ESP_LOGW(TAG,
+                     "MQTT restart request failed: %s",
+                     esp_err_to_name(error));
+        }
+        return;
+    }
+
     if (event == MQTT_RELAY_EVENT_ENROLL_REQUEST) {
         const esp_err_t error = ancs_client_request_enroll();
         if (error != ESP_OK) {
