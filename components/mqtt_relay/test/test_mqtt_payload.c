@@ -569,26 +569,42 @@ TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")
         .dropped_offline = 3,
         .dropped_enqueue = 4,
     };
-    mqtt_relay_wifi_status_t wifi_status = {
-        .connected = true,
-        .rssi = -61,
+    mqtt_relay_runtime_status_t runtime = {
+        .mqtt_connected = true,
+        .ble_connected = true,
+        .ble_bonded = true,
+        .uptime_seconds = 3723,
+        .wifi = {
+            .connected = true,
+            .rssi = -61,
+        },
     };
-    strcpy(wifi_status.ssid, "EDENARI");
-    strcpy(wifi_status.ip, "192.168.1.42");
-    char payload[256];
+    strcpy(runtime.wifi.ssid, "EDENARI");
+    strcpy(runtime.wifi.ip, "192.168.1.42");
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    char payload[1024];
 
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_state_payload(&counters,
-                                                     true,
-                                                     &wifi_status,
+                                                     &runtime,
+                                                     &device_info,
                                                      payload,
                                                      sizeof(payload)));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"ready\":true"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"connected\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_connected\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"mqtt_connected\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"ble_connected\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"ble_bonded\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"uptime_seconds\":3723"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"uptime\":\"1시간 2분 3초\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"accepted\":2"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_ack\":1"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"EDENARI\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"192.168.1.42\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":-61"));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"sw_version\":\"0.3.1\""));
     TEST_ASSERT_NULL(strstr(payload, "password"));
     TEST_ASSERT_NULL(strstr(payload, "ca"));
 }
@@ -596,15 +612,17 @@ TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")
 TEST_CASE("disconnected state clears Wi-Fi identity and RSSI", "[mqtt_relay]")
 {
     mqtt_relay_counters_t counters = {0};
-    mqtt_relay_wifi_status_t wifi_status = {0};
-    char payload[256];
+    mqtt_relay_runtime_status_t runtime = {0};
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    char payload[1024];
 
     TEST_ASSERT_EQUAL(ESP_OK,
                       mqtt_relay_build_state_payload(&counters,
-                                                     false,
-                                                     &wifi_status,
+                                                     &runtime,
+                                                     &device_info,
                                                      payload,
                                                      sizeof(payload)));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"ready\":false"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":null"));
@@ -628,6 +646,22 @@ TEST_CASE("live Wi-Fi status update republishes only retained state", "[mqtt_rel
     TEST_ASSERT_EQUAL(0, s_discovery_publish_calls);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
+}
+
+TEST_CASE("BLE transition republishes retained state only when it changes",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_publish_calls = 0;
+    s_discovery_publish_calls = 0;
+
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_update_ble_status(true, true));
+    TEST_ASSERT_EQUAL(1, s_publish_calls);
+    TEST_ASSERT_EQUAL(0, s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_update_ble_status(true, true));
+    TEST_ASSERT_EQUAL(1, s_publish_calls);
+    TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_update_ble_status(false, true));
+    TEST_ASSERT_EQUAL(2, s_publish_calls);
 }
 
 TEST_CASE("retained discovery aborts after one MQTT outbox failure",

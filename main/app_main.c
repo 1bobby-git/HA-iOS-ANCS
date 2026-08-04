@@ -417,6 +417,13 @@ static esp_err_t refresh_wifi_status(void)
     return snapshot_error != ESP_OK ? snapshot_error : update_error;
 }
 
+static esp_err_t refresh_ble_status(void)
+{
+    const ancs_client_enrollment_status_t status =
+        ancs_client_get_enrollment_status();
+    return mqtt_relay_update_ble_status(status.connected, status.has_bond);
+}
+
 static esp_err_t start_or_reconnect_mqtt(void)
 {
     const app_runtime_snapshot_t app = app_runtime_snapshot();
@@ -429,6 +436,9 @@ static esp_err_t start_or_reconnect_mqtt(void)
         error = mqtt_relay_init(&s_app.config, &s_app.device_info);
         if (error == ESP_OK) {
             error = mqtt_relay_register_event_callback(mqtt_event_callback, NULL);
+        }
+        if (error == ESP_OK) {
+            error = refresh_ble_status();
         }
         if (error == ESP_OK) {
             mqtt_relay_set_wifi_connected(true);
@@ -657,7 +667,16 @@ static void handle_reset_provisioning(void)
 
 static void handle_bond_poll(void)
 {
-    const bool has_bond = ancs_client_has_bond();
+    const ancs_client_enrollment_status_t ble =
+        ancs_client_get_enrollment_status();
+    const bool has_bond = ble.has_bond;
+    const esp_err_t relay_error =
+        mqtt_relay_update_ble_status(ble.connected, ble.has_bond);
+    if (relay_error != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "BLE status publish failed: %s",
+                 esp_err_to_name(relay_error));
+    }
     const app_runtime_snapshot_t app = app_runtime_snapshot();
     if (has_bond != app.state.has_bond) {
         handle_provisioning_event(has_bond ? PROVISION_EVENT_BOND_PRESENT
