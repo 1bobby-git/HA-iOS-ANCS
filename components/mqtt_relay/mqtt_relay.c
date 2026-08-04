@@ -70,118 +70,28 @@ typedef struct {
     const char *value_template;
 } mqtt_relay_discovery_field_t;
 
-typedef struct {
-    const char *key;
-    const char *name;
-    const char *value_template;
-    const char *device_class;
-    const char *state_class;
-    const char *unit_of_measurement;
-} mqtt_relay_wifi_discovery_field_t;
-
-static const mqtt_relay_discovery_field_t s_discovery_fields[] = {
-    {.key = "schema_version",
-     .name = "Schema version",
-     .value_template = "{{ value_json.schema_version }}"},
-    {.key = "target", .name = "Target", .value_template = "{{ value_json.target }}"},
-    {.key = "device_name",
-     .name = "Device name",
-     .value_template = "{{ value_json.device_name }}"},
-    {.key = "session_id",
-     .name = "Session ID",
-     .value_template = "{{ value_json.session_id }}"},
-    {.key = "event", .name = "Event", .value_template = "{{ value_json.event }}"},
-    {.key = "event_id",
-     .name = "Event ID",
-     .value_template = "{{ value_json.event_id }}"},
-    {.key = "uid", .name = "UID", .value_template = "{{ value_json.uid }}"},
-    {.key = "event_flags",
-     .name = "Event flags",
-     .value_template = "{{ value_json.event_flags }}"},
-    {.key = "silent", .name = "Silent", .value_template = "{{ value_json.silent }}"},
-    {.key = "important",
-     .name = "Important",
-     .value_template = "{{ value_json.important }}"},
-    {.key = "pre_existing",
-     .name = "Pre-existing",
-     .value_template = "{{ value_json.pre_existing }}"},
-    {.key = "positive_action_available",
-     .name = "Positive action available",
-     .value_template = "{{ value_json.positive_action_available }}"},
-    {.key = "negative_action_available",
-     .name = "Negative action available",
-     .value_template = "{{ value_json.negative_action_available }}"},
-    {.key = "category_id",
-     .name = "Category ID",
-     .value_template = "{{ value_json.category_id }}"},
-    {.key = "category",
-     .name = "Category",
-     .value_template = "{{ value_json.category }}"},
-    {.key = "category_count",
-     .name = "Category count",
-     .value_template = "{{ value_json.category_count }}"},
-    {.key = "app_id",
-     .name = "App ID",
-     .value_template = "{{ (value_json.app_id | default('', true))[:255] }}"},
-    {.key = "title",
-     .name = "Title",
+static const mqtt_relay_discovery_field_t s_focused_sensors[] = {
+    {.key = "notification_title",
+     .name = "알림 제목",
      .value_template = "{{ (value_json.title | default('', true))[:255] }}"},
-    {.key = "subtitle",
-     .name = "Subtitle",
-     .value_template = "{{ (value_json.subtitle | default('', true))[:255] }}"},
-    {.key = "message",
-     .name = "Message",
+    {.key = "notification_message",
+     .name = "알림 내용",
      .value_template = "{{ (value_json.message | default('', true))[:255] }}"},
-    {.key = "message_size",
-     .name = "Message size",
-     .value_template = "{{ value_json.message_size }}"},
-    {.key = "date", .name = "Date", .value_template = "{{ value_json.date }}"},
-    {.key = "complete",
-     .name = "Complete",
-     .value_template = "{{ value_json.complete }}"},
-    {.key = "truncated",
-     .name = "Truncated fields",
-     .value_template = "{{ value_json.truncated | to_json }}"},
-    {.key = "error",
-     .name = "Error",
-     .value_template = "{{ value_json.error | to_json }}"},
-    {.key = "received_at_ms",
-     .name = "Received at ms",
-     .value_template = "{{ value_json.received_at_ms }}"},
-    {.key = "relay_id",
-     .name = "Relay ID",
-     .value_template = "{{ value_json.relay_id }}"},
-    {.key = "source", .name = "Source", .value_template = "{{ value_json.source }}"},
-    {.key = "published_at_ms",
-     .name = "Published at ms",
-     .value_template = "{{ value_json.published_at_ms }}"},
-    {.key = "truncated_app_id",
-     .name = "App ID truncated",
-     .value_template = "{{ value_json.truncated.app_id | default(false) }}"},
-    {.key = "truncated_title",
-     .name = "Title truncated",
-     .value_template = "{{ value_json.truncated.title | default(false) }}"},
-    {.key = "truncated_subtitle",
-     .name = "Subtitle truncated",
-     .value_template = "{{ value_json.truncated.subtitle | default(false) }}"},
-    {.key = "truncated_message",
-     .name = "Message truncated",
-     .value_template = "{{ value_json.truncated.message | default(false) }}"},
+    {.key = "app_name",
+     .name = "앱 이름",
+     .value_template =
+         "{{ (value_json.app_name | default(value_json.app_id, true))[:255] }}"},
 };
 
-static const mqtt_relay_wifi_discovery_field_t s_wifi_discovery_fields[] = {
-    {.key = "wifi_ssid",
-     .name = "Wi-Fi SSID",
-     .value_template = "{{ value_json.wifi_ssid }}"},
-    {.key = "wifi_ip",
-     .name = "Wi-Fi IP",
-     .value_template = "{{ value_json.wifi_ip }}"},
-    {.key = "wifi_rssi",
-     .name = "Wi-Fi RSSI",
-     .value_template = "{{ value_json.wifi_rssi }}",
-     .device_class = "signal_strength",
-     .state_class = "measurement",
-     .unit_of_measurement = "dBm"},
+static const char *s_legacy_discovery_keys[] = {
+    "schema_version", "target", "device_name", "session_id", "event",
+    "event_id", "uid", "event_flags", "silent", "important",
+    "pre_existing", "positive_action_available", "negative_action_available",
+    "category_id", "category", "category_count", "app_id", "title",
+    "subtitle", "message", "message_size", "date", "complete", "truncated",
+    "error", "received_at_ms", "relay_id", "source", "published_at_ms",
+    "truncated_app_id", "truncated_title", "truncated_subtitle",
+    "truncated_message", "wifi_ssid", "wifi_ip", "wifi_rssi",
 };
 
 static mqtt_relay_context_t s_ctx;
@@ -629,19 +539,11 @@ esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
         return ESP_ERR_INVALID_ARG;
     }
 
-    char object_name[PROVISION_MQTT_CLIENT_ID_MAX + 32];
     char unique_id[PROVISION_MQTT_CLIENT_ID_MAX + 32];
-    int id_written = snprintf(object_name,
-                              sizeof(object_name),
-                              "%s last notification",
+    int id_written = snprintf(unique_id,
+                              sizeof(unique_id),
+                              "%s_last_notification",
                               config->mqtt_client_id);
-    if (id_written < 0 || (size_t)id_written >= sizeof(object_name)) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-    id_written = snprintf(unique_id,
-                          sizeof(unique_id),
-                          "%s_last_notification",
-                          config->mqtt_client_id);
     if (id_written < 0 || (size_t)id_written >= sizeof(unique_id)) {
         return ESP_ERR_INVALID_SIZE;
     }
@@ -654,7 +556,7 @@ esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
     }
     cursor += written;
     remaining -= (size_t)written;
-    esp_err_t err = json_write_string(&cursor, &remaining, object_name);
+    esp_err_t err = json_write_string(&cursor, &remaining, "최근 알림");
     if (err != ESP_OK) {
         return err;
     }
@@ -728,27 +630,27 @@ esp_err_t mqtt_relay_build_discovery_payload(const provision_config_t *config,
                                                          : ESP_OK;
 }
 
-size_t mqtt_relay_discovery_field_count(void)
+size_t mqtt_relay_focused_sensor_count(void)
 {
-    return sizeof(s_discovery_fields) / sizeof(s_discovery_fields[0]);
+    return sizeof(s_focused_sensors) / sizeof(s_focused_sensors[0]);
 }
 
-const char *mqtt_relay_discovery_field_key(size_t field_index)
+const char *mqtt_relay_focused_sensor_key(size_t field_index)
 {
-    if (field_index >= mqtt_relay_discovery_field_count()) {
+    if (field_index >= mqtt_relay_focused_sensor_count()) {
         return NULL;
     }
-    return s_discovery_fields[field_index].key;
+    return s_focused_sensors[field_index].key;
 }
 
-esp_err_t mqtt_relay_build_field_discovery_topic(
+esp_err_t mqtt_relay_build_focused_discovery_topic(
     const provision_config_t *config,
     size_t field_index,
     char *out,
     size_t out_size)
 {
     if (config == NULL || out == NULL || out_size == 0U ||
-        field_index >= mqtt_relay_discovery_field_count() ||
+        field_index >= mqtt_relay_focused_sensor_count() ||
         !discovery_id_is_safe(config->mqtt_client_id)) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -756,12 +658,12 @@ esp_err_t mqtt_relay_build_field_discovery_topic(
                                  out_size,
                                  "homeassistant/sensor/%s/%s/config",
                                  config->mqtt_client_id,
-                                 s_discovery_fields[field_index].key);
+                                 s_focused_sensors[field_index].key);
     return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
                                                         : ESP_OK;
 }
 
-esp_err_t mqtt_relay_build_field_discovery_payload(
+esp_err_t mqtt_relay_build_focused_discovery_payload(
     const provision_config_t *config,
     const mqtt_relay_device_info_t *device_info,
     const char *notification_topic,
@@ -772,7 +674,7 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
 {
     if (config == NULL || notification_topic == NULL || availability_topic == NULL ||
         out == NULL || out_size == 0U ||
-        field_index >= mqtt_relay_discovery_field_count() ||
+        field_index >= mqtt_relay_focused_sensor_count() ||
         !discovery_id_is_safe(config->mqtt_client_id) ||
         !device_info_is_valid(device_info) ||
         topic_has_publish_wildcard(notification_topic) ||
@@ -780,22 +682,13 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
         return ESP_ERR_INVALID_ARG;
     }
 
-    const mqtt_relay_discovery_field_t *field = &s_discovery_fields[field_index];
-    char object_name[PROVISION_MQTT_CLIENT_ID_MAX + 40];
+    const mqtt_relay_discovery_field_t *field = &s_focused_sensors[field_index];
     char unique_id[PROVISION_MQTT_CLIENT_ID_MAX + 32];
-    int id_written = snprintf(object_name,
-                              sizeof(object_name),
-                              "%s %s",
+    int id_written = snprintf(unique_id,
+                              sizeof(unique_id),
+                              "%s_%s",
                               config->mqtt_client_id,
-                              field->name);
-    if (id_written < 0 || (size_t)id_written >= sizeof(object_name)) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-    id_written = snprintf(unique_id,
-                          sizeof(unique_id),
-                          "%s_%s",
-                          config->mqtt_client_id,
-                          field->key);
+                              field->key);
     if (id_written < 0 || (size_t)id_written >= sizeof(unique_id)) {
         return ESP_ERR_INVALID_SIZE;
     }
@@ -808,7 +701,7 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
     }
     cursor += written;
     remaining -= (size_t)written;
-    esp_err_t err = json_write_string(&cursor, &remaining, object_name);
+    esp_err_t err = json_write_string(&cursor, &remaining, field->name);
     if (err != ESP_OK) {
         return err;
     }
@@ -860,27 +753,27 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
     return ESP_OK;
 }
 
-size_t mqtt_relay_wifi_discovery_field_count(void)
+size_t mqtt_relay_legacy_discovery_count(void)
 {
-    return sizeof(s_wifi_discovery_fields) / sizeof(s_wifi_discovery_fields[0]);
+    return sizeof(s_legacy_discovery_keys) / sizeof(s_legacy_discovery_keys[0]);
 }
 
-const char *mqtt_relay_wifi_discovery_field_key(size_t field_index)
+const char *mqtt_relay_legacy_discovery_key(size_t field_index)
 {
-    if (field_index >= mqtt_relay_wifi_discovery_field_count()) {
+    if (field_index >= mqtt_relay_legacy_discovery_count()) {
         return NULL;
     }
-    return s_wifi_discovery_fields[field_index].key;
+    return s_legacy_discovery_keys[field_index];
 }
 
-esp_err_t mqtt_relay_build_wifi_discovery_topic(
+esp_err_t mqtt_relay_build_legacy_discovery_topic(
     const provision_config_t *config,
     size_t field_index,
     char *out,
     size_t out_size)
 {
     if (config == NULL || out == NULL || out_size == 0U ||
-        field_index >= mqtt_relay_wifi_discovery_field_count() ||
+        field_index >= mqtt_relay_legacy_discovery_count() ||
         !discovery_id_is_safe(config->mqtt_client_id)) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -888,47 +781,50 @@ esp_err_t mqtt_relay_build_wifi_discovery_topic(
                                  out_size,
                                  "homeassistant/sensor/%s/%s/config",
                                  config->mqtt_client_id,
-                                 s_wifi_discovery_fields[field_index].key);
+                                 s_legacy_discovery_keys[field_index]);
     return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
                                                         : ESP_OK;
 }
 
-esp_err_t mqtt_relay_build_wifi_discovery_payload(
+esp_err_t mqtt_relay_build_status_discovery_topic(
+    const provision_config_t *config,
+    char *out,
+    size_t out_size)
+{
+    if (config == NULL || out == NULL || out_size == 0U ||
+        !discovery_id_is_safe(config->mqtt_client_id)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const int written = snprintf(out,
+                                 out_size,
+                                 "homeassistant/binary_sensor/%s/device_status/config",
+                                 config->mqtt_client_id);
+    return (written < 0 || (size_t)written >= out_size) ? ESP_ERR_INVALID_SIZE
+                                                        : ESP_OK;
+}
+
+esp_err_t mqtt_relay_build_status_discovery_payload(
     const provision_config_t *config,
     const mqtt_relay_device_info_t *device_info,
     const char *state_topic,
     const char *availability_topic,
-    size_t field_index,
     char *out,
     size_t out_size)
 {
     if (config == NULL || !device_info_is_valid(device_info) ||
         state_topic == NULL || availability_topic == NULL || out == NULL ||
         out_size == 0U ||
-        field_index >= mqtt_relay_wifi_discovery_field_count() ||
         !discovery_id_is_safe(config->mqtt_client_id) ||
         topic_has_publish_wildcard(state_topic) ||
         topic_has_publish_wildcard(availability_topic)) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    const mqtt_relay_wifi_discovery_field_t *field =
-        &s_wifi_discovery_fields[field_index];
-    char object_name[PROVISION_MQTT_CLIENT_ID_MAX + 40];
     char unique_id[PROVISION_MQTT_CLIENT_ID_MAX + 32];
-    int written = snprintf(object_name,
-                           sizeof(object_name),
-                           "%s %s",
-                           config->mqtt_client_id,
-                           field->name);
-    if (written < 0 || (size_t)written >= sizeof(object_name)) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-    written = snprintf(unique_id,
+    int written = snprintf(unique_id,
                        sizeof(unique_id),
-                       "%s_%s",
-                       config->mqtt_client_id,
-                       field->key);
+                       "%s_device_status",
+                       config->mqtt_client_id);
     if (written < 0 || (size_t)written >= sizeof(unique_id)) {
         return ESP_ERR_INVALID_SIZE;
     }
@@ -937,7 +833,7 @@ esp_err_t mqtt_relay_build_wifi_discovery_payload(
     size_t remaining = out_size;
     esp_err_t err = json_write_literal(&cursor, &remaining, "{\"name\":");
     if (err == ESP_OK) {
-        err = json_write_string(&cursor, &remaining, object_name);
+        err = json_write_string(&cursor, &remaining, "장치 상태");
     }
     if (err == ESP_OK) {
         err = json_write_literal(&cursor, &remaining, ",\"unique_id\":");
@@ -958,10 +854,14 @@ esp_err_t mqtt_relay_build_wifi_discovery_payload(
         err = json_write_string(&cursor, &remaining, state_topic);
     }
     if (err == ESP_OK) {
-        err = json_write_literal(&cursor, &remaining, ",\"value_template\":");
+        err = json_write_literal(
+            &cursor,
+            &remaining,
+            ",\"value_template\":\"{{ 'ON' if value_json.ready else 'OFF' }}\""
+            ",\"json_attributes_topic\":");
     }
     if (err == ESP_OK) {
-        err = json_write_string(&cursor, &remaining, field->value_template);
+        err = json_write_string(&cursor, &remaining, state_topic);
     }
     if (err == ESP_OK) {
         err = json_write_literal(&cursor, &remaining, ",\"availability_topic\":");
@@ -974,27 +874,8 @@ esp_err_t mqtt_relay_build_wifi_discovery_payload(
             &cursor,
             &remaining,
             ",\"payload_available\":\"online\",\"payload_not_available\":\"offline\""
+            ",\"device_class\":\"connectivity\""
             ",\"entity_category\":\"diagnostic\"");
-    }
-    if (err == ESP_OK && field->device_class != NULL) {
-        err = json_write_literal(&cursor, &remaining, ",\"device_class\":");
-        if (err == ESP_OK) {
-            err = json_write_string(&cursor, &remaining, field->device_class);
-        }
-    }
-    if (err == ESP_OK && field->state_class != NULL) {
-        err = json_write_literal(&cursor, &remaining, ",\"state_class\":");
-        if (err == ESP_OK) {
-            err = json_write_string(&cursor, &remaining, field->state_class);
-        }
-    }
-    if (err == ESP_OK && field->unit_of_measurement != NULL) {
-        err = json_write_literal(&cursor, &remaining, ",\"unit_of_measurement\":");
-        if (err == ESP_OK) {
-            err = json_write_string(&cursor,
-                                    &remaining,
-                                    field->unit_of_measurement);
-        }
     }
     if (err == ESP_OK) {
         err = append_device_json(&cursor, &remaining, config, device_info);
@@ -1391,6 +1272,7 @@ static void mqtt_relay_publish_retained_status(void)
     char availability_topic[MQTT_RELAY_TOPIC_MAX];
     char state_topic[MQTT_RELAY_TOPIC_MAX];
     char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char aggregate_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
     char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
     char enroll_discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
 
@@ -1405,7 +1287,9 @@ static void mqtt_relay_publish_retained_status(void)
     (void)strlcpy(notification_topic, s_ctx.notification_topic, sizeof(notification_topic));
     (void)strlcpy(availability_topic, s_ctx.availability_topic, sizeof(availability_topic));
     (void)strlcpy(state_topic, s_ctx.state_topic, sizeof(state_topic));
-    (void)strlcpy(discovery_topic, s_ctx.discovery_topic, sizeof(discovery_topic));
+    (void)strlcpy(aggregate_discovery_topic,
+                  s_ctx.discovery_topic,
+                  sizeof(aggregate_discovery_topic));
     (void)strlcpy(enroll_command_topic,
                   s_ctx.enroll_command_topic,
                   sizeof(enroll_command_topic));
@@ -1429,74 +1313,81 @@ static void mqtt_relay_publish_retained_status(void)
     }
     mqtt_relay_lock();
     const bool publish_discovery = !s_ctx.discovery_attempted_this_boot;
-    s_ctx.discovery_attempted_this_boot = true;
     mqtt_relay_unlock();
     if (!publish_discovery) {
         goto cleanup;
     }
+
+    for (size_t field_index = 0;
+         field_index < mqtt_relay_legacy_discovery_count();
+         ++field_index) {
+        if (mqtt_relay_build_legacy_discovery_topic(discovery_config,
+                                                    field_index,
+                                                    discovery_topic,
+                                                    sizeof(discovery_topic)) != ESP_OK ||
+            !mqtt_relay_publish_discovery_once(discovery_topic, "")) {
+            goto cleanup;
+        }
+    }
+
     if (mqtt_relay_build_discovery_payload(discovery_config,
                                            &device_info,
                                            notification_topic,
                                            availability_topic,
                                            discovery,
-                                           MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        if (!mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
+                                           MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK ||
+        !mqtt_relay_publish_discovery_once(aggregate_discovery_topic, discovery)) {
+        goto cleanup;
+    }
+
+    for (size_t field_index = 0;
+         field_index < mqtt_relay_focused_sensor_count();
+         ++field_index) {
+        if (mqtt_relay_build_focused_discovery_topic(discovery_config,
+                                                     field_index,
+                                                     discovery_topic,
+                                                     sizeof(discovery_topic)) != ESP_OK ||
+            mqtt_relay_build_focused_discovery_payload(
+                discovery_config,
+                &device_info,
+                notification_topic,
+                availability_topic,
+                field_index,
+                discovery,
+                MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK ||
+            !mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
             goto cleanup;
         }
     }
+
+    if (mqtt_relay_build_status_discovery_topic(discovery_config,
+                                                discovery_topic,
+                                                sizeof(discovery_topic)) != ESP_OK ||
+        mqtt_relay_build_status_discovery_payload(
+            discovery_config,
+            &device_info,
+            state_topic,
+            availability_topic,
+            discovery,
+            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK ||
+        !mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
+        goto cleanup;
+    }
+
     if (mqtt_relay_build_enroll_discovery_payload(
             discovery_config,
             &device_info,
             enroll_command_topic,
             availability_topic,
             discovery,
-            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        if (!mqtt_relay_publish_discovery_once(enroll_discovery_topic, discovery)) {
-            goto cleanup;
-        }
+            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK ||
+        !mqtt_relay_publish_discovery_once(enroll_discovery_topic, discovery)) {
+        goto cleanup;
     }
-    for (size_t field_index = 0;
-         field_index < mqtt_relay_discovery_field_count();
-         ++field_index) {
-        if (mqtt_relay_build_field_discovery_topic(discovery_config,
-                                                   field_index,
-                                                   discovery_topic,
-                                                   sizeof(discovery_topic)) != ESP_OK ||
-            mqtt_relay_build_field_discovery_payload(discovery_config,
-                                                     &device_info,
-                                                     notification_topic,
-                                                     availability_topic,
-                                                     field_index,
-                                                     discovery,
-                                                     MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) !=
-            ESP_OK) {
-            continue;
-        }
-        if (!mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
-            goto cleanup;
-        }
-    }
-    for (size_t field_index = 0;
-         field_index < mqtt_relay_wifi_discovery_field_count();
-         ++field_index) {
-        if (mqtt_relay_build_wifi_discovery_topic(discovery_config,
-                                                  field_index,
-                                                  discovery_topic,
-                                                  sizeof(discovery_topic)) != ESP_OK ||
-            mqtt_relay_build_wifi_discovery_payload(
-                discovery_config,
-                &device_info,
-                state_topic,
-                availability_topic,
-                field_index,
-                discovery,
-                MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK) {
-            continue;
-        }
-        if (!mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
-            goto cleanup;
-        }
-    }
+
+    mqtt_relay_lock();
+    s_ctx.discovery_attempted_this_boot = true;
+    mqtt_relay_unlock();
 cleanup:
     free(discovery);
     free(discovery_config);

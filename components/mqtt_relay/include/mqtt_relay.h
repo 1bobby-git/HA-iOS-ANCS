@@ -112,14 +112,14 @@ bool mqtt_relay_is_enroll_command(const char *expected_topic,
                                   size_t total_payload_len,
                                   size_t current_data_offset,
                                   bool retained);
-size_t mqtt_relay_discovery_field_count(void);
-const char *mqtt_relay_discovery_field_key(size_t field_index);
-esp_err_t mqtt_relay_build_field_discovery_topic(
+size_t mqtt_relay_focused_sensor_count(void);
+const char *mqtt_relay_focused_sensor_key(size_t field_index);
+esp_err_t mqtt_relay_build_focused_discovery_topic(
     const provision_config_t *config,
     size_t field_index,
     char *out,
     size_t out_size);
-esp_err_t mqtt_relay_build_field_discovery_payload(
+esp_err_t mqtt_relay_build_focused_discovery_payload(
     const provision_config_t *config,
     const mqtt_relay_device_info_t *device_info,
     const char *notification_topic,
@@ -127,19 +127,22 @@ esp_err_t mqtt_relay_build_field_discovery_payload(
     size_t field_index,
     char *out,
     size_t out_size);
-size_t mqtt_relay_wifi_discovery_field_count(void);
-const char *mqtt_relay_wifi_discovery_field_key(size_t field_index);
-esp_err_t mqtt_relay_build_wifi_discovery_topic(
+size_t mqtt_relay_legacy_discovery_count(void);
+const char *mqtt_relay_legacy_discovery_key(size_t field_index);
+esp_err_t mqtt_relay_build_legacy_discovery_topic(
     const provision_config_t *config,
     size_t field_index,
     char *out,
     size_t out_size);
-esp_err_t mqtt_relay_build_wifi_discovery_payload(
+esp_err_t mqtt_relay_build_status_discovery_topic(
+    const provision_config_t *config,
+    char *out,
+    size_t out_size);
+esp_err_t mqtt_relay_build_status_discovery_payload(
     const provision_config_t *config,
     const mqtt_relay_device_info_t *device_info,
     const char *state_topic,
     const char *availability_topic,
-    size_t field_index,
     char *out,
     size_t out_size);
 esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
