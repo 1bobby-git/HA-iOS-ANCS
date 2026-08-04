@@ -316,5 +316,5 @@ jobs:
 
 ## Release validation for this plan
 
-- Final state: `python -m pytest tools/tests/test_release_integrity.py -q` passes on local runner and in Pages CI, then `gh release create v0.3.3 ...` can be executed.  
+- Final state: `python -m pytest tools/tests/test_release_integrity.py -q` passes on local runner and in Pages CI, then `gh release create v0.3.3 ...` can be executed.
 - Current HACS status: **not target, no HACS distribution**.
