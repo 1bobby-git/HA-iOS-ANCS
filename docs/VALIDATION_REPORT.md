@@ -2,6 +2,29 @@
 
 Validation date: 2026-08-04 (Asia/Seoul)
 
+## Release integrity v0.3.3
+
+- Release identity: the immutable commit is verified from tag and GitHub release metadata before publishing; this report does not embed a commit SHA because this file changes during the release-integrity commit.
+- Checksum asset: `docs/release-fingerprints-v0.3.3.sha256` is a deterministic sha256sum-style list of the publishable factory binaries, using repository-relative paths and full lowercase SHA-256 values.
+- CI gate: GitHub Pages deployment now waits for a Python 3.12 `release_integrity` job that installs only `pytest` and runs the existing multi-target contract plus the v0.3.3 release-integrity contract.
+- Commands:
+  - `python -m pytest tools/tests/test_release_integrity.py -q`
+  - `python -m pytest tools/tests -q`
+  - JSON parse checks for `docs/manifests/ios-ancs.json` and `docs/manifests/esp32-c6.json`
+  - workflow YAML sanity check for `.github/workflows/pages.yml`
+  - `git diff --check`
+- Test evidence: the v0.3.3 integrity contract validates version anchors across CMake, build scripts, manifests, README, and installer UI; verifies the main manifest has exactly seven unique chip builds; verifies the legacy C6 manifest points to the current C6 image; checks every manifest part resolves to an existing committed binary with a matching filename version; checks installer/report SHA-256 advertisements against the actual binaries; and validates the checksum asset exactly.
+
+| Target | Publishable factory binary | SHA-256 |
+| --- | --- | --- |
+| `esp32` | `docs/firmware/esp32/ios-ancs-esp32-v0.3.3.factory.bin` | `a6a2cceb642124a5e0877ce26c062d746ad01256d0f065723440af8c5f5f96af` |
+| `esp32c2` | `docs/firmware/esp32c2/ios-ancs-esp32c2-v0.3.3.factory.bin` | `8edb97e48a05fac6756bcc089df627e3295001b385906c7f1247f0d44379bfa6` |
+| `esp32c3` | `docs/firmware/esp32c3/ios-ancs-esp32c3-v0.3.3.factory.bin` | `5eabaca4753ae9382b94db2f4d24fe0a2a11050e4b0c7f94ecbbd7dd83e263d0` |
+| `esp32c5` | `docs/firmware/esp32c5/ios-ancs-esp32c5-v0.3.3.factory.bin` | `ad4b697018469227aa6e7d03c2369aefce80d38ded69390a3a2a77fa330a34d0` |
+| `esp32c6` | `docs/firmware/esp32c6/ios-ancs-esp32c6-v0.3.3.factory.bin` | `727e3bff1b68215eedf639bbbfc3426905cc8e403e27a115c558f75e2a9977dd` |
+| `esp32c61` | `docs/firmware/esp32c61/ios-ancs-esp32c61-v0.3.3.factory.bin` | `5c231f070fc786471101e937f81ae8f74c4a8d78c6da12fdefaf081695df18f4` |
+| `esp32s3` | `docs/firmware/esp32s3/ios-ancs-esp32s3-v0.3.3.factory.bin` | `041d5b4fc5f2ef21d76860ec711e44212fc01124736a0f6ffaca0d0a5ecd5f47` |
+
 ## Compact Home Assistant entities and readable app names v0.3.3
 
 - Home Assistant Discovery now keeps one aggregate `최근 알림` sensor, three

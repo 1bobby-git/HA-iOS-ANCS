@@ -19,7 +19,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release_integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependency
+        run: python -m pip install pytest
+
+      - name: Verify release integrity
+        run: python -m pytest tools/tests/test_multi_target_contract.py tools/tests/test_release_integrity.py -q
+
   deploy:
+    needs: release_integrity
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
