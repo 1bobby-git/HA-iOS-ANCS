@@ -133,30 +133,30 @@ MQTT Discovery also creates an **iPhone 등록 시작** button. Pressing it star
 new-iPhone advertising only when no bond exists. If a bond already exists, it
 only requests a reconnect to that known iPhone and never deletes the bond.
 
-MQTT Discovery creates one aggregate `last notification` sensor plus 33
-individual field sensors per device. The aggregate sensor state is the latest
-`relay_id`, and the complete notification JSON remains attached to it through
-`json_attributes_topic`. The individual sensors cover:
+MQTT Discovery keeps the Home Assistant device compact:
 
-```text
-schema_version, target, device_name, session_id, event, event_id, uid,
-event_flags, silent, important, pre_existing, positive_action_available,
-negative_action_available, category_id, category, category_count, app_id,
-title, subtitle, message, message_size, date, complete, truncated, error,
-received_at_ms, relay_id, source, published_at_ms
-```
+- `장치 상태` is one connectivity `binary_sensor`. It is `ON` only while
+  Wi-Fi, MQTT, and BLE are all connected. Its attributes include `ready`,
+  `wifi_connected`, `mqtt_connected`, `ble_connected`, `ble_bonded`,
+  `uptime_seconds`, the Korean-readable `uptime`, `wifi_ssid`, `wifi_ip`,
+  `wifi_rssi`, counters, and manufacturer/model/software/hardware metadata.
+- `최근 알림` keeps the latest `relay_id` as state and exposes the complete
+  notification JSON through attributes.
+- `알림 제목`, `알림 내용`, and `앱 이름` are the only focused notification
+  sensors. Their states are clipped to 255 characters while the complete
+  original values remain in `최근 알림`.
+- `iPhone 등록 시작` and `장치 재시작` are non-retained Home Assistant
+  buttons. Restart accepts only the exact `RESTART` command.
 
-The four nested `truncated` flags are also exposed as
-`truncated_app_id`, `truncated_title`, `truncated_subtitle`, and
-`truncated_message`. The `app_id`, `title`, `subtitle`, and `message` entity
-states are clipped to 255 characters to stay within Home Assistant's state
-limit; their complete values are preserved in the aggregate sensor attributes.
+Firmware v0.3.3 removes the retained Discovery configs for the former 33
+notification-field sensors and three Wi-Fi sensors, so upgraded devices do not
+leave those entities behind. Neither Discovery nor retained state contains
+Wi-Fi or MQTT passwords.
 
-Three retained diagnostic sensors expose the live connection snapshot as
-`wifi_ssid`, `wifi_ip`, and `wifi_rssi`. Home Assistant attaches every entity
-to the same device record and shows `manufacturer`, `model`, `sw_version`, and
-`hw_version`. Neither Discovery nor retained state contains Wi-Fi or MQTT
-passwords.
+Notification JSON preserves the original `app_id` and adds a friendly
+`app_name`. Unknown bundle identifiers safely fall back to the original ID.
+The maintained reference list is in
+[`docs/APP_ID_REFERENCE.md`](docs/APP_ID_REFERENCE.md).
 
 For the existing C6 device, the identity remains `target=esp32c6` and `source=esp32c6_ancs`. Other firmware targets use their own exact ESP-IDF target name, such as `target=esp32c3` and `source=esp32c3_ancs`.
 

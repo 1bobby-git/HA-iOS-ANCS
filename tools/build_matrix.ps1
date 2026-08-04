@@ -19,12 +19,18 @@ param(
         'esp32s3'
     ),
     [string]$IdfPath = $env:IDF_PATH,
-    [string]$Version = '0.3.2',
+    [string]$BuildRoot,
+    [string]$Version = '0.3.3',
     [switch]$KeepGoing
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
+if (-not $BuildRoot) {
+    $BuildRoot = $ProjectRoot
+}
+$BuildRoot = [System.IO.Path]::GetFullPath($BuildRoot)
+New-Item -ItemType Directory -Path $BuildRoot -Force | Out-Null
 
 function Resolve-IdfPath {
     param([string]$RequestedPath)
@@ -121,7 +127,7 @@ Push-Location $ProjectRoot
 try {
     foreach ($Target in $Targets) {
         Write-Host "Building $Target" -ForegroundColor Cyan
-        $BuildDir = Join-Path $ProjectRoot "build-$Target"
+        $BuildDir = Join-Path $BuildRoot "build-$Target"
         $SdkconfigPath = Join-Path $ProjectRoot "sdkconfig.$Target"
         $FirmwareDir = Join-Path $ProjectRoot "docs\firmware\$Target"
         $OutputPath = Join-Path $FirmwareDir "ios-ancs-$Target-v$Version.factory.bin"
