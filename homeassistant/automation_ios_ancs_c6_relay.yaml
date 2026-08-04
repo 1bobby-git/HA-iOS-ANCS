@@ -1,6 +1,6 @@
 alias: Relay iOS ANCS C6 notifications to 1bobby
 id: ios_ancs_c6_relay_to_1bobby
-description: Forward newly received, complete C6 ANCS notifications.
+description: Forward newly received, complete C6 ANCS notifications without availability restores.
 trigger:
   - platform: state
     entity_id: sensor.ios_ancs_c6_2b20_ios_ancs_c6_2b20_last_notification
@@ -9,6 +9,9 @@ condition:
     value_template: >-
       {{ trigger.from_state is not none and trigger.to_state is not none
          and trigger.from_state.state != trigger.to_state.state }}
+  - condition: template
+    value_template: >-
+      {{ trigger.from_state.state != 'unavailable' }}
   - condition: template
     value_template: >-
       {{ trigger.to_state.state not in ['unknown', 'unavailable'] }}

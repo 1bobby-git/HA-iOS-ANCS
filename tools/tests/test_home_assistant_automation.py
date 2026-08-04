@@ -22,6 +22,7 @@ def test_ios_ancs_c6_relay_has_required_safe_notification_contract():
         "id: ios_ancs_c6_relay_to_1bobby",
         "entity_id: sensor.ios_ancs_c6_2b20_ios_ancs_c6_2b20_last_notification",
         "trigger.from_state.state != trigger.to_state.state",
+        "trigger.from_state.state != 'unavailable'",
         "not in ['unknown', 'unavailable']",
         "get('complete', false) | bool(false)",
         "get('pre_existing', true) | bool(true)",
