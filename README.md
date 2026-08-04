@@ -125,7 +125,7 @@ Install the automation file:
 homeassistant/automation_ios_ancs_c6_relay.yaml
 ```
 
-Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, sends `notify.mobile_app_example_phone`, and prefixes the mobile notification title with `[C6→HA]`.
+Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, and rejects transitions restored from `unavailable` so an old `relay_id` is not forwarded after MQTT availability recovers. It sends `notify.mobile_app_example_phone` and prefixes the mobile notification title with `[C6→HA]`.
 
 The firmware drops every ANCS event whose `app_id` is `io.robbie.HomeAssistant`. The title marker is retained for operator visibility, but the app-level exclusion is the loop-prevention boundary, so marked and unmarked Home Assistant notifications are never published back to MQTT.
 
