@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -12,6 +13,26 @@ def read(name: str) -> str:
 
 def read_policy(name: str) -> str:
     return (RELAY_POLICY / name).read_text(encoding="utf-8")
+
+
+def test_documented_app_ids_are_the_firmware_mapping_source_of_truth():
+    document = (ROOT / "docs" / "APP_ID_REFERENCE.md").read_text(encoding="utf-8")
+    source = read("mqtt_app_name.c")
+    rows = re.findall(r"^\| `([^`]+)` \| ([^|]+?) \|", document, re.MULTILINE)
+
+    assert len(rows) == 80
+    assert len({app_id.lower() for app_id, _ in rows}) == len(rows)
+    for app_id, name in rows:
+        assert f'{{"{app_id}", "{name.strip()}"}}' in source
+
+
+def test_notification_payload_enriches_app_name_without_replacing_app_id():
+    source = read("mqtt_payload.c")
+
+    assert '#include "mqtt_app_name.h"' in source
+    assert "mqtt_app_name_lookup(notification->app_id)" in source
+    assert '\\"app_name\\"' in source
+    assert "strlen(app_name)" in source
 
 
 def test_mqtt_component_uses_pointer_queue_capacity_and_qos_contracts():

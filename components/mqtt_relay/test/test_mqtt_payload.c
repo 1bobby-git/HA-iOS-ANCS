@@ -5,6 +5,7 @@
 #include "ancs_protocol.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "mqtt_app_name.h"
 #include "mqtt_relay.h"
 #include "mqtt_relay_test.h"
 #include "platform_identity.h"
@@ -201,6 +202,7 @@ TEST_CASE("notification payload preserves serial fields and adds relay fields",
           "[mqtt_relay]")
 {
     ancs_notification_t notification = valid_notification();
+    strcpy(notification.app_id, "com.iwilab.KakaoTalk");
     char *payload = NULL;
     size_t length = 0;
 
@@ -217,9 +219,23 @@ TEST_CASE("notification payload preserves serial fields and adds relay fields",
     TEST_ASSERT_NOT_NULL(
         strstr(payload, "\"source\":\"" ANCS_SOURCE_ID "\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_at_ms\":123456"));
-    TEST_ASSERT_NOT_NULL(strstr(payload, "\"app_id\":\"com.example.app\""));
+    TEST_ASSERT_NOT_NULL(
+        strstr(payload, "\"app_id\":\"com.iwilab.KakaoTalk\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"app_name\":\"카카오톡\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"complete\":true"));
     free(payload);
+}
+
+TEST_CASE("app names use documented mapping and safe fallback", "[mqtt_relay]")
+{
+    TEST_ASSERT_EQUAL_STRING("메시지",
+                             mqtt_app_name_lookup("com.apple.MobileSMS"));
+    TEST_ASSERT_EQUAL_STRING("카카오톡",
+                             mqtt_app_name_lookup("COM.IWILAB.KAKAOTALK"));
+    TEST_ASSERT_EQUAL_STRING("com.example.Unknown",
+                             mqtt_app_name_lookup("com.example.Unknown"));
+    TEST_ASSERT_EQUAL_STRING("", mqtt_app_name_lookup(""));
+    TEST_ASSERT_EQUAL_STRING("", mqtt_app_name_lookup(NULL));
 }
 
 TEST_CASE("topics use configurable base and discovery device id", "[mqtt_relay]")
