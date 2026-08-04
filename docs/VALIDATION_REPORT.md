@@ -1,6 +1,58 @@
 # Validation Report
 
-Validation date: 2026-08-03 (Asia/Seoul)
+Validation date: 2026-08-04 (Asia/Seoul)
+
+## Compact Home Assistant entities and readable app names v0.3.3
+
+- Home Assistant Discovery now keeps one aggregate `최근 알림` sensor, three
+  focused sensors (`알림 제목`, `알림 내용`, and `앱 이름`), and one diagnostic
+  `장치 상태` binary sensor. The status entity uses Wi-Fi, MQTT, and BLE
+  connectivity for its state and exposes detailed runtime values as JSON
+  attributes instead of creating a separate entity for every field.
+- The retained status attributes include Wi-Fi SSID/IP/RSSI, BLE bond and
+  connection state, uptime in seconds and Korean-readable text, publish/drop
+  counters, and Espressif model/software/hardware metadata. Home Assistant also
+  receives a guarded `장치 재시작` button on the exact non-retained `RESTART`
+  command contract.
+- Firmware Discovery removes the retained configs for the former 33
+  notification-field sensors and three Wi-Fi sensors before publishing the
+  compact model, preventing stale Home Assistant entities from surviving an
+  upgrade.
+- Notification JSON preserves the original `app_id` and adds `app_name`.
+  Eighty known bundle identifiers are mapped to readable names; unknown IDs
+  safely fall back to the original bundle identifier. The matching user
+  reference is checked in as `docs/APP_ID_REFERENCE.md`.
+- `python -m pytest tools/tests -q` reports `118 passed`. The ESP32-C6 ESP-IDF
+  test firmware also completed compile, link, and partition-size validation;
+  this pass did not run the Unity image on physical C6 hardware.
+- ESP-IDF v6.0.2 completed configure, compile, link, partition validation, and
+  merged factory-image generation for all seven supported targets. The matrix
+  build tool now accepts an optional bounded Ninja job count so parallel target
+  lanes can use the host CPU without multiplying the default job count.
+- COM7 was freshly identified as ESP32-D0WD-V3 revision 3.1 with base MAC
+  `a8:42:e3:aa:f7:38`. The v0.3.3 ESP32 application was written at `0x10000`
+  and hash-verified without erasing NVS or the provisioning partition. It
+  booted as app version `0.3.3` and, after the saved network failed, started
+  `IOS-ANCS-SETUP-AAF738` automatically at `192.168.4.1` after about 31 seconds.
+- The saved `SPARKPLUS14_4F` network was only observed around `-78` to `-88
+  dBm`; association/authentication expired with Wi-Fi reason 2/4. MQTT, Home
+  Assistant Discovery, restart-button execution, and live iPhone ANCS capture
+  therefore remain unverified on v0.3.3 hardware. The boot snapshot also
+  reported no BLE bond on this WROOM board. Historical v0.3.2 ESP32 MQTT/BLE
+  evidence and v0.3.0 C6 evidence remain documented below.
+- NVS and provisioning backups were captured before the app-only flash. They
+  remain local under the ignored artifacts directory and are not published to
+  Git because they may contain credentials.
+
+| Target | Merged bytes | SHA-256 | Validation level |
+| --- | ---: | --- | --- |
+| `esp32` | 1,425,616 | `a6a2cceb642124a5e0877ce26c062d746ad01256d0f065723440af8c5f5f96af` | v0.3.3 COM7 flash, boot, and automatic setup AP verified; MQTT/BLE pending |
+| `esp32c2` | 1,445,488 | `8edb97e48a05fac6756bcc089df627e3295001b385906c7f1247f0d44379bfa6` | v0.3.3 build verified |
+| `esp32c3` | 1,634,528 | `5eabaca4753ae9382b94db2f4d24fe0a2a11050e4b0c7f94ecbbd7dd83e263d0` | v0.3.3 build verified |
+| `esp32c5` | 1,779,664 | `ad4b697018469227aa6e7d03c2369aefce80d38ded69390a3a2a77fa330a34d0` | v0.3.3 build verified |
+| `esp32c6` | 1,779,680 | `727e3bff1b68215eedf639bbbfc3426905cc8e403e27a115c558f75e2a9977dd` | v0.3.3 build verified; v0.3.0 hardware evidence is historical |
+| `esp32c61` | 1,722,800 | `5c231f070fc786471101e937f81ae8f74c4a8d78c6da12fdefaf081695df18f4` | v0.3.3 build verified |
+| `esp32s3` | 1,407,600 | `041d5b4fc5f2ef21d76860ec711e44212fc01124736a0f6ffaca0d0a5ecd5f47` | v0.3.3 build verified |
 
 ## Bounded MQTT Discovery and Home Assistant enrollment v0.3.2
 
