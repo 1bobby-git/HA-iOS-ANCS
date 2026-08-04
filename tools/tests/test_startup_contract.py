@@ -40,6 +40,22 @@ def test_no_config_boot_opens_recovery_ap():
     assert "state.ap_required" in source
 
 
+def test_valid_config_does_not_start_a_competing_setup_ap():
+    state_header = read("components/provisioning/include/provisioning_state.h")
+    state_source = read("components/provisioning/provisioning_state.c")
+
+    assert "bool recovery_required;" in state_header
+    reconcile = state_source.split("static void reconcile_requirements", 1)[1].split(
+        "provisioning_state_t provisioning_initial", 1
+    )[0]
+    assert "!state->valid_config" in reconcile
+    assert "state->recovery_required" in reconcile
+    assert "state->recovery_window" in reconcile
+    assert "state->wifi_connected" not in reconcile
+    assert "state->mqtt_connected" not in reconcile
+    assert "state->has_bond" not in reconcile
+
+
 def test_mqtt_is_started_only_after_wifi_ip():
     source = read("main/app_main.c")
 

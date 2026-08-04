@@ -17,7 +17,13 @@
 #define MQTT_RELAY_WORKER_STACK 4096
 #define MQTT_RELAY_WORKER_PRIORITY 5
 #define MQTT_RELAY_DISCOVERY_PAYLOAD_MAX 1536
-#define MQTT_RELAY_RETAINED_PACE_MS 20U
+#define MQTT_RELAY_MQTT_BUFFER_SIZE 2048
+#define MQTT_RELAY_RETAINED_ACK_TIMEOUT_MS 30000U
+#define MQTT_RELAY_RETAINED_ACK_POLL_MS 10U
+#define MQTT_RELAY_EARLY_PUBACK_CAPACITY 4U
+#define MQTT_RELAY_DISCOVERY_DRAIN_TIMEOUT_MS 30000U
+#define MQTT_RELAY_DISCOVERY_DRAIN_POLL_MS 10U
+#define MQTT_RELAY_DISCOVERY_SETTLE_MS 4000U
 
 static const char MQTT_RELAY_ENROLL_PAYLOAD[] = "ENROLL";
 
@@ -36,6 +42,12 @@ typedef struct {
     bool publish_allowed;
     uint32_t publish_in_flight;
     bool retained_refresh_pending;
+    bool discovery_attempted_this_boot;
+    bool retained_waiting;
+    bool retained_ack_received;
+    int retained_msg_id;
+    int retained_early_ack_ids[MQTT_RELAY_EARLY_PUBACK_CAPACITY];
+    size_t retained_early_ack_count;
     bool wifi_connected;
     bool mqtt_connected;
     mqtt_relay_event_callback_t event_callback;
@@ -590,6 +602,8 @@ esp_err_t mqtt_relay_build_client_config(const provision_config_t *config,
         .credentials.client_id = config->mqtt_client_id,
         .broker.verification.certificate = config->mqtt_tls ? config->mqtt_ca : NULL,
         .network.disable_auto_reconnect = true,
+        .buffer.size = MQTT_RELAY_MQTT_BUFFER_SIZE,
+        .buffer.out_size = MQTT_RELAY_MQTT_BUFFER_SIZE,
         .session.last_will.topic = availability_topic,
         .session.last_will.msg = "offline",
         .session.last_will.qos = 1,
@@ -1151,6 +1165,41 @@ static mqtt_payload_item_t *mqtt_relay_take_pending_locked(int msg_id)
     return NULL;
 }
 
+static void mqtt_relay_clear_retained_wait_locked(void)
+{
+    s_ctx.retained_waiting = false;
+    s_ctx.retained_ack_received = false;
+    s_ctx.retained_msg_id = -1;
+    s_ctx.retained_early_ack_count = 0;
+}
+
+static void mqtt_relay_handle_published_locked(int msg_id)
+{
+    mqtt_payload_item_t *item = mqtt_relay_take_pending_locked(msg_id);
+    if (item != NULL) {
+        s_ctx.counters.published_ack++;
+        mqtt_relay_free_item(item);
+    }
+
+    if (!s_ctx.retained_waiting) {
+        return;
+    }
+    if (s_ctx.retained_msg_id > 0) {
+        if (s_ctx.retained_msg_id == msg_id) {
+            s_ctx.retained_ack_received = true;
+        }
+        return;
+    }
+    for (size_t index = 0; index < s_ctx.retained_early_ack_count; ++index) {
+        if (s_ctx.retained_early_ack_ids[index] == msg_id) {
+            return;
+        }
+    }
+    if (s_ctx.retained_early_ack_count < MQTT_RELAY_EARLY_PUBACK_CAPACITY) {
+        s_ctx.retained_early_ack_ids[s_ctx.retained_early_ack_count++] = msg_id;
+    }
+}
+
 static int mqtt_relay_publish_raw(const char *topic,
                                   const char *payload,
                                   int length,
@@ -1180,6 +1229,40 @@ static int mqtt_relay_publish_raw(const char *topic,
     return result;
 }
 
+static int mqtt_relay_enqueue_raw(const char *topic,
+                                  const char *payload,
+                                  int qos,
+                                  int retain)
+{
+    if (s_publish_for_test != NULL) {
+        return s_publish_for_test(topic, payload, 0, qos, retain);
+    }
+
+    mqtt_relay_lock();
+    esp_mqtt_client_handle_t client = s_ctx.client;
+    if (client == NULL || !s_ctx.publish_allowed || !s_ctx.mqtt_connected) {
+        mqtt_relay_unlock();
+        return -1;
+    }
+    s_ctx.publish_in_flight++;
+    mqtt_relay_unlock();
+
+    const int result = esp_mqtt_client_enqueue(client,
+                                               topic,
+                                               payload,
+                                               0,
+                                               qos,
+                                               retain,
+                                               true);
+
+    mqtt_relay_lock();
+    if (s_ctx.publish_in_flight > 0U) {
+        s_ctx.publish_in_flight--;
+    }
+    mqtt_relay_unlock();
+    return result;
+}
+
 static void mqtt_relay_wait_publish_idle(void)
 {
     for (;;) {
@@ -1193,19 +1276,100 @@ static void mqtt_relay_wait_publish_idle(void)
     }
 }
 
+static bool mqtt_relay_wait_outbox_empty(void)
+{
+    if (s_publish_for_test != NULL) {
+        return true;
+    }
+    for (uint32_t elapsed_ms = 0;
+         elapsed_ms < MQTT_RELAY_DISCOVERY_DRAIN_TIMEOUT_MS;
+         elapsed_ms += MQTT_RELAY_DISCOVERY_DRAIN_POLL_MS) {
+        mqtt_relay_lock();
+        esp_mqtt_client_handle_t client = s_ctx.client;
+        const bool connected = s_ctx.mqtt_connected && s_ctx.publish_allowed;
+        mqtt_relay_unlock();
+        if (client == NULL || !connected) {
+            return false;
+        }
+        if (esp_mqtt_client_get_outbox_size(client) == 0) {
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_DISCOVERY_DRAIN_POLL_MS));
+    }
+    return false;
+}
+
 static bool mqtt_relay_publish_retained_once(const char *topic,
                                              const char *payload)
 {
-    const int result = mqtt_relay_publish_raw(topic,
+    if (MQTT_RELAY_RETAINED_QOS == 0) {
+        const int result = mqtt_relay_enqueue_raw(topic,
+                                                  payload,
+                                                  MQTT_RELAY_RETAINED_QOS,
+                                                  MQTT_RELAY_RETAINED_RETAIN);
+        return result >= 0 && mqtt_relay_wait_outbox_empty();
+    }
+
+    mqtt_relay_lock();
+    mqtt_relay_clear_retained_wait_locked();
+    s_ctx.retained_waiting = true;
+    mqtt_relay_unlock();
+
+    const int result = mqtt_relay_enqueue_raw(topic,
                                               payload,
-                                              0,
                                               MQTT_RELAY_RETAINED_QOS,
+                                              MQTT_RELAY_RETAINED_RETAIN);
+    mqtt_relay_lock();
+    if (result <= 0) {
+        mqtt_relay_clear_retained_wait_locked();
+        mqtt_relay_unlock();
+        return false;
+    }
+    s_ctx.retained_msg_id = result;
+    for (size_t index = 0; index < s_ctx.retained_early_ack_count; ++index) {
+        if (s_ctx.retained_early_ack_ids[index] == result) {
+            s_ctx.retained_ack_received = true;
+            break;
+        }
+    }
+    mqtt_relay_unlock();
+
+    for (uint32_t elapsed_ms = 0;
+         elapsed_ms < MQTT_RELAY_RETAINED_ACK_TIMEOUT_MS;
+         elapsed_ms += MQTT_RELAY_RETAINED_ACK_POLL_MS) {
+        mqtt_relay_lock();
+        const bool acknowledged = s_ctx.retained_ack_received;
+        const bool connected = s_ctx.mqtt_connected && s_ctx.publish_allowed;
+        if (acknowledged || !connected) {
+            mqtt_relay_clear_retained_wait_locked();
+            mqtt_relay_unlock();
+            return acknowledged;
+        }
+        mqtt_relay_unlock();
+        vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_RETAINED_ACK_POLL_MS));
+    }
+
+    mqtt_relay_lock();
+    mqtt_relay_clear_retained_wait_locked();
+    mqtt_relay_unlock();
+    return false;
+}
+
+static bool mqtt_relay_publish_discovery_once(const char *topic,
+                                              const char *payload)
+{
+    const int result = mqtt_relay_enqueue_raw(topic,
+                                              payload,
+                                              MQTT_RELAY_DISCOVERY_QOS,
                                               MQTT_RELAY_RETAINED_RETAIN);
     if (result < 0) {
         return false;
     }
+    if (!mqtt_relay_wait_outbox_empty()) {
+        return false;
+    }
     if (s_publish_for_test == NULL) {
-        vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_RETAINED_PACE_MS));
+        vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_DISCOVERY_SETTLE_MS));
     }
     return true;
 }
@@ -1251,13 +1415,32 @@ static void mqtt_relay_publish_retained_status(void)
     mqtt_relay_unlock();
 
     char state[512];
+    if (!mqtt_relay_publish_retained_once(availability_topic, "online")) {
+        goto cleanup;
+    }
+    if (mqtt_relay_build_state_payload(&counters,
+                                       connected,
+                                       &wifi_status,
+                                       state,
+                                       sizeof(state)) == ESP_OK) {
+        if (!mqtt_relay_publish_retained_once(state_topic, state)) {
+            goto cleanup;
+        }
+    }
+    mqtt_relay_lock();
+    const bool publish_discovery = !s_ctx.discovery_attempted_this_boot;
+    s_ctx.discovery_attempted_this_boot = true;
+    mqtt_relay_unlock();
+    if (!publish_discovery) {
+        goto cleanup;
+    }
     if (mqtt_relay_build_discovery_payload(discovery_config,
                                            &device_info,
                                            notification_topic,
                                            availability_topic,
                                            discovery,
                                            MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        if (!mqtt_relay_publish_retained_once(discovery_topic, discovery)) {
+        if (!mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
             goto cleanup;
         }
     }
@@ -1268,7 +1451,7 @@ static void mqtt_relay_publish_retained_status(void)
             availability_topic,
             discovery,
             MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) == ESP_OK) {
-        if (!mqtt_relay_publish_retained_once(enroll_discovery_topic, discovery)) {
+        if (!mqtt_relay_publish_discovery_once(enroll_discovery_topic, discovery)) {
             goto cleanup;
         }
     }
@@ -1289,7 +1472,7 @@ static void mqtt_relay_publish_retained_status(void)
             ESP_OK) {
             continue;
         }
-        if (!mqtt_relay_publish_retained_once(discovery_topic, discovery)) {
+        if (!mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
             goto cleanup;
         }
     }
@@ -1310,21 +1493,10 @@ static void mqtt_relay_publish_retained_status(void)
                 MQTT_RELAY_DISCOVERY_PAYLOAD_MAX) != ESP_OK) {
             continue;
         }
-        if (!mqtt_relay_publish_retained_once(discovery_topic, discovery)) {
+        if (!mqtt_relay_publish_discovery_once(discovery_topic, discovery)) {
             goto cleanup;
         }
     }
-    if (mqtt_relay_build_state_payload(&counters,
-                                       connected,
-                                       &wifi_status,
-                                       state,
-                                       sizeof(state)) == ESP_OK) {
-        if (!mqtt_relay_publish_retained_once(state_topic, state)) {
-            goto cleanup;
-        }
-    }
-    (void)mqtt_relay_publish_retained_once(availability_topic, "online");
-
 cleanup:
     free(discovery);
     free(discovery_config);
@@ -1346,9 +1518,8 @@ static void mqtt_relay_drain_queue(void)
         s_ctx.worker_busy = true;
         mqtt_relay_unlock();
 
-        const int msg_id = mqtt_relay_publish_raw(item->topic,
+        const int msg_id = mqtt_relay_enqueue_raw(item->topic,
                                                   item->payload,
-                                                  (int)item->payload_length,
                                                   MQTT_RELAY_NOTIFICATION_QOS,
                                                   MQTT_RELAY_NOTIFICATION_RETAIN);
 
@@ -1467,6 +1638,7 @@ static void mqtt_relay_handle_disconnect_locked(void)
 {
     s_ctx.mqtt_connected = false;
     s_ctx.retained_refresh_pending = false;
+    mqtt_relay_clear_retained_wait_locked();
     mqtt_relay_free_queue_locked();
     mqtt_relay_free_pending_locked();
 }
@@ -1592,11 +1764,7 @@ static void mqtt_relay_event_handler(void *handler_args,
     switch (event_id) {
     case MQTT_EVENT_PUBLISHED:
         if (event != NULL) {
-            mqtt_payload_item_t *item = mqtt_relay_take_pending_locked(event->msg_id);
-            if (item != NULL) {
-                s_ctx.counters.published_ack++;
-                mqtt_relay_free_item(item);
-            }
+            mqtt_relay_handle_published_locked(event->msg_id);
         }
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -1920,6 +2088,7 @@ esp_err_t mqtt_relay_reconfigure(const provision_config_t *config)
                   next_enroll_discovery_topic,
                   sizeof(s_ctx.enroll_discovery_topic));
     s_ctx.config = *config;
+    s_ctx.discovery_attempted_this_boot = false;
     mqtt_relay_unlock();
 
     memset(&mqtt_config, 0, sizeof(mqtt_config));
@@ -2009,13 +2178,8 @@ esp_err_t mqtt_relay_update_wifi_status(const mqtt_relay_wifi_status_t *status)
     if (err != ESP_OK) {
         return err;
     }
-    return mqtt_relay_publish_raw(state_topic,
-                                  state,
-                                  0,
-                                  MQTT_RELAY_RETAINED_QOS,
-                                  MQTT_RELAY_RETAINED_RETAIN) < 0
-               ? ESP_FAIL
-               : ESP_OK;
+    return mqtt_relay_publish_retained_once(state_topic, state) ? ESP_OK
+                                                                : ESP_FAIL;
 }
 
 void mqtt_relay_set_wifi_connected(bool connected)
@@ -2193,11 +2357,7 @@ void mqtt_relay_drain_for_test(void)
 void mqtt_relay_simulate_published_for_test(int msg_id)
 {
     mqtt_relay_lock();
-    mqtt_payload_item_t *item = mqtt_relay_take_pending_locked(msg_id);
-    if (item != NULL) {
-        s_ctx.counters.published_ack++;
-        mqtt_relay_free_item(item);
-    }
+    mqtt_relay_handle_published_locked(msg_id);
     mqtt_relay_unlock();
 }
 

@@ -27,6 +27,7 @@ typedef struct {
     bool wifi_connected;
     bool mqtt_connected;
     bool has_bond;
+    bool recovery_required;
     bool recovery_window;
     bool ap_required;
     bool sta_required;

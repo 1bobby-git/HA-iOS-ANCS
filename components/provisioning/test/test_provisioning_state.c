@@ -13,7 +13,7 @@ TEST_CASE("no config starts AP without a button", "[provisioning_state]")
     TEST_ASSERT_FALSE(state.valid_config);
 }
 
-TEST_CASE("valid config starts STA and AP remains until every dependency is ready",
+TEST_CASE("valid config starts STA without a competing setup AP",
           "[provisioning_state]")
 {
     provisioning_state_t state =
@@ -22,11 +22,11 @@ TEST_CASE("valid config starts STA and AP remains until every dependency is read
                             0);
 
     TEST_ASSERT_TRUE(state.sta_required);
-    TEST_ASSERT_TRUE(state.ap_required);
+    TEST_ASSERT_FALSE(state.ap_required);
 
     state = provisioning_reduce(state, PROVISION_EVENT_WIFI_CONNECTED, 10);
     state = provisioning_reduce(state, PROVISION_EVENT_MQTT_CONNECTED, 20);
-    TEST_ASSERT_TRUE(state.ap_required);
+    TEST_ASSERT_FALSE(state.ap_required);
 
     state = provisioning_reduce(state, PROVISION_EVENT_BOND_PRESENT, 30);
     TEST_ASSERT_FALSE(state.ap_required);
@@ -60,7 +60,7 @@ TEST_CASE("wifi timeout and mqtt failure require recovery AP",
     TEST_ASSERT_FALSE(state.mqtt_connected);
 }
 
-TEST_CASE("bond removal keeps portal reachable for enrollment",
+TEST_CASE("bond removal does not reopen the setup AP",
           "[provisioning_state]")
 {
     provisioning_state_t state =
@@ -73,7 +73,7 @@ TEST_CASE("bond removal keeps portal reachable for enrollment",
     TEST_ASSERT_FALSE(state.ap_required);
 
     state = provisioning_reduce(state, PROVISION_EVENT_BOND_REMOVED, 4);
-    TEST_ASSERT_TRUE(state.ap_required);
+    TEST_ASSERT_FALSE(state.ap_required);
     TEST_ASSERT_FALSE(state.has_bond);
 }
 
