@@ -317,6 +317,21 @@ def test_wifi_refresh_timer_tracks_mqtt_lifecycle():
     assert "pdTRUE" in initializer
 
 
+def test_mqtt_restart_request_reuses_the_delayed_restart_timer():
+    source = read("main/app_main.c")
+    handler = source.split("static void handle_mqtt_event", 1)[1].split(
+        "static void handle_config_changed", 1
+    )[0]
+    assert "MQTT_RELAY_EVENT_RESTART_REQUEST" in handler
+    assert "schedule_restart()" in handler
+
+    scheduler = source.split("static esp_err_t schedule_restart", 1)[1].split(
+        "static esp_err_t portal_restart", 1
+    )[0]
+    assert "xTimerReset(s_restart_timer" in scheduler
+    assert "esp_restart" not in scheduler
+
+
 def test_main_declares_device_information_dependencies():
     cmake = read("main/CMakeLists.txt")
     for component in ("esp_app_format", "esp_system", "platform_identity"):

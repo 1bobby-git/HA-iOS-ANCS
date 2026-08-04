@@ -445,7 +445,7 @@ TEST_CASE("retained status deletes legacy entities and publishes compact Discove
 
     mqtt_relay_publish_retained_for_test();
 
-    TEST_ASSERT_EQUAL(44U, s_publish_calls);
+    TEST_ASSERT_EQUAL(45U, s_publish_calls);
     TEST_ASSERT_EQUAL(40U, s_discovery_publish_calls);
     TEST_ASSERT_EQUAL(36U, s_discovery_tombstone_calls);
     TEST_ASSERT_EQUAL(MQTT_RELAY_DISCOVERY_QOS, s_last_qos);
@@ -879,4 +879,43 @@ TEST_CASE("enroll command rejects retained partial and malformed input",
         6,
         0,
         false));
+}
+
+TEST_CASE("restart button uses exact non-retained MQTT command", "[mqtt_relay]")
+{
+    provision_config_t config = valid_config();
+    mqtt_relay_device_info_t device_info = valid_device_info();
+    char command[MQTT_RELAY_TOPIC_MAX];
+    char discovery_topic[MQTT_RELAY_DISCOVERY_TOPIC_MAX];
+    char payload[1536];
+
+    TEST_ASSERT_EQUAL(
+        ESP_OK,
+        mqtt_relay_build_restart_command_topic(&config, command, sizeof(command)));
+    TEST_ASSERT_EQUAL_STRING("ios-ancs/2b20/command/restart", command);
+    TEST_ASSERT_EQUAL(
+        ESP_OK,
+        mqtt_relay_build_restart_discovery_topic(
+            &config, discovery_topic, sizeof(discovery_topic)));
+    TEST_ASSERT_EQUAL_STRING(
+        "homeassistant/button/ios_ancs_c6_2b20/restart/config",
+        discovery_topic);
+    TEST_ASSERT_EQUAL(
+        ESP_OK,
+        mqtt_relay_build_restart_discovery_payload(
+            &config,
+            &device_info,
+            command,
+            "ios-ancs/2b20/availability",
+            payload,
+            sizeof(payload)));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"name\":\"장치 재시작\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"payload_press\":\"RESTART\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"retain\":false"));
+    TEST_ASSERT_TRUE(mqtt_relay_is_restart_command(
+        command, command, strlen(command), "RESTART", 7, 7, 0, false));
+    TEST_ASSERT_FALSE(mqtt_relay_is_restart_command(
+        command, command, strlen(command), "RESTART", 7, 7, 0, true));
+    TEST_ASSERT_FALSE(mqtt_relay_is_restart_command(
+        command, command, strlen(command), "restart", 7, 7, 0, false));
 }
