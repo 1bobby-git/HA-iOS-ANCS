@@ -207,7 +207,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
     builds = manifest["builds"]
     families = [build["chipFamily"] for build in builds]
 
-    assert manifest["version"] == "0.3.2"
+    assert manifest["version"] == "0.3.3"
     assert len(families) == 7
     assert len(families) == len(set(families))
     assert "ESP32" in families
@@ -219,7 +219,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
         assert len(build["parts"]) == 1
         part = build["parts"][0]
         assert part["offset"] == 0
-        assert "-v0.3.2.factory.bin" in part["path"]
+        assert "-v0.3.3.factory.bin" in part["path"]
         binary = (MULTI_MANIFEST.parent / part["path"]).resolve()
         assert binary.is_file()
         assert binary.stat().st_size > 0
@@ -242,9 +242,9 @@ def test_c6_manifest_points_existing_users_to_current_image():
     part = build["parts"][0]
     binary = (LEGACY_C6_MANIFEST.parent / part["path"]).resolve()
 
-    assert manifest["version"] == "0.3.2"
+    assert manifest["version"] == "0.3.3"
     assert build["chipFamily"] == "ESP32-C6"
-    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.2.factory.bin"
+    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.3.factory.bin"
     assert binary.is_file()
     assert not (
         ROOT
@@ -274,6 +274,8 @@ def test_build_matrix_isolated_target_outputs_and_four_megabyte_baseline():
     assert "-DIDF_TARGET=$Target" in script
     assert "-DSDKCONFIG=$SdkconfigPath" in script
     assert "build-$Target" in script
+    assert "[string]$BuildRoot" in script
+    assert 'Join-Path $BuildRoot "build-$Target"' in script
     assert "flasher_args.json" in script
     assert "merge-bin" in script
 
@@ -297,7 +299,7 @@ def test_flash_helper_uses_the_selected_target_build_directory():
     assert '--target $Target' in script
 
 
-def test_v031_release_guidance_documents_lowercase_setup_and_ha_diagnostics():
+def test_v033_release_guidance_documents_compact_home_assistant_entities():
     matrix = read(BUILD_MATRIX)
     build_ps1 = read(ROOT / "tools" / "build.ps1")
     build_sh = read(ROOT / "tools" / "build.sh")
@@ -306,12 +308,13 @@ def test_v031_release_guidance_documents_lowercase_setup_and_ha_diagnostics():
     pairing = read(ROOT / "docs" / "IOS_PAIRING.md")
     troubleshooting = read(ROOT / "docs" / "TROUBLESHOOTING.md")
 
-    for source in (matrix, build_ps1, build_sh, installer):
-        assert "0.3.2" in source
+    cmake = read(ROOT / "CMakeLists.txt")
+    for source in (cmake, matrix, build_ps1, build_sh, installer):
+        assert "0.3.3" in source
     for source in (readme, pairing, troubleshooting):
         assert "ancs-<lowercase_suffix>" in source
         assert "case-sensitive" in source
-    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+    for key in ("ready", "uptime_seconds", "ble_connected", "wifi_ssid"):
         assert key in readme
-    for label in ("manufacturer", "model", "sw_version", "hw_version"):
+    for label in ("최근 알림", "알림 제목", "알림 내용", "앱 이름", "장치 상태", "장치 재시작"):
         assert label in readme
