@@ -4,7 +4,12 @@ Validation date: 2026-08-04 (Asia/Seoul)
 
 ## Release integrity v0.3.3
 
-- Release identity: the immutable commit is verified from tag and GitHub release metadata before publishing; this report does not embed a commit SHA because this file changes during the release-integrity commit.
+- Release identity fields:
+  - `release_tag: v0.3.3`
+  - `release_name: iOS ANCS MQTT Bridge v0.3.3`
+  - `release_title: iOS ANCS MQTT Bridge v0.3.3`
+  - `checksum_asset_name: release-fingerprints-v0.3.3.sha256`
+- Release metadata verification surface: `gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease`. The immutable commit identity, release URL, draft flag, and prerelease flag are verified from this command and are not hardcoded in this report.
 - Checksum asset: `docs/release-fingerprints-v0.3.3.sha256` is a deterministic sha256sum-style list of the publishable factory binaries, using repository-relative paths and full lowercase SHA-256 values.
 - CI gate: GitHub Pages deployment now waits for a Python 3.12 `release_integrity` job that installs only `pytest` and runs the existing multi-target contract plus the v0.3.3 release-integrity contract.
 - Commands:
