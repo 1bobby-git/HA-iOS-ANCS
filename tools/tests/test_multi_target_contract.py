@@ -275,6 +275,12 @@ def test_build_matrix_isolated_target_outputs_and_four_megabyte_baseline():
     assert "-DSDKCONFIG=$SdkconfigPath" in script
     assert "build-$Target" in script
     assert "[string]$BuildRoot" in script
+    assert "[int]$Jobs = 0" in script
+    assert "if ($Jobs -gt 0)" in script
+    assert "function Invoke-NinjaBuild" in script
+    assert "'reconfigure'" in script
+    assert "ninja.exe -C" in script
+    assert "-j $Jobs all" in script
     assert 'Join-Path $BuildRoot "build-$Target"' in script
     assert "flasher_args.json" in script
     assert "merge-bin" in script

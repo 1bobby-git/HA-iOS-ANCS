@@ -6,17 +6,17 @@ Multi-target ESP32 firmware for a power-only iOS ANCS notification relay. The de
 
 Open the [ANCS Flash Station](https://1bobby-git.github.io/ios-ancs/) in Chrome or Edge on a desktop computer, connect the ESP board with a USB data cable, select the model for guidance, and press **USB 장치 자동 감지 후 설치**. A unified ESP Web Tools manifest detects the connected chip and selects the matching checked-in factory image, so ESP-IDF is not required for installation.
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.2 images shown in the installer are compile, link, partition, and merged-image verified. ESP32/WROOM v0.3.2 is hardware-verified on `COM7`; ESP32-C6 v0.3.0 on `COM9` remains historical hardware evidence.
+The shared firmware uses a 4 MB minimum flash layout. All v0.3.3 images shown in the installer are compile, link, partition, and merged-image verified. ESP32/WROOM v0.3.3 was written and hash-verified on `COM7`, then booted into its automatic setup AP. MQTT and BLE validation for this release remains pending because the saved office Wi-Fi was not reachable at the test location. The fuller ESP32/WROOM v0.3.2 proof and ESP32-C6 v0.3.0 `COM9` proof remain historical evidence.
 
 | Target | Typical module/board | Factory image | Validation |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,421,040 bytes | v0.3.2 COM7 flash, Unity, MQTT, and BLE enrollment verified |
-| `esp32c2` | ESP32-C2 | 1,440,224 bytes | v0.3.2 build verified |
-| `esp32c3` | ESP32-C3 | 1,629,280 bytes | v0.3.2 build verified |
-| `esp32c5` | ESP32-C5 | 1,774,400 bytes | v0.3.2 build verified |
-| `esp32c6` | ESP32-C6 | 1,774,416 bytes | v0.3.2 build verified; v0.3.0 hardware evidence remains historical |
-| `esp32c61` | ESP32-C61 | 1,717,552 bytes | v0.3.2 build verified |
-| `esp32s3` | ESP32-S3 | 1,402,928 bytes | v0.3.2 build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,425,616 bytes | v0.3.3 COM7 flash, boot, and automatic setup AP verified; MQTT/BLE pending |
+| `esp32c2` | ESP32-C2 | 1,445,488 bytes | v0.3.3 build verified |
+| `esp32c3` | ESP32-C3 | 1,634,528 bytes | v0.3.3 build verified |
+| `esp32c5` | ESP32-C5 | 1,779,664 bytes | v0.3.3 build verified |
+| `esp32c6` | ESP32-C6 | 1,779,680 bytes | v0.3.3 build verified; v0.3.0 hardware evidence remains historical |
+| `esp32c61` | ESP32-C61 | 1,722,800 bytes | v0.3.3 build verified |
+| `esp32s3` | ESP32-S3 | 1,407,600 bytes | v0.3.3 build verified |
 
 ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
@@ -24,7 +24,7 @@ ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has 
 
 ## Requirements
 
-- A supported Wi-Fi + BLE ESP32 board. ESP32-C6 on Windows `COM9` is the local hardware-validation reference.
+- A supported Wi-Fi + BLE ESP32 board. The current local hardware reference is an ESP32-D0WD-V3/WROOM-class board on Windows `COM7`; ESP32-C6 on `COM9` remains historical evidence.
 - ESP-IDF v6.0.2 with Bluedroid.
 - Python 3.11 or newer.
 - Python dependencies:

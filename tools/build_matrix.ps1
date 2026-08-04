@@ -20,6 +20,8 @@ param(
     ),
     [string]$IdfPath = $env:IDF_PATH,
     [string]$BuildRoot,
+    [ValidateRange(0, 64)]
+    [int]$Jobs = 0,
     [string]$Version = '0.3.3',
     [switch]$KeepGoing
 )
@@ -71,6 +73,20 @@ function Invoke-IdfCommand {
     & cmd.exe /d /s /c $Command
     if ($LASTEXITCODE -ne 0) {
         throw "idf.py failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-NinjaBuild {
+    param(
+        [Parameter(Mandatory)][string]$ExportBat,
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][int]$Jobs
+    )
+
+    $Command = "call $(ConvertTo-CmdArgument $ExportBat) && ninja.exe -C $(ConvertTo-CmdArgument $BuildDir) -j $Jobs all"
+    & cmd.exe /d /s /c $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "ninja failed with exit code $LASTEXITCODE"
     }
 }
 
@@ -136,12 +152,25 @@ try {
             if (Test-Path -LiteralPath $SdkconfigPath) {
                 Remove-Item -LiteralPath $SdkconfigPath
             }
-            Invoke-IdfCommand -ExportBat $ExportBat -Arguments @(
+            $ConfigureArguments = @(
                 "-B$BuildDir",
                 "-DIDF_TARGET=$Target",
-                "-DSDKCONFIG=$SdkconfigPath",
-                'build'
+                "-DSDKCONFIG=$SdkconfigPath"
             )
+            if ($Jobs -gt 0) {
+                Invoke-IdfCommand `
+                    -ExportBat $ExportBat `
+                    -Arguments ($ConfigureArguments + 'reconfigure')
+                Invoke-NinjaBuild `
+                    -ExportBat $ExportBat `
+                    -BuildDir $BuildDir `
+                    -Jobs $Jobs
+            }
+            else {
+                Invoke-IdfCommand `
+                    -ExportBat $ExportBat `
+                    -Arguments ($ConfigureArguments + 'build')
+            }
 
             $FlasherArgsPath = Join-Path $BuildDir 'flasher_args.json'
             if (-not (Test-Path -LiteralPath $FlasherArgsPath)) {
