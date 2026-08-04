@@ -316,10 +316,28 @@ def test_retained_wifi_state_update_is_bounded_and_secret_free():
 
     assert "mqtt_relay_wifi_status_t wifi_status" in source
     assert "mqtt_relay_update_wifi_status" in header
+    assert "mqtt_relay_runtime_status_t" in header
+    assert "mqtt_relay_update_ble_status" in header
+    assert "mqtt_relay_refresh_state" in header
     state_builder = source.split("esp_err_t mqtt_relay_build_state_payload", 1)[1].split(
         "static void mqtt_relay_lock", 1
     )[0]
-    for key in ("wifi_ssid", "wifi_ip", "wifi_rssi"):
+    for key in (
+        "ready",
+        "wifi_connected",
+        "mqtt_connected",
+        "ble_connected",
+        "ble_bonded",
+        "uptime_seconds",
+        "uptime",
+        "wifi_ssid",
+        "wifi_ip",
+        "wifi_rssi",
+        "manufacturer",
+        "model",
+        "sw_version",
+        "hw_version",
+    ):
         assert key in state_builder
     assert "password" not in state_builder
 
@@ -327,9 +345,15 @@ def test_retained_wifi_state_update_is_bounded_and_secret_free():
         "void mqtt_relay_set_wifi_connected", 1
     )[0]
     assert "s_ctx.wifi_status = *status" in updater
-    assert "mqtt_relay_build_state_payload" in updater
-    assert "mqtt_relay_publish_retained_once" in updater
+    assert "mqtt_relay_publish_state_snapshot" in updater
     assert "mqtt_relay_publish_raw" not in updater
     assert "mqtt_relay_publish_retained_status" not in updater
     assert "mqtt_password" not in updater
     assert "mqtt_ca" not in updater
+
+    ble_updater = source.split("esp_err_t mqtt_relay_update_ble_status", 1)[1].split(
+        "esp_err_t mqtt_relay_refresh_state", 1
+    )[0]
+    assert "s_ctx.ble_connected" in ble_updater
+    assert "s_ctx.ble_bonded" in ble_updater
+    assert "mqtt_relay_publish_state_snapshot" in ble_updater

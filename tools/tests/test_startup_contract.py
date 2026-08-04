@@ -254,6 +254,8 @@ def test_device_metadata_and_wifi_refresh_are_owned_by_the_coordinator():
     assert "wifi_status_timer_callback" in source
     assert "provisioning_runtime_get_wifi_snapshot" in source
     assert "mqtt_relay_update_wifi_status" in source
+    assert "mqtt_relay_update_ble_status" in source
+    assert "ancs_client_get_enrollment_status" in source
     assert "esp_app_get_description" in source
     assert "esp_chip_info" in source
     assert "ANCS_DEVICE_MODEL" in source
@@ -276,6 +278,12 @@ def test_device_metadata_and_wifi_refresh_are_owned_by_the_coordinator():
     )[0]
     assert "case APP_EVENT_WIFI_STATUS_REFRESH:" in coordinator
     assert "refresh_wifi_status()" in coordinator
+
+    bond_poll = source.split("static void handle_bond_poll", 1)[1].split(
+        "static void coordinator_task", 1
+    )[0]
+    assert "ancs_client_get_enrollment_status" in bond_poll
+    assert "mqtt_relay_update_ble_status" in bond_poll
 
 
 def test_wifi_refresh_timer_tracks_mqtt_lifecycle():
