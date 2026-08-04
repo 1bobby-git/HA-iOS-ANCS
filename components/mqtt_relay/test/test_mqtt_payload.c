@@ -3,6 +3,8 @@
 #include <stdio.h>
 
 #include "ancs_protocol.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mqtt_relay.h"
 #include "mqtt_relay_test.h"
 #include "platform_identity.h"
@@ -62,6 +64,14 @@ static int s_wifi_discovery_publish_calls;
 static int s_retained_failure_calls;
 static int s_publish_after_retained_failure_calls;
 static int s_wifi_discovery_success_calls;
+static volatile int s_serial_retained_publish_calls;
+static volatile bool s_serial_retained_publish_done;
+static char s_first_retained_topic[MQTT_RELAY_TOPIC_MAX];
+static char s_first_retained_payload[32];
+static char s_second_retained_topic[MQTT_RELAY_TOPIC_MAX];
+static int s_first_retained_qos;
+static int s_second_retained_qos;
+static int s_first_discovery_qos;
 
 static int capture_publish(const char *topic,
                            const char *payload,
@@ -73,6 +83,20 @@ static int capture_publish(const char *topic,
     (void)payload;
     (void)length;
     s_publish_calls++;
+    if (retain != 0 && s_publish_calls == 1) {
+        strlcpy(s_first_retained_topic, topic, sizeof(s_first_retained_topic));
+        strlcpy(s_first_retained_payload,
+                payload,
+                sizeof(s_first_retained_payload));
+        s_first_retained_qos = qos;
+    } else if (retain != 0 && s_publish_calls == 2) {
+        strlcpy(s_second_retained_topic, topic, sizeof(s_second_retained_topic));
+        s_second_retained_qos = qos;
+    }
+    if (strncmp(topic, "homeassistant/", 14) == 0 &&
+        s_first_discovery_qos < 0) {
+        s_first_discovery_qos = qos;
+    }
     s_last_qos = qos;
     s_last_retain = retain;
     if (strncmp(topic, "homeassistant/sensor/", 21) == 0) {
@@ -83,7 +107,11 @@ static int capture_publish(const char *topic,
         strstr(topic, "/wifi_rssi/config") != NULL) {
         s_wifi_discovery_publish_calls++;
     }
-    return s_next_msg_id++;
+    const int msg_id = s_next_msg_id++;
+    if (retain != 0) {
+        mqtt_relay_simulate_published_for_test(msg_id);
+    }
+    return msg_id;
 }
 
 static int capture_publish_with_wifi_outbox_failure(const char *topic,
@@ -95,7 +123,6 @@ static int capture_publish_with_wifi_outbox_failure(const char *topic,
     (void)payload;
     (void)length;
     (void)qos;
-    (void)retain;
     if (strstr(topic, "/wifi_ssid/config") != NULL) {
         s_retained_failure_calls++;
         return -1;
@@ -107,7 +134,34 @@ static int capture_publish_with_wifi_outbox_failure(const char *topic,
         strstr(topic, "/wifi_rssi/config") != NULL) {
         s_wifi_discovery_success_calls++;
     }
-    return s_next_msg_id++;
+    const int msg_id = s_next_msg_id++;
+    if (retain != 0) {
+        mqtt_relay_simulate_published_for_test(msg_id);
+    }
+    return msg_id;
+}
+
+static int capture_serial_retained_publish(const char *topic,
+                                           const char *payload,
+                                           int length,
+                                           int qos,
+                                           int retain)
+{
+    (void)topic;
+    (void)payload;
+    (void)length;
+    (void)qos;
+    (void)retain;
+    s_serial_retained_publish_calls++;
+    return s_serial_retained_publish_calls == 1 ? 701 : -1;
+}
+
+static void publish_retained_task(void *context)
+{
+    (void)context;
+    mqtt_relay_publish_retained_for_test();
+    s_serial_retained_publish_done = true;
+    vTaskDelete(NULL);
 }
 
 static void reset_relay_for_ownership_test(void)
@@ -125,6 +179,12 @@ static void reset_relay_for_ownership_test(void)
     s_retained_failure_calls = 0;
     s_publish_after_retained_failure_calls = 0;
     s_wifi_discovery_success_calls = 0;
+    s_first_retained_topic[0] = '\0';
+    s_first_retained_payload[0] = '\0';
+    s_second_retained_topic[0] = '\0';
+    s_first_retained_qos = -1;
+    s_second_retained_qos = -1;
+    s_first_discovery_qos = -1;
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_reset_for_test(&config, &device_info));
     mqtt_relay_set_publish_for_test(capture_publish);
     mqtt_relay_simulate_connected_for_test(true);
@@ -212,6 +272,8 @@ TEST_CASE("client config maps broker auth client id tls and retained lwt",
     TEST_ASSERT_EQUAL_STRING("offline", mqtt_config.session.last_will.msg);
     TEST_ASSERT_EQUAL(1, mqtt_config.session.last_will.qos);
     TEST_ASSERT_TRUE(mqtt_config.session.last_will.retain);
+    TEST_ASSERT_GREATER_OR_EQUAL(2048, mqtt_config.buffer.size);
+    TEST_ASSERT_GREATER_OR_EQUAL(2048, mqtt_config.buffer.out_size);
 
     config.mqtt_ca[0] = '\0';
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG,
@@ -381,8 +443,45 @@ TEST_CASE("retained status publishes last notification and every field discovery
                       s_discovery_publish_calls);
     TEST_ASSERT_EQUAL(mqtt_relay_wifi_discovery_field_count(),
                       s_wifi_discovery_publish_calls);
-    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_last_qos);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_DISCOVERY_QOS, s_last_qos);
     TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_RETAIN, s_last_retain);
+}
+
+TEST_CASE("availability and state publish before Home Assistant discovery",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+
+    mqtt_relay_publish_retained_for_test();
+
+    TEST_ASSERT_EQUAL_STRING("ios-ancs/2b20/availability",
+                             s_first_retained_topic);
+    TEST_ASSERT_EQUAL_STRING("online", s_first_retained_payload);
+    TEST_ASSERT_EQUAL_STRING("ios-ancs/2b20/state", s_second_retained_topic);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_first_retained_qos);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_RETAINED_QOS, s_second_retained_qos);
+    TEST_ASSERT_EQUAL(MQTT_RELAY_DISCOVERY_QOS, s_first_discovery_qos);
+}
+
+TEST_CASE("MQTT reconnect refreshes status without replaying discovery",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+
+    mqtt_relay_publish_retained_for_test();
+    TEST_ASSERT_GREATER_THAN(0, s_discovery_publish_calls);
+
+    mqtt_relay_simulate_disconnect_for_test();
+    mqtt_relay_simulate_connected_for_test(true);
+    s_publish_calls = 0;
+    s_discovery_publish_calls = 0;
+    s_wifi_discovery_publish_calls = 0;
+
+    mqtt_relay_publish_retained_for_test();
+
+    TEST_ASSERT_EQUAL(2, s_publish_calls);
+    TEST_ASSERT_EQUAL(0, s_discovery_publish_calls);
+    TEST_ASSERT_EQUAL(0, s_wifi_discovery_publish_calls);
 }
 
 TEST_CASE("wifi diagnostics create three retained Home Assistant sensors",
@@ -549,6 +648,32 @@ TEST_CASE("retained discovery aborts after one MQTT outbox failure",
     TEST_ASSERT_EQUAL(1, s_retained_failure_calls);
     TEST_ASSERT_EQUAL(0, s_publish_after_retained_failure_calls);
     TEST_ASSERT_EQUAL(0, s_wifi_discovery_success_calls);
+}
+
+TEST_CASE("retained status does not wait for PUBACK",
+          "[mqtt_relay]")
+{
+    reset_relay_for_ownership_test();
+    s_serial_retained_publish_calls = 0;
+    s_serial_retained_publish_done = false;
+    mqtt_relay_set_publish_for_test(capture_serial_retained_publish);
+
+    TEST_ASSERT_EQUAL(pdPASS,
+                      xTaskCreate(publish_retained_task,
+                                  "retained_test",
+                                  4096,
+                                  NULL,
+                                  5,
+                                  NULL));
+
+    for (int attempt = 0;
+         attempt < 100 && !s_serial_retained_publish_done;
+         ++attempt) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    TEST_ASSERT_EQUAL(2, s_serial_retained_publish_calls);
+    TEST_ASSERT_TRUE(s_serial_retained_publish_done);
 }
 
 TEST_CASE("observer enqueues only and PUBACK frees exactly once", "[mqtt_relay]")

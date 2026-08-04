@@ -23,6 +23,7 @@ def test_mqtt_component_uses_pointer_queue_capacity_and_qos_contracts():
     assert "MQTT_RELAY_NOTIFICATION_QOS" in source
     assert "MQTT_RELAY_NOTIFICATION_RETAIN" in source
     assert "MQTT_RELAY_RETAINED_QOS" in source
+    assert "#define MQTT_RELAY_RETAINED_QOS 0" in header
     assert "MQTT_RELAY_RETAINED_RETAIN" in source
     assert "mqtt_relay_worker" in source
     assert "mqtt_relay_register_event_callback" in header
@@ -135,6 +136,22 @@ def test_retained_status_uses_small_non_secret_snapshot_and_worker_rendezvous():
     assert "mqtt_relay_wait_worker_idle();" in source
     assert "mqtt_relay_stop_worker_for_teardown();" in source
     assert "s_ctx.worker_task = NULL" in source
+
+
+def test_runtime_state_and_notifications_never_block_on_socket_writes():
+    source = read("mqtt_relay.c")
+    drain = source.split("static void mqtt_relay_drain_queue", 1)[1].split(
+        "static void mqtt_relay_worker", 1
+    )[0]
+    assert "mqtt_relay_enqueue_raw" in drain
+    assert "mqtt_relay_publish_raw" not in drain
+
+    discovery = source.split("static bool mqtt_relay_publish_discovery_once", 1)[1].split(
+        "static void mqtt_relay_publish_retained_status", 1
+    )[0]
+    assert "#define MQTT_RELAY_DISCOVERY_SETTLE_MS 4000U" in source
+    assert "mqtt_relay_wait_outbox_empty" in discovery
+    assert "MQTT_RELAY_DISCOVERY_SETTLE_MS" in discovery
 
 
 def test_connected_event_defers_retained_discovery_to_the_worker():
@@ -291,7 +308,8 @@ def test_retained_wifi_state_update_is_bounded_and_secret_free():
     )[0]
     assert "s_ctx.wifi_status = *status" in updater
     assert "mqtt_relay_build_state_payload" in updater
-    assert "mqtt_relay_publish_raw" in updater
+    assert "mqtt_relay_publish_retained_once" in updater
+    assert "mqtt_relay_publish_raw" not in updater
     assert "mqtt_relay_publish_retained_status" not in updater
     assert "mqtt_password" not in updater
     assert "mqtt_ca" not in updater
