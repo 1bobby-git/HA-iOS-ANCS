@@ -150,13 +150,20 @@ def test_validation_report_records_non_self_referential_v033_release_integrity()
     report = read_text(ROOT / "docs" / "VALIDATION_REPORT.md")
 
     assert "## Release integrity v0.3.3" in report
+    assert "`release_tag: v0.3.3`" in report
+    assert "`release_name: iOS ANCS MQTT Bridge v0.3.3`" in report
+    assert "`release_title: iOS ANCS MQTT Bridge v0.3.3`" in report
+    assert "`checksum_asset_name: release-fingerprints-v0.3.3.sha256`" in report
     assert f"`docs/release-fingerprints-v{VERSION}.sha256`" in report
-    assert "immutable commit is verified from tag and GitHub release metadata" in report
+    assert "gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease" in report
+    assert "not hardcoded in this report" in report
     assert "python -m pytest tools/tests/test_release_integrity.py -q" in report
     assert "python -m pytest tools/tests -q" in report
-    assert "git rev-parse HEAD" not in report.split("## Release integrity v0.3.3", 1)[1].split("\n## ", 1)[0]
 
     section = report.split("## Release integrity v0.3.3", 1)[1].split("\n## ", 1)[0]
+    assert "git rev-parse HEAD" not in section
+    assert "targetCommitish:" not in section
+    assert "release_url:" not in section
     for _chip_family, _part_path, binary in release_builds():
         assert binary.relative_to(ROOT).as_posix() in section
 
