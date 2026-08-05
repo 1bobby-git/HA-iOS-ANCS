@@ -1,0 +1,19 @@
+{
+  "title": "HA iOS ANCS",
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter the MQTT base topic used by the HA iOS ANCS relay.",
+        "data": {
+          "base_topic": "Base MQTT topic"
+        }
+      }
+    },
+    "error": {
+      "invalid_base_topic": "Enter a valid MQTT topic without whitespace, wildcards, or empty path segments."
+    },
+    "abort": {
+      "already_configured": "This HA iOS ANCS MQTT topic is already configured."
+    }
+  }
+}
