@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -146,6 +147,45 @@ def test_runtime_repeated_start_is_idempotent_without_duplicate_subscriptions(ha
 
     assert len(subscriptions) == 2
     run(runtime.async_stop())
+
+
+def test_runtime_concurrent_starts_create_one_subscription_pair(hass: HomeAssistant, run) -> None:
+    subscriptions: list[tuple[str, Callable[[ReceiveMessage], None], int]] = []
+    unsubscribes = [Mock(), Mock()]
+
+    async def fake_wait_for_client(hass: HomeAssistant) -> bool:
+        await asyncio.sleep(0)
+        return True
+
+    async def fake_subscribe(
+        hass: HomeAssistant,
+        topic: str,
+        msg_callback: Callable[[ReceiveMessage], None],
+        qos: int = 0,
+        encoding: str | None = "utf-8",
+    ) -> Callable[[], None]:
+        await asyncio.sleep(0)
+        subscriptions.append((topic, msg_callback, qos))
+        return unsubscribes[len(subscriptions) - 1]
+
+    async def start_twice() -> AncsMqttRuntime:
+        runtime = AncsMqttRuntime(hass, "ios_ancs")
+        mqtt_api = SimpleNamespace(
+            async_wait_for_mqtt_client=fake_wait_for_client,
+            async_subscribe=fake_subscribe,
+        )
+        with patch("custom_components.ha_ios_ancs.runtime._get_mqtt_api", return_value=mqtt_api):
+            await asyncio.gather(runtime.async_start(), runtime.async_start())
+        return runtime
+
+    runtime = run(start_twice())
+
+    assert [(topic, qos) for topic, _, qos in subscriptions] == [
+        ("ios_ancs/notification", 1),
+        ("ios_ancs/availability", 1),
+    ]
+    run(runtime.async_stop())
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
 
 
 def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run) -> None:

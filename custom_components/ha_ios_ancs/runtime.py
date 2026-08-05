@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -35,6 +36,7 @@ class AncsMqttRuntime:
         self._notification_listeners: list[NotificationListener] = []
         self._availability_listeners: list[AvailabilityListener] = []
         self._unsubscribes: list[CALLBACK_TYPE] = []
+        self._start_lock = asyncio.Lock()
         self._available: bool | None = None
 
     @property
@@ -46,37 +48,38 @@ class AncsMqttRuntime:
     async def async_start(self) -> None:
         """Wait for MQTT and subscribe to notification and availability topics."""
 
-        if self._unsubscribes:
-            return
+        async with self._start_lock:
+            if self._unsubscribes:
+                return
 
-        mqtt_api = _get_mqtt_api()
-        if not await mqtt_api.async_wait_for_mqtt_client(self._hass):
-            raise ConfigEntryNotReady("MQTT client is not available")
+            mqtt_api = _get_mqtt_api()
+            if not await mqtt_api.async_wait_for_mqtt_client(self._hass):
+                raise ConfigEntryNotReady("MQTT client is not available")
 
-        unsubscribes: list[CALLBACK_TYPE] = []
-        try:
-            unsubscribes.append(
-                await mqtt_api.async_subscribe(
-                    self._hass,
-                    self._notification_topic,
-                    self._handle_notification,
-                    _QOS,
+            unsubscribes: list[CALLBACK_TYPE] = []
+            try:
+                unsubscribes.append(
+                    await mqtt_api.async_subscribe(
+                        self._hass,
+                        self._notification_topic,
+                        self._handle_notification,
+                        _QOS,
+                    )
                 )
-            )
-            unsubscribes.append(
-                await mqtt_api.async_subscribe(
-                    self._hass,
-                    self._availability_topic,
-                    self._handle_availability,
-                    _QOS,
+                unsubscribes.append(
+                    await mqtt_api.async_subscribe(
+                        self._hass,
+                        self._availability_topic,
+                        self._handle_availability,
+                        _QOS,
+                    )
                 )
-            )
-        except Exception:
-            for unsubscribe in unsubscribes:
-                unsubscribe()
-            raise
+            except Exception:
+                for unsubscribe in unsubscribes:
+                    unsubscribe()
+                raise
 
-        self._unsubscribes = unsubscribes
+            self._unsubscribes = unsubscribes
 
     async def async_stop(self) -> None:
         """Unsubscribe and clear listeners."""
