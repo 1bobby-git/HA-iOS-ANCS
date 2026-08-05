@@ -34,7 +34,7 @@ The project bridges iOS notifications into local Home Assistant automations thro
 
 `XXXXXX` is the last six hexadecimal digits of the base Wi-Fi MAC address. The SSID uses uppercase hex and the password uses the same suffix in lowercase. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number.
 
-Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment fallback. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
+Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
 ## Supported Boards And v0.3.3 Build Facts
 
@@ -71,7 +71,7 @@ Notification JSON preserves the original `app_id` and adds a friendly `app_name`
 ## Troubleshooting
 
 - If browser flashing fails, use desktop Chrome/Edge, verify the USB cable supports data, and check OS serial permissions. iPhone and iPad browsers cannot flash over USB.
-- If `IOS-ANCS-SETUP-XXXXXX` is missing, verify power and flashing, then hold BOOT for 3 seconds to try fallback.
+- If `IOS-ANCS-SETUP-XXXXXX` is missing, verify power and flashing, then hold BOOT for 3 seconds to open the recovery window.
 - If `http://192.168.4.1` does not open, confirm you are connected to the setup AP and temporarily disable VPN or mobile-data routing.
 - If MQTT does not connect, check host, port, TLS CA, username/password, broker ACLs, and duplicate Client IDs.
 - If the iPhone does not see the device, reopen the 120-second enrollment window with **iPhone 등록 시작** or BOOT for 3 seconds.
