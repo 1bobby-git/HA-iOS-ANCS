@@ -72,15 +72,10 @@ def read_json(relative_path: str) -> dict:
 
 def find_section_marker_position(text: str, marker: str) -> int:
     marker_re = re.escape(marker)
-    patterns = (
-        rf'\bid="{marker_re}(?:[-_][^"]*)?"',
-        rf'\bdata-step="{marker_re}(?:[-_][^"]*)?"',
-        rf'\bhref="#{marker_re}(?:[-_][^"]*)?"',
-    )
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match is not None:
-            return match.start()
+    pattern = rf'<section\b(?=[^>]*\bid="{marker_re}")[^>]*>'
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match is not None:
+        return match.start()
     return -1
 
 
