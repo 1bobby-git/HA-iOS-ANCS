@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -13,10 +13,14 @@ from homeassistant.components.mqtt.models import ReceiveMessage
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.discovery_flow import DiscoveryKey
 
 from custom_components.ha_ios_ancs import async_setup_entry, async_unload_entry
 from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN
 from custom_components.ha_ios_ancs.runtime import AncsMqttRuntime
+
+
+EMPTY_DISCOVERY_KEYS: MappingProxyType[str, tuple[DiscoveryKey, ...]] = MappingProxyType({})
 
 
 def notification_payload(**overrides: object) -> str:
@@ -308,7 +312,7 @@ def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run
         data={CONF_BASE_TOPIC: "ios_ancs"},
         source="user",
         unique_id="ios_ancs",
-        discovery_keys={},
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
         options={},
         subentries_data={},
     )
@@ -337,7 +341,7 @@ def test_setup_entry_raises_not_ready_when_mqtt_client_unavailable(hass: HomeAss
         data={CONF_BASE_TOPIC: "ios_ancs"},
         source="user",
         unique_id="ios_ancs",
-        discovery_keys={},
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
         options={},
         subentries_data={},
     )
