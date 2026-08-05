@@ -43,14 +43,13 @@
           <p class="eyebrow">ESP32 ANCS MQTT BRIDGE</p>
           <h1 id="hero-title">Home Assistant iOS ANCS Installer</h1>
           <p class="hero-lede">
-            ESP32 receives iPhone notifications via ANCS and sends them to Home Assistant via MQTT.
+            ESP32가 iPhone 알림을 ANCS로 받아 MQTT를 통해 Home Assistant에 전달하도록 펌웨어를 설치합니다.
           </p>
           <p class="hero-fact">
             Apple Notification Center Service (ANCS): 블루투스(BLE)를 통해 아이폰 등의 iOS 기기 알림을 스마트워치나 이어폰 같은 주변 기기로 전달해 주는 애플 규격 서비스입니다
           </p>
           <p class="hero-boundary">
-            웹 설치기는 ESP32 펌웨어를 설치합니다. 이 설치기는 ESP32 펌웨어를 플래시합니다.
-            HACS는 Home Assistant 동반 통합을 설치합니다. HACS는 Home Assistant companion integration만 설치하며 ESP32 펌웨어를 플래시하거나 업데이트하지 않습니다.
+            이 페이지는 ESP32 펌웨어 설치용입니다. HACS는 Home Assistant 동반 통합만 설치하며 ESP32 펌웨어를 설치하거나 업데이트하지 않습니다.
           </p>
           <a class="jump-link" href="#installer">
             보드 선택
@@ -261,7 +260,7 @@
             <p>
               플래시 후 <code>IOS-ANCS-SETUP-XXXXXX</code> Wi-Fi에 연결합니다.
               비밀번호는 <code>ancs-xxxxxx</code>입니다. <code>XXXXXX</code>는
-              base Wi-Fi MAC의 마지막 여섯 자리 hex이며, SSID에서는 대문자,
+              기본 Wi-Fi MAC 주소의 마지막 6자리 16진수이며, SSID에서는 대문자,
               비밀번호에서는 소문자를 사용합니다. 이 값은 모델 번호가 아닙니다.
             </p>
           </section>
@@ -292,9 +291,9 @@
             <h3 id="pair-title">iPhone 페어링</h3>
             <p>
               BOOT을 3초 누르거나 Home Assistant의 <strong>iPhone 등록 시작</strong>
-              버튼을 눌러 120초 enroll window를 엽니다. iOS Bluetooth 목록에서
+              버튼을 눌러 120초 등록 창을 엽니다. iOS Bluetooth 목록에서
               <code>IOS-ANCS-...</code> 장치를 선택하고 PIN <code>123456</code>을
-              입력한 뒤 notification sharing을 허용합니다.
+              입력한 뒤 알림 공유를 허용합니다.
             </p>
           </section>
 
@@ -302,7 +301,7 @@
             <p class="flow-index">06 / VERIFY</p>
             <h3 id="verify-title">알림 확인</h3>
             <p>
-              Home Assistant에서 latest notification과 app name이 갱신되는지
+              Home Assistant에서 최근 알림과 앱 이름이 갱신되는지
               확인합니다. 앱 이름 대응표는
               <a href="./APP_ID_REFERENCE.md">앱 ID 참고 문서</a>를 확인하세요.
             </p>
@@ -323,7 +322,7 @@
             </tr>
             <tr>
               <td>설정 AP가 보이지 않음</td>
-              <td>플래시 완료 후 재부팅을 기다리고, 필요하면 BOOT 3초 fallback을 사용합니다.</td>
+              <td>플래시 완료 후 재부팅을 기다리고, 필요하면 BOOT 버튼을 3초 눌러 복구 창을 엽니다.</td>
             </tr>
             <tr>
               <td>포털이 열리지 않음</td>
@@ -335,11 +334,11 @@
             </tr>
             <tr>
               <td>iPhone이 보이지 않음</td>
-              <td>120초 enroll window와 iOS Bluetooth 권한을 확인합니다.</td>
+              <td>120초 등록 창과 iOS Bluetooth 권한을 확인합니다.</td>
             </tr>
             <tr>
               <td>알림이 비어 있음</td>
-              <td>notification sharing 허용, iOS 알림 설정, MQTT payload를 확인합니다.</td>
+              <td>알림 공유 허용, iOS 알림 설정, MQTT payload를 확인합니다.</td>
             </tr>
           </tbody>
         </table>
