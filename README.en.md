@@ -50,7 +50,7 @@ The shared firmware uses a 4 MB minimum flash layout. All v0.3.3 images shown in
 | `esp32c61` | ESP32-C61 | 1,722,800 bytes | Build verified |
 | `esp32s3` | ESP32-S3 | 1,407,600 bytes | Build verified |
 
-See [Validation Report](docs/VALIDATION_REPORT.md) for detailed validation boundaries and historical hardware evidence. Build verification, flashing, BLE enrollment, and live iPhone notification capture are separate evidence types.
+The table describes the published v0.3.3 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
 ## Home Assistant And HACS
 

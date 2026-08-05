@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This guide lists generic symptoms and actions. Historical validation evidence stays in [Validation Report](VALIDATION_REPORT.md).
+This guide lists generic symptoms and actions for supported boards.
 
 ## Browser Flashing Fails
 

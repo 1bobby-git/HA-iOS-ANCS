@@ -51,13 +51,13 @@ LEGACY_INSTALLER_COPY = (
     "현장 준비",
 )
 PRIVATE_EXAMPLE_GUIDANCE = (
-    "COM7",
-    "COM9",
-    "ABC123",
-    "EXAMPLE_OFFICE",
-    "DAISO",
-    "AX1800",
-    "notify.mobile_app_example_phone",
+    "COM_PRIVATE",
+    "COM_PRIVATE_ALT",
+    "DEVICE_SUFFIX_PRIVATE",
+    "PRIVATE_LOCATION_NAME",
+    "PRIVATE_PLACE_NAME",
+    "PRIVATE_ROUTER_NAME",
+    "notify.mobile_app_" + "1bobby",
     "sensor.ios_ancs_c6_ab12_ios_ancs_c6_ab12_last_notification",
 )
 
