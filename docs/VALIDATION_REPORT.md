@@ -11,6 +11,12 @@ and the Pages deployment both passed for release candidate commit
 keeps its original version and device boundaries; publication does not upgrade
 older hardware evidence to the current firmware or companion integration.
 
+Repository tree note: the default branch publishes only the seven current
+v0.3.3 factory images referenced by the installer manifests. Unreferenced
+v0.2.0 through v0.3.2 binary copies were removed from the default branch on
+2026-08-05; their version-scoped hashes and historical validation observations
+remain in this report and in Git history.
+
 ## Release integrity v0.3.3
 
 - Release identity fields:
@@ -128,7 +134,8 @@ older hardware evidence to the current firmware or companion integration.
   `-61 dBm` with HID service UUID `00001812-0000-1000-8000-00805f9b34fb`.
 - ESP-IDF v6.0.2 completed compile, link, partition-size validation, and merged
   factory-image generation for all seven supported targets. SHA-256 values
-  below were recalculated from the checked-in v0.3.2 files.
+  below were recalculated while the v0.3.2 files were checked in; those
+  binaries are now retained only in Git history.
 - The original office 2.4 GHz SSID remained marginal at the test location, so
   reliable standalone operation still requires moving the device or providing
   a stronger 2.4 GHz signal. The temporary hotspot was stopped, the original
@@ -166,7 +173,8 @@ older hardware evidence to the current firmware or companion integration.
   transient queue failure up to five times.
 - ESP-IDF v6.0.2 completed compile, link, partition-size validation, and merged
   factory-image generation for all seven supported targets. SHA-256 values
-  below were recalculated from the checked-in v0.3.1 files.
+  below were recalculated while the v0.3.1 files were checked in; those
+  binaries are now retained only in Git history.
 - `python -m pytest tools/tests -q` reports `112 passed`. The ESP-IDF Unity test
   image ran on the attached ESP32-D0WD-V3 and reported `77 Tests 0 Failures 0
   Ignored` before the production image was restored.

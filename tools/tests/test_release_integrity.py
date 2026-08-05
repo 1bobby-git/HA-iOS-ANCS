@@ -118,6 +118,29 @@ def test_every_manifest_part_resolves_to_committed_versioned_binary():
             assert binary.stat().st_size > 0
 
 
+def test_firmware_tree_contains_only_the_current_publishable_images():
+    tracked = set(
+        subprocess_output("git", "ls-files", "docs/firmware").splitlines()
+    )
+    expected = {
+        binary.relative_to(ROOT).as_posix()
+        for _chip_family, _part_path, binary in release_builds()
+    }
+
+    assert tracked == expected
+
+
+def test_public_docs_tree_excludes_internal_plans_and_superseded_vendor_bundle():
+    tracked = set(subprocess_output("git", "ls-files", "docs").splitlines())
+
+    assert not any(path.startswith("docs/superpowers/") for path in tracked)
+    assert not any(path.startswith("docs/plans/") for path in tracked)
+    assert not any(
+        path.startswith("docs/vendor/esp-web-tools-10.4.0/")
+        for path in tracked
+    )
+
+
 def test_installer_advertised_sha256_prefixes_match_factory_binaries():
     app_js = read_text(ROOT / "docs" / "app.js")
     report = read_text(ROOT / "docs" / "VALIDATION_REPORT.md")
