@@ -60,7 +60,7 @@ def test_v033_version_anchors_are_on_release_surfaces():
         "tools/build_matrix.ps1": "[string]$Version = '0.3.3'",
         "docs/manifests/ios-ancs.json": '"version": "0.3.3"',
         "docs/manifests/esp32-c6.json": '"version": "0.3.3"',
-        "README.md": "All v0.3.3 images shown in the installer",
+        "README.en.md": "All v0.3.3 images shown in the installer",
         "docs/index.html": '<dd id="hero-version">v0.3.3</dd>',
         "docs/app.js": 'validation: "v0.3.3',
     }
@@ -165,7 +165,7 @@ def test_validation_report_records_non_self_referential_v033_release_integrity()
     assert f"`docs/release-fingerprints-v{VERSION}.sha256`" in report
     assert "Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists" in report
     assert "Before publishing the checksum asset or declaring release integrity complete" in report
-    assert "gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease" in report
+    assert "gh release view v0.3.3 --repo 1bobby-git/HA-iOS-ANCS --json tagName,name,url,targetCommitish,isDraft,isPrerelease" in report
     assert "intentionally not hardcoded in this report" in report
     assert "python -m pytest tools/tests/test_release_integrity.py -q" in report
     assert "python -m pytest tools/tests -q" in report
