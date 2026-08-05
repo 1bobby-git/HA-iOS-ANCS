@@ -51,7 +51,7 @@ def test_ios_ancs_c6_relay_has_required_safe_notification_contract():
 
     forbidden_fragments = (
         "ios_ancs_c6_relay_to_1bobby",
-        "notify.mobile_app_1bobby",
+        "notify.mobile_app_" + "1bobby",
         "sensor.ios_ancs_c6_2b20_ios_ancs_c6_2b20_last_notification",
         "rest_command",
         "webhook",

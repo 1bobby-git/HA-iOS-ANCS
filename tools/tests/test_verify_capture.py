@@ -166,14 +166,14 @@ def test_serial_control_lines_are_inactive_before_port_open():
 
     result = _open_serial_connection(
         FakeSerialModule,
-        port="COM9",
+        port="TEST_PORT",
         baud=115200,
         timeout=0.25,
     )
 
     assert result is connection
     assert connection.open_snapshot == {
-        "port": "COM9",
+        "port": "TEST_PORT",
         "baudrate": 115200,
         "timeout": 0.25,
         "dtr": False,

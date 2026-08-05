@@ -74,7 +74,7 @@ def render_portal_ble_status(system_overrides):
             "sta_started": False,
             "sta_connecting": False,
             "sta_has_ip": False,
-            "ap_ssid": "IOS-ANCS-SETUP-572B20",
+            "ap_ssid": "IOS-ANCS-SETUP-A1B2C3",
         },
         "system": {
             "mqtt_connected": False,
@@ -207,7 +207,7 @@ def test_task6_wifi_runtime_source_contracts():
     assert "s_ap_password" in runtime
     assert "esp_read_mac(mac, ESP_MAC_WIFI_STA)" in runtime
     assert "ESP_RETURN_ON_ERROR(make_ap_identity()" in runtime
-    assert "ANCS-572B20" not in runtime
+    assert "ANCS-A1B2C3" not in runtime
     assert "xTaskCreate(wifi_timeout_task" in runtime
     assert "s_wifi_handler_instance" in runtime
     assert "s_ip_handler_instance" in runtime
@@ -631,7 +631,7 @@ def test_portal_renders_ble_status_for_all_runtime_states():
 def test_portal_enrollment_guidance_names_the_exact_iphone_bluetooth_entry():
     rendered = render_portal_ble_status({"enroll_window_open": True})
 
-    assert "IOS-ANCS-C6-2B20" in rendered["guidance"]
+    assert "IOS-ANCS-C6-B2C3" in rendered["guidance"]
     assert "Bluetooth 설정" in rendered["guidance"]
 
 
@@ -645,7 +645,7 @@ def test_portal_applies_recommended_identifiers_from_device_suffix():
                 "sta_started": False,
                 "sta_connecting": False,
                 "sta_has_ip": False,
-                "ap_ssid": "IOS-ANCS-SETUP-572B20",
+                "ap_ssid": "IOS-ANCS-SETUP-A1B2C3",
             },
             "system": {
                 "mqtt_connected": False,
@@ -659,8 +659,8 @@ def test_portal_applies_recommended_identifiers_from_device_suffix():
     )
 
     assert rendered == {
-        "clientId": "ios_ancs_c6_2b20",
-        "baseTopic": "ios-ancs/c6-2b20",
+        "clientId": "ios_ancs_c6_b2c3",
+        "baseTopic": "ios-ancs/c6-b2c3",
     }
 
 
@@ -672,7 +672,7 @@ def test_portal_preserves_existing_custom_identifiers():
                 "mqtt_client_id": "livingroom_ancs",
                 "mqtt_base_topic": "home/livingroom/ancs",
             },
-            "runtime": {"ap_ssid": "IOS-ANCS-SETUP-572B20"},
+            "runtime": {"ap_ssid": "IOS-ANCS-SETUP-A1B2C3"},
             "system": {},
         }
     )

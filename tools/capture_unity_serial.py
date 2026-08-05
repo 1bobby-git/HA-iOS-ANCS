@@ -16,7 +16,7 @@ def main() -> int:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", default="COM9")
+    parser.add_argument("--port", required=True)
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=180.0)
     args = parser.parse_args()

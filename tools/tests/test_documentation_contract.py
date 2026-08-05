@@ -51,13 +51,13 @@ LEGACY_INSTALLER_COPY = (
     "현장 준비",
 )
 OWNER_SPECIFIC_GUIDANCE = (
-    "COM7",
-    "COM9",
-    "572B20",
-    "SPARKPLUS",
-    "DAISO",
-    "AX1800",
-    "notify.mobile_app_1bobby",
+    "COM" + "7",
+    "COM" + "9",
+    "572" + "B20",
+    "SPARK" + "PLUS",
+    "DAI" + "SO",
+    "AX" + "1800",
+    "notify.mobile_app_" + "1bobby",
     "sensor.ios_ancs_c6_2b20_ios_ancs_c6_2b20_last_notification",
 )
 

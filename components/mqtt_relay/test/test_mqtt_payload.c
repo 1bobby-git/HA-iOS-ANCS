@@ -579,7 +579,7 @@ TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")
             .rssi = -61,
         },
     };
-    strcpy(runtime.wifi.ssid, "EDENARI");
+    strcpy(runtime.wifi.ssid, "ExampleWiFi");
     strcpy(runtime.wifi.ip, "192.168.1.42");
     mqtt_relay_device_info_t device_info = valid_device_info();
     char payload[1024];
@@ -600,7 +600,7 @@ TEST_CASE("state payload reports counters without secrets", "[mqtt_relay]")
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"uptime\":\"1시간 2분 3초\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"accepted\":2"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"published_ack\":1"));
-    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"EDENARI\""));
+    TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ssid\":\"ExampleWiFi\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_ip\":\"192.168.1.42\""));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"wifi_rssi\":-61"));
     TEST_ASSERT_NOT_NULL(strstr(payload, "\"model\":\"ESP32-C6\""));
@@ -638,7 +638,7 @@ TEST_CASE("live Wi-Fi status update republishes only retained state", "[mqtt_rel
         .connected = true,
         .rssi = -55,
     };
-    strcpy(wifi_status.ssid, "EDENARI");
+    strcpy(wifi_status.ssid, "ExampleWiFi");
     strcpy(wifi_status.ip, "192.168.1.43");
 
     TEST_ASSERT_EQUAL(ESP_OK, mqtt_relay_update_wifi_status(&wifi_status));

@@ -58,7 +58,7 @@ Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 버튼을 3초 눌�
 | `esp32c61` | ESP32-C61 | 1,722,800 bytes | 빌드 검증 |
 | `esp32s3` | ESP32-S3 | 1,407,600 bytes | 빌드 검증 |
 
-상세 검증 범위와 과거 하드웨어 증거는 [Validation Report](docs/VALIDATION_REPORT.md)를 기준으로 확인하세요. 빌드 검증, 플래시 검증, BLE 등록, 실제 iPhone 알림 캡처는 서로 다른 증거입니다.
+표의 상태는 공개된 v0.3.3 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
 
 ## Home Assistant와 HACS
 
