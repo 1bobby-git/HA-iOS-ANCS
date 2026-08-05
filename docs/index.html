@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#0b0d0c">
     <meta
       name="description"
-      content="HA-iOS-ANCS ESP32 브라우저 설치기. ESP32 펌웨어 설치, Wi-Fi/MQTT 설정, iPhone ANCS 등록, Home Assistant 연결 절차를 안내합니다."
+      content="Home Assistant iOS ANCS Installer는 ESP32 펌웨어를 브라우저에서 플래시하고 Wi-Fi, MQTT, iPhone ANCS 페어링 절차를 안내합니다."
     >
-    <title>ANCS Flash Station</title>
+    <title>Home Assistant iOS ANCS Installer</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./styles.css">
     <script
@@ -21,36 +21,39 @@
     <a class="skip-link" href="#installer">설치 영역으로 건너뛰기</a>
 
     <header class="site-header">
-      <a class="wordmark" href="./" aria-label="ANCS Flash Station 홈">
-        <span class="wordmark-mark" aria-hidden="true">A//</span>
-        <span>ANCS FLASH STATION</span>
+      <a
+        class="wordmark"
+        href="./"
+        aria-label="Home Assistant iOS ANCS Installer"
+      >
+        <span class="wordmark-mark" aria-hidden="true">HA</span>
+        <span>Home Assistant iOS ANCS Installer</span>
       </a>
       <nav class="header-links" aria-label="주요 링크">
-        <span class="release-chip"><i></i> MULTI TARGET</span>
-        <a href="https://github.com/1bobby-git/HA-iOS-ANCS">SOURCE ↗</a>
-        <a href="https://1bobby-git.github.io/HA-iOS-ANCS/">PAGES ↗</a>
+        <span class="release-chip"><i></i> v0.3.3</span>
+        <a href="https://github.com/1bobby-git/HA-iOS-ANCS">GitHub</a>
+        <a href="https://1bobby-git.github.io/HA-iOS-ANCS/">Pages</a>
+        <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration">HACS My</a>
       </nav>
     </header>
 
     <main>
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">BROWSER-BASED ESP FIRMWARE DEPOT · 002</p>
-          <h1 id="hero-title">
-            모델을 고르고<br>
-            <span>현장에서 설치합니다.</span>
-          </h1>
+          <p class="eyebrow">ESP32 ANCS MQTT BRIDGE</p>
+          <h1 id="hero-title">Home Assistant iOS ANCS Installer</h1>
           <p class="hero-lede">
-            HA-iOS-ANCS는 iPhone 알림을 BLE ANCS로 받고 MQTT로 전달하는 ESP32
-            펌웨어와 선택형 Home Assistant 동반 통합입니다. 웹 설치기는 ESP32 펌웨어를 설치합니다.
-            HACS는 Home Assistant 동반 통합을 설치합니다.
-            <span class="ancs-definition">
-              <strong>Apple Notification Center Service (ANCS)</strong>는 블루투스(BLE)를 통해 아이폰 등의 iOS 기기 알림을
-              스마트워치나 이어폰 같은 주변 기기로 전달해 주는 애플 규격 서비스입니다.
-            </span>
+            ESP32 receives iPhone notifications via ANCS and sends them to Home Assistant via MQTT.
+          </p>
+          <p class="hero-fact">
+            Apple Notification Center Service (ANCS): 블루투스(BLE)를 통해 아이폰 등의 iOS 기기 알림을 스마트워치나 이어폰 같은 주변 기기로 전달해 주는 애플 규격 서비스입니다
+          </p>
+          <p class="hero-boundary">
+            웹 설치기는 ESP32 펌웨어를 설치합니다. 이 설치기는 ESP32 펌웨어를 플래시합니다.
+            HACS는 Home Assistant 동반 통합을 설치합니다. HACS는 Home Assistant companion integration만 설치하며 ESP32 펌웨어를 플래시하거나 업데이트하지 않습니다.
           </p>
           <a class="jump-link" href="#installer">
-            설치 모델 선택
+            보드 선택
             <span aria-hidden="true">→</span>
           </a>
         </div>
@@ -92,12 +95,12 @@
         <div class="runtime-item">
           <span class="status-lamp" id="secure-lamp"></span>
           <span>SECURE CONTEXT</span>
-          <strong id="secure-status">검사 중</strong>
+          <strong id="secure-status">확인 중</strong>
         </div>
         <div class="runtime-item">
           <span class="status-lamp" id="serial-lamp"></span>
           <span>WEB SERIAL</span>
-          <strong id="serial-status">검사 중</strong>
+          <strong id="serial-status">확인 중</strong>
         </div>
         <div class="runtime-item">
           <span class="status-lamp ready"></span>
@@ -110,17 +113,17 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">UNIFIED INSTALLER</p>
-            <h2 id="installer-title">ESP 모델 선택</h2>
+            <h2 id="installer-title">ESP32 보드 선택</h2>
           </div>
           <p>
-            모델 선택은 현장 안내 문구를 바꾸고, 실제 펌웨어 이미지는 ESP Web
-            Tools가 연결된 칩과 통합 manifest로 다시 확인합니다.
+            WROOM-32는 유효한 ESP32 하드웨어 계열입니다. 보드 각인이나 구매 기록의
+            칩 계열과 같은 항목을 선택하세요.
           </p>
         </div>
 
         <div class="installer-console">
           <div class="target-picker">
-            <label for="board-select">ESP 모델</label>
+            <label for="board-select">ESP32 계열</label>
             <div class="select-shell">
               <select id="board-select" name="board">
                 <option value="esp32">ESP32 / WROOM-32</option>
@@ -134,8 +137,8 @@
               <span aria-hidden="true">⌄</span>
             </div>
             <p class="field-help">
-              보드 실크, 모듈 각인, 구매 내역에서 ESP32 모델명을 확인한 뒤 같은
-              모델을 선택하세요.
+              선택은 안내 표시를 바꾸며, 실제 이미지는 ESP Web Tools가 연결된 칩과
+              통합 manifest를 기준으로 선택합니다.
             </p>
 
             <dl class="target-facts">
@@ -149,11 +152,11 @@
               </div>
               <div>
                 <dt>VALIDATION</dt>
-                <dd id="target-validation">v0.3.3 firmware build verified · COM7 write verified</dd>
+                <dd id="target-validation">v0.3.3 build verified</dd>
               </div>
               <div>
                 <dt>IMAGE</dt>
-                <dd id="target-image">4 MB 통합 이미지</dd>
+                <dd id="target-image">4 MB factory image</dd>
               </div>
             </dl>
           </div>
@@ -167,14 +170,13 @@
               <span class="verified-badge" id="selected-status">BUILD VERIFIED</span>
             </div>
             <p id="selected-description">
-              ESP32-WROOM-32와 WROOM-D32 계열을 위한 Xtensa 듀얼 코어 ANCS-to-MQTT 빌드입니다.
+              ESP32/WROOM-32 계열용 v0.3.3 ANCS-to-MQTT factory build입니다.
             </p>
 
             <div class="action-warning" role="note">
-              <strong>설치 전 제한</strong>
+              <strong>브라우저 요구 사항</strong>
               <span>
                 데스크톱 Chrome 또는 Edge와 데이터 전송 USB 케이블이 필요합니다.
-                iPhone/iPad 브라우저는 Web Serial USB 플래시를 지원하지 않습니다.
                 충전 전용 케이블은 직렬 포트를 표시하지 않습니다.
               </span>
             </div>
@@ -182,7 +184,7 @@
             <div class="action-warning danger" role="note">
               <strong>전체 지우기 주의</strong>
               <span>
-                ESP Web Tools에서 full erase를 선택하면 저장된 Wi-Fi, MQTT, BLE bond가 모두 제거됩니다.
+                ESP Web Tools에서 full erase를 선택하면 저장된 Wi-Fi, MQTT, BLE bond가 모두 삭제됩니다.
               </span>
             </div>
 
@@ -196,11 +198,11 @@
 
             <esp-web-install-button manifest="./manifests/ios-ancs.json">
               <button class="install-button" slot="activate" type="button">
-                USB 장치 자동 감지 후 설치
+                USB 장치 감지 및 설치
                 <span aria-hidden="true">→</span>
               </button>
               <span class="installer-message" slot="unsupported">
-                이 브라우저는 USB 설치를 지원하지 않습니다. iPhone/iPad 브라우저는 Web Serial USB 플래시를 지원하지 않습니다. Windows Chrome 또는 Edge를 사용하세요.
+                이 브라우저는 USB 설치를 지원하지 않습니다. 데스크톱 Chrome 또는 Edge를 사용하세요.
               </span>
               <span class="installer-message" slot="not-allowed">
                 USB 설치는 HTTPS 또는 localhost에서만 실행할 수 있습니다.
@@ -217,147 +219,150 @@
         <div class="scope-note">
           <span aria-hidden="true">i</span>
           <p>
-            ESP32-S2는 BLE가 없고 ESP32-H2는 Wi-Fi가 없어 이 ANCS-to-MQTT 펌웨어 대상에서 제외됩니다.
-            통합 manifest는 지원되는 일곱 타깃의 순서와 해시 검증 정보를 보존합니다.
+            지원 대상: ESP32/WROOM-32, ESP32-C2, ESP32-C3, ESP32-C5, ESP32-C6,
+            ESP32-C61, ESP32-S3. ESP32-S2는 BLE가 없고 ESP32-H2는 Wi-Fi가 없어
+            이 ANCS-to-MQTT 대상에서 제외됩니다.
           </p>
         </div>
       </section>
 
-      <section class="procedure-section" aria-labelledby="procedure-title">
+      <section class="procedure-section" aria-labelledby="steps-title">
         <div class="procedure-copy">
-          <p class="eyebrow">FIELD PROCEDURE</p>
-          <h2 id="procedure-title">설치 후 바로 검증합니다.</h2>
+          <p class="eyebrow">SETUP STEPS</p>
+          <h2 id="steps-title">설치 후 연결 절차</h2>
           <p>
-            절차는 준비, USB 플래시, 설정 AP 프로비저닝, Home Assistant 연결,
-            iPhone ANCS 등록, 증상별 복구 순서로 진행합니다. MQTT Discovery는
-            HACS 없이 동작하고, HACS는 ESP32를 플래시하지 않습니다.
+            플래시, 설정 AP, Wi-Fi/MQTT 저장, Home Assistant Discovery, iPhone
+            페어링, 알림 확인 순서로 진행합니다.
           </p>
           <aside class="compatibility-note">
             <span aria-hidden="true">!</span>
             <div>
-              <strong>데이터 전송이 되는 USB 케이블이 필요합니다.</strong>
-              데스크톱 Chrome 또는 Edge에서만 Web Serial USB 플래시가 가능합니다.
-              iPhone/iPad 브라우저는 Web Serial USB 플래시를 지원하지 않습니다.
+              <strong>HACS 경계</strong>
+              HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어 플래시와
+              업데이트는 이 브라우저 설치기 또는 소스 빌드 절차에서 수행합니다.
             </div>
           </aside>
         </div>
 
-        <div class="guided-grid" role="group" aria-label="설치 절차">
-          <section class="flow-section" id="prepare" aria-labelledby="prepare-title">
-            <p class="flow-index">01 / PREPARE</p>
-            <h3 id="prepare-title">현장 준비</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p>지원 보드, 데스크톱 Chrome 또는 Edge, USB 데이터 케이블, Wi-Fi, MQTT broker, iPhone, Home Assistant를 준비합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>이 페이지의 SECURE CONTEXT와 WEB SERIAL 상태가 준비 또는 브라우저 요구 사항을 명확히 표시합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>HTTPS Pages URL <a href="https://1bobby-git.github.io/HA-iOS-ANCS/">https://1bobby-git.github.io/HA-iOS-ANCS/</a>을 열고 Chrome 또는 Edge로 다시 시도합니다.</p>
-            </div>
+        <div class="guided-grid" aria-label="설치 단계">
+          <section class="flow-section" id="flash" aria-labelledby="flash-title">
+            <p class="flow-index">01 / FLASH</p>
+            <h3 id="flash-title">펌웨어 플래시</h3>
+            <p>
+              데스크톱 Chrome 또는 Edge에서 데이터 USB 케이블로 ESP32를 연결하고
+              보드 계열을 선택한 뒤 설치 버튼을 누릅니다. full erase는 Wi-Fi,
+              MQTT, BLE bond를 모두 지우는 경우에만 선택합니다.
+            </p>
           </section>
 
-          <section class="flow-section" id="flash" aria-labelledby="flash-title">
-            <p class="flow-index">02 / FLASH</p>
-            <h3 id="flash-title">보드 선택과 USB 플래시</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p>ESP 모델을 선택하고 USB로 연결한 뒤 설치 버튼을 누릅니다. 전체 지우기는 Wi-Fi, MQTT, BLE bond를 제거한다는 점을 확인한 경우에만 선택합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>ESP Web Tools가 연결 칩을 감지하고 쓰기 완료를 표시합니다. 재부팅 후 설정 AP가 열릴 준비가 됩니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>BOOT 버튼을 누른 상태로 설치를 다시 시작하거나, 다른 USB 포트와 데이터 케이블로 포트 감지를 확인합니다.</p>
-            </div>
+          <section class="flow-section" id="setup-ap" aria-labelledby="setup-ap-title">
+            <p class="flow-index">02 / SETUP AP</p>
+            <h3 id="setup-ap-title">설정 AP 접속</h3>
+            <p>
+              플래시 후 <code>IOS-ANCS-SETUP-XXXXXX</code> Wi-Fi에 연결합니다.
+              비밀번호는 <code>ancs-xxxxxx</code>입니다. <code>XXXXXX</code>는
+              base Wi-Fi MAC의 마지막 여섯 자리 hex이며, SSID에서는 대문자,
+              비밀번호에서는 소문자를 사용합니다. 이 값은 모델 번호가 아닙니다.
+            </p>
           </section>
 
           <section class="flow-section" id="provision" aria-labelledby="provision-title">
             <p class="flow-index">03 / PROVISION</p>
-            <h3 id="provision-title">설정 AP와 MQTT</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p><code>IOS-ANCS-SETUP-XXXXXX</code> AP에 연결하고 <code>192.168.4.1</code>을 열어 Wi-Fi와 MQTT broker 정보를 저장합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>보드가 사용자 Wi-Fi로 재접속하고 MQTT birth 또는 상태 토픽이 broker에 나타납니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>SSID, 비밀번호, MQTT host, port, 사용자 정보를 다시 입력하고 broker 로그에서 연결 거부 사유를 확인합니다.</p>
-            </div>
+            <h3 id="provision-title">Wi-Fi와 MQTT 저장</h3>
+            <p>
+              브라우저에서 <code>http://192.168.4.1</code>을 열고 Wi-Fi와 MQTT
+              broker 정보를 저장합니다. 이 포털은 Home Assistant 설정을 저장하지
+              않고 ESP32의 네트워크 및 MQTT 접속 정보만 저장합니다.
+            </p>
           </section>
 
           <section class="flow-section" id="home-assistant" aria-labelledby="home-assistant-title">
             <p class="flow-index">04 / HOME ASSISTANT</p>
-            <h3 id="home-assistant-title">MQTT Discovery와 HACS 동반 통합</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p>Home Assistant MQTT 통합과 Discovery를 켭니다. 필요하면 HACS 사용자 저장소로 <a href="https://github.com/1bobby-git/HA-iOS-ANCS">https://github.com/1bobby-git/HA-iOS-ANCS</a>를 추가합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>MQTT Discovery 엔티티가 나타나고 첫 알림 검증 자동화가 한 번만 실행됩니다. MQTT Discovery는 HACS 없이 동작합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>HACS는 ESP32를 플래시하지 않습니다. 펌웨어 문제는 이 설치기와 MQTT 로그에서, HA 동반 통합 문제는 HACS와 Home Assistant 로그에서 분리해 확인합니다.</p>
-            </div>
+            <h3 id="home-assistant-title">MQTT Discovery 확인</h3>
+            <p>
+              ESP32가 broker에 연결되면 MQTT Discovery가 Home Assistant 장치와
+              <strong>iPhone 등록 시작</strong> 버튼을 생성합니다. HACS 동반 통합은
+              <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration">HACS My 링크</a>로
+              추가할 수 있지만 펌웨어를 플래시하지 않습니다.
+            </p>
           </section>
 
           <section class="flow-section" id="pair" aria-labelledby="pair-title">
             <p class="flow-index">05 / PAIR</p>
-            <h3 id="pair-title">iPhone 등록</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p>BOOT 3초 누르기는 모든 보드에서 enrollment 창을 여는 공통 방법입니다. Home Assistant 등록 버튼은 MQTT Discovery가 control entity를 만든 뒤에만 나타납니다. enrollment 창이 열리면 iPhone에서 Bluetooth 페어링을 승인합니다. PIN은 <code>123456</code>입니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>iPhone Bluetooth 목록에 장치가 유지되고 알림 공유가 허용됩니다. 첫 iOS 알림이 MQTT payload로 전달됩니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>iPhone의 기존 Bluetooth 기록을 삭제하고 enrollment 창을 다시 연 뒤, 알림 미리보기와 Bluetooth 공유 권한을 확인합니다.</p>
-            </div>
+            <h3 id="pair-title">iPhone 페어링</h3>
+            <p>
+              BOOT을 3초 누르거나 Home Assistant의 <strong>iPhone 등록 시작</strong>
+              버튼을 눌러 120초 enroll window를 엽니다. iOS Bluetooth 목록에서
+              <code>IOS-ANCS-...</code> 장치를 선택하고 PIN <code>123456</code>을
+              입력한 뒤 notification sharing을 허용합니다.
+            </p>
           </section>
 
-          <section class="flow-section" id="troubleshooting" aria-labelledby="troubleshooting-title">
-            <p class="flow-index">06 / TROUBLESHOOTING</p>
-            <h3 id="troubleshooting-title">증상별 복구</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p>포트가 안 보이면 케이블과 브라우저를 바꾸고, AP가 안 보이면 재부팅 후 BOOT 흐름을 확인합니다. 알림이 없으면 iPhone 공유 권한, MQTT topic, HA 자동화를 순서대로 확인합니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>보드 상태, MQTT payload, Home Assistant 엔티티, 첫 알림 전달 중 어느 지점에서 끊기는지 하나로 좁혀집니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>전체 지우기는 마지막 복구 수단으로만 사용합니다. 선택하면 Wi-Fi, MQTT, BLE bond가 모두 삭제되므로 다시 프로비저닝하고 iPhone을 등록해야 합니다.</p>
-            </div>
+          <section class="flow-section" id="verify" aria-labelledby="verify-title">
+            <p class="flow-index">06 / VERIFY</p>
+            <h3 id="verify-title">알림 확인</h3>
+            <p>
+              Home Assistant에서 latest notification과 app name이 갱신되는지
+              확인합니다. 앱 이름 대응표는
+              <a href="./APP_ID_REFERENCE.md">앱 ID 참고 문서</a>를 확인하세요.
+            </p>
           </section>
+        </div>
+
+        <table class="troubleshooting-table" aria-label="간단 문제 해결">
+          <thead>
+            <tr>
+              <th>증상</th>
+              <th>확인</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>USB 포트가 보이지 않음</td>
+              <td>데스크톱 Chrome/Edge, HTTPS Pages, 데이터 USB 케이블을 확인합니다.</td>
+            </tr>
+            <tr>
+              <td>설정 AP가 보이지 않음</td>
+              <td>플래시 완료 후 재부팅을 기다리고, 필요하면 BOOT 3초 fallback을 사용합니다.</td>
+            </tr>
+            <tr>
+              <td>포털이 열리지 않음</td>
+              <td><code>IOS-ANCS-SETUP-XXXXXX</code>에 연결된 상태에서 <code>http://192.168.4.1</code>을 엽니다.</td>
+            </tr>
+            <tr>
+              <td>Home Assistant 장치가 없음</td>
+              <td>MQTT broker 접속, Discovery 활성화, retained config publish를 확인합니다.</td>
+            </tr>
+            <tr>
+              <td>iPhone이 보이지 않음</td>
+              <td>120초 enroll window와 iOS Bluetooth 권한을 확인합니다.</td>
+            </tr>
+            <tr>
+              <td>알림이 비어 있음</td>
+              <td>notification sharing 허용, iOS 알림 설정, MQTT payload를 확인합니다.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="legacy-id-anchors" hidden>
+          <span id="prepare"></span>
+          <span id="troubleshooting"></span>
         </div>
       </section>
     </main>
 
     <footer>
       <div>
-        <span class="wordmark-mark" aria-hidden="true">A//</span>
-        <p>Local-first iPhone notification bridge for ESP32.</p>
+        <span class="wordmark-mark" aria-hidden="true">HA</span>
+        <p>ESP32 ANCS-to-MQTT firmware installer for Home Assistant.</p>
       </div>
       <div class="footer-links">
         <a href="https://github.com/1bobby-git/HA-iOS-ANCS">GitHub</a>
-        <a href="https://github.com/1bobby-git/HA-iOS-ANCS/blob/main/README.md">설정 문서</a>
-        <a href="https://1bobby-git.github.io/HA-iOS-ANCS/">공개 Pages</a>
-        <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
+        <a href="https://github.com/1bobby-git/HA-iOS-ANCS/blob/main/README.md">README</a>
+        <a href="https://1bobby-git.github.io/HA-iOS-ANCS/">Pages</a>
+        <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration">HACS My</a>
+        <a href="./APP_ID_REFERENCE.md">앱 ID 참고</a>
+        <a href="./TROUBLESHOOTING.md">문제 해결</a>
       </div>
     </footer>
 
