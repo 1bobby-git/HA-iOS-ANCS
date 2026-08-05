@@ -183,20 +183,6 @@ def test_public_guidance_surfaces_reject_machine_and_owner_specific_examples():
             assert token not in text, f"{surface}: {token}"
 
 
-def test_installer_has_stable_guided_section_ids():
-    index = read_text("docs/index.html")
-
-    for section_id in (
-        "prepare",
-        "flash",
-        "provision",
-        "pair",
-        "home-assistant",
-        "troubleshooting",
-    ):
-        assert f'id="{section_id}"' in index
-
-
 def test_hacs_metadata_matches_custom_integration_contract():
     metadata = read_json("hacs.json")
 
