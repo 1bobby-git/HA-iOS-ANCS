@@ -16,8 +16,11 @@ from .const import CONF_BASE_TOPIC, DOMAIN
 _WHITESPACE = re.compile(r"\s")
 
 
-def normalize_base_topic(raw_topic: str) -> str:
+def normalize_base_topic(raw_topic: object) -> str:
     """Return a canonical MQTT base topic or raise ValueError."""
+
+    if not isinstance(raw_topic, str):
+        raise ValueError("invalid MQTT base topic")
 
     topic = raw_topic.strip().strip("/")
     if (
@@ -53,7 +56,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                base_topic = normalize_base_topic(user_input[CONF_BASE_TOPIC])
+                base_topic = normalize_base_topic(user_input.get(CONF_BASE_TOPIC))
             except ValueError:
                 errors[CONF_BASE_TOPIC] = "invalid_base_topic"
             else:

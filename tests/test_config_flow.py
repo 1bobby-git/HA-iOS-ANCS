@@ -49,6 +49,12 @@ def test_normalize_base_topic_rejects_invalid_topics(raw: str) -> None:
         normalize_base_topic(raw)
 
 
+@pytest.mark.parametrize("raw", [None, 7, [], {}])
+def test_normalize_base_topic_rejects_non_string_values(raw: object) -> None:
+    with pytest.raises(ValueError):
+        normalize_base_topic(raw)
+
+
 def test_config_flow_user_step_shows_form(hass: HomeAssistant, run) -> None:
     result = run(hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER}))
 
@@ -104,6 +110,37 @@ def test_config_flow_invalid_topic_returns_field_error(hass: HomeAssistant, run)
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
             data={CONF_BASE_TOPIC: "ios ancs"},
+        )
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {CONF_BASE_TOPIC: "invalid_base_topic"}
+
+
+def test_config_flow_missing_topic_returns_field_error(hass: HomeAssistant, run) -> None:
+    result = run(
+        hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={},
+        )
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {CONF_BASE_TOPIC: "invalid_base_topic"}
+
+
+@pytest.mark.parametrize("base_topic", [None, 7, [], {}])
+def test_config_flow_non_string_topic_returns_field_error(
+    hass: HomeAssistant, run, base_topic: object
+) -> None:
+    result = run(
+        hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+            data={CONF_BASE_TOPIC: base_topic},
         )
     )
 
