@@ -9,6 +9,9 @@ name: Validate
 
 permissions: {}
 
+# Floating action refs are intentional: HACS and Hassfest should validate
+# against current rules, and scheduled runs detect upstream validation-rule drift.
+# Top-level no permissions plus job-level contents: read permissions limit exposure.
 jobs:
   hacs:
     name: HACS
