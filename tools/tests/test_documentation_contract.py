@@ -166,4 +166,7 @@ def test_validation_workflow_runs_hacs_and_hassfest_without_ignored_checks():
     assert "uses: hacs/action@main" in workflow
     assert "category: integration" in workflow
     assert "uses: home-assistant/actions/hassfest@master" in workflow
+    assert "Floating action refs are intentional" in workflow
+    assert "scheduled runs detect upstream validation-rule drift" in workflow
+    assert "job-level contents: read permissions limit exposure" in workflow
     assert re.search(r"\bignore", workflow, re.IGNORECASE) is None
