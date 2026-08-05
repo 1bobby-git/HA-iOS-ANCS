@@ -1,41 +1,62 @@
-# ESP32 iOS ANCS MQTT Relay
+# HA-iOS-ANCS
 
-Multi-target ESP32 firmware for a power-only iOS ANCS notification relay. The device pairs with one iPhone through BLE ANCS, connects to user-provided Wi-Fi and MQTT settings, publishes eligible notifications to MQTT, and lets Home Assistant relay each new `relay_id` once.
+[English guide](README.en.md) | [GitHub 저장소](https://github.com/1bobby-git/HA-iOS-ANCS) | [브라우저 설치 페이지](https://1bobby-git.github.io/HA-iOS-ANCS/)
 
-## Browser Installer
+HA-iOS-ANCS는 전원만 연결한 ESP32 보드가 iPhone 알림을 BLE ANCS로 받아 MQTT로 전달하고, Home Assistant가 그 알림을 자동화나 엔티티로 사용할 수 있게 하는 펌웨어와 선택형 Home Assistant 동반 통합입니다.
 
-Open the [ANCS Flash Station](https://1bobby-git.github.io/ios-ancs/) in Chrome or Edge on a desktop computer, connect the ESP board with a USB data cable, select the model for guidance, and press **USB 장치 자동 감지 후 설치**. A unified ESP Web Tools manifest detects the connected chip and selects the matching checked-in factory image, so ESP-IDF is not required for installation.
+**Apple Notification Center Service (ANCS)**: 블루투스(BLE)를 통해 아이폰 등의 iOS 기기 알림을 스마트워치나 이어폰 같은 주변 기기로 전달해 주는 애플 규격 서비스입니다.
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.3 images shown in the installer are compile, link, partition, and merged-image verified. ESP32/WROOM v0.3.3 was written and hash-verified on `COM7`, then booted into its automatic setup AP. MQTT and BLE validation for this release remains pending because the saved office Wi-Fi was not reachable at the test location. The fuller ESP32/WROOM v0.3.2 proof and ESP32-C6 v0.3.0 `COM9` proof remain historical evidence.
+기본 흐름:
 
-| Target | Typical module/board | Factory image | Validation |
+```text
+iPhone → BLE ANCS → ESP32 → Wi-Fi/MQTT → Home Assistant
+```
+
+이 프로젝트의 목표는 iOS 알림을 로컬 네트워크 안에서 MQTT 이벤트로 중계하는 것입니다. iPhone 앱을 설치하거나 Apple 계정에 접근하지 않으며, ESP32가 iOS 알림 내용을 수신한 뒤 MQTT로 게시합니다. 알림을 다시 iPhone으로 보내거나, iOS 알림 권한을 우회하거나, Home Assistant 알림을 무한 루프로 재중계하는 것은 목표가 아닙니다.
+
+HACS는 ESP32 펌웨어를 플래시하지 않습니다. ESP32 설치는 브라우저 설치 페이지 또는 소스 빌드/플래시로 진행합니다. MQTT Discovery만으로도 Home Assistant 엔티티가 생성되며, HACS 동반 통합은 나중에 Home Assistant 쪽 경험을 보강하기 위한 선택 사항입니다. 기본 HACS 스토어 승인 여부는 이 문서에서 주장하지 않습니다.
+
+## 지원 보드와 검증 상태
+
+공통 펌웨어는 최소 4 MB 플래시 레이아웃을 사용합니다. ESP32-S2는 BLE가 없어서 제외됩니다. ESP32-H2는 Wi-Fi가 없고, ESP32-P4는 내장 Wi-Fi/BLE 라디오가 없어서 제외됩니다.
+
+| 대상 | 일반 모듈/보드 | Factory 이미지 | 검증 상태 |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,425,616 bytes | v0.3.3 COM7 flash, boot, and automatic setup AP verified; MQTT/BLE pending |
-| `esp32c2` | ESP32-C2 | 1,445,488 bytes | v0.3.3 build verified |
-| `esp32c3` | ESP32-C3 | 1,634,528 bytes | v0.3.3 build verified |
-| `esp32c5` | ESP32-C5 | 1,779,664 bytes | v0.3.3 build verified |
-| `esp32c6` | ESP32-C6 | 1,779,680 bytes | v0.3.3 build verified; v0.3.0 hardware evidence remains historical |
-| `esp32c61` | ESP32-C61 | 1,722,800 bytes | v0.3.3 build verified |
-| `esp32s3` | ESP32-S3 | 1,407,600 bytes | v0.3.3 build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,425,616 bytes | v0.3.3 COM7 플래시, 부팅, 자동 설정 AP 검증 완료; MQTT/BLE 보류 |
+| `esp32c2` | ESP32-C2 | 1,445,488 bytes | v0.3.3 빌드 검증 완료 |
+| `esp32c3` | ESP32-C3 | 1,634,528 bytes | v0.3.3 빌드 검증 완료 |
+| `esp32c5` | ESP32-C5 | 1,779,664 bytes | v0.3.3 빌드 검증 완료 |
+| `esp32c6` | ESP32-C6 | 1,779,680 bytes | v0.3.3 빌드 검증 완료; v0.3.0 하드웨어 증거는 과거 참고용 |
+| `esp32c61` | ESP32-C61 | 1,722,800 bytes | v0.3.3 빌드 검증 완료 |
+| `esp32s3` | ESP32-S3 | 1,407,600 bytes | v0.3.3 빌드 검증 완료 |
 
-ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+빌드 검증은 컴파일, 링크, 파티션, 병합 이미지 생성을 의미합니다. 하드웨어 플래시는 특정 보드와 포트에 실제 바이너리를 기록하고 해시/부팅을 확인한 증거입니다. BLE 등록은 iPhone과 ESP32의 페어링 증거이며, 실제 iPhone 알림 캡처는 알림 수신과 MQTT 게시까지 별도로 확인해야 합니다.
 
-> iPhone and iPad browsers cannot flash the board over USB. Use desktop Chrome or Edge for installation, then use the captive portal from any phone or computer for Wi-Fi and MQTT setup.
+## 빠른 설치
 
-## Requirements
+5분 설치 경로:
 
-- A supported Wi-Fi + BLE ESP32 board. The current local hardware reference is an ESP32-D0WD-V3/WROOM-class board on Windows `COM7`; ESP32-C6 on `COM9` remains historical evidence.
-- ESP-IDF v6.0.2 with Bluedroid.
-- Python 3.11 or newer.
-- Python dependencies:
+1. 데스크톱 Chrome 또는 Edge에서 [브라우저 설치 페이지](https://1bobby-git.github.io/HA-iOS-ANCS/)를 엽니다.
+2. 지원 ESP32 보드를 USB 데이터 케이블로 연결합니다. iPhone/iPad 브라우저는 USB 플래시를 할 수 없습니다.
+3. 보드 모델을 선택하고 설치 버튼을 눌러 ESP Web Tools가 연결된 칩에 맞는 factory 이미지를 쓰게 합니다.
+4. 설치가 끝나면 보드가 자동 설정 AP를 띄울 때까지 기다립니다.
+5. `IOS-ANCS-SETUP-<SUFFIX>` Wi-Fi에 연결하고 `http://192.168.4.1`에서 Wi-Fi와 MQTT를 저장합니다.
+
+설치 페이지는 통합 manifest `./manifests/ios-ancs.json`을 사용합니다. 사용자가 모델을 선택하면 안내 문구가 바뀌고, 실제 이미지는 ESP Web Tools가 연결 칩과 manifest를 기준으로 선택합니다.
+
+## 소스 빌드와 플래시
+
+요구 사항:
+
+- 지원 Wi-Fi + BLE ESP32 보드
+- ESP-IDF v6.0.2 with Bluedroid
+- Python 3.11 이상
+
+Python 의존성:
 
 ```powershell
 python -m pip install -r tools/requirements.txt
 ```
-
-The known test board has base MAC suffix `ABC123`. Its provisioning AP is `IOS-ANCS-SETUP-ABC123` with password `ancs-abc123`. Other boards use the uppercase MAC suffix in the SSID and the lowercase form `ancs-<lowercase_suffix>` for the setup password. Infrastructure Wi-Fi passwords remain case-sensitive and are stored exactly as entered.
-
-## Build And Flash
 
 PowerShell:
 
@@ -44,7 +65,7 @@ PowerShell:
 .\tools\flash.ps1 -Port COM9
 ```
 
-Build every supported target and generate merged web-installer images:
+모든 지원 타깃을 빌드하고 웹 설치용 병합 이미지를 생성:
 
 ```powershell
 .\tools\build_matrix.ps1
@@ -57,42 +78,70 @@ Linux/macOS:
 ./tools/flash.sh /dev/ttyACM0
 ```
 
-After flashing, the device is designed to run from USB power only. Windows on `COM9` is still useful for logs, serial ANCS capture, and device-side Unity tests, but it is not part of the notification relay path.
+플래시 후 장치는 USB 전원만으로 동작하도록 설계되어 있습니다. Windows `COM9` 같은 시리얼 포트는 로그, ANCS 캡처, Unity 테스트에는 유용하지만 알림 중계 경로 자체에는 포함되지 않습니다.
 
-## First Boot Provisioning
+## Wi-Fi와 MQTT 설정
 
-If the `provision` NVS partition is empty or invalid, the device automatically starts a WPA2 setup AP. No BOOT press is required.
+처음 부팅했거나 `provision` NVS 파티션이 비어 있거나 유효하지 않으면 장치가 자동으로 WPA2 설정 AP를 시작합니다. BOOT 버튼을 누를 필요는 없습니다.
 
-1. Join `IOS-ANCS-SETUP-<SUFFIX>` with password `ancs-<lowercase_suffix>`.
-2. Open `http://192.168.4.1`.
-3. Use Wi-Fi scan or enter any SSID manually.
-4. Enter the MQTT host, port, and account details. The portal automatically applies a recommended device-specific Client ID and base topic under **Advanced MQTT settings**; edit them only when your broker requires a custom value.
-5. Save and connect.
+1. `IOS-ANCS-SETUP-<SUFFIX>`에 연결합니다.
+2. 비밀번호는 `ancs-<lowercase_suffix>`입니다.
+3. 브라우저에서 `http://192.168.4.1`을 엽니다.
+4. Wi-Fi 스캔을 사용하거나 SSID를 직접 입력합니다.
+5. MQTT host, port, 계정 정보를 입력합니다. 고급 MQTT 설정에는 권장 Client ID와 base topic이 자동으로 들어갑니다.
+6. 저장 후 연결 상태를 확인합니다.
 
-TLS mode requires a CA certificate. Empty Wi-Fi password, MQTT password, and CA fields preserve already stored secret values. Status APIs and reports must show only configured/unconfigured flags for secrets, not secret bodies.
+알려진 기준 보드의 base MAC suffix는 `ABC123`입니다. 이 보드는 `IOS-ANCS-SETUP-ABC123` AP와 `ancs-abc123` 비밀번호를 사용합니다. 다른 보드는 SSID에 대문자 MAC suffix를 쓰고, 설정 비밀번호에는 소문자 형식 `ancs-<lowercase_suffix>`를 씁니다. 인프라 Wi-Fi 비밀번호는 case-sensitive이며 입력한 그대로 저장됩니다.
 
-The setup AP stays available while Wi-Fi or MQTT is unhealthy, and also remains available when the network is ready but no BLE bond exists. The ordinary Enroll action is intentionally not exposed in the portal; use the Home Assistant button or BOOT instead. The AP closes only after Wi-Fi, MQTT, and an existing BLE bond are all ready.
+TLS 모드는 CA 인증서가 필요합니다. 비어 있는 Wi-Fi password, MQTT password, CA 필드는 이미 저장된 secret 값을 보존합니다. 상태 API와 보고서는 secret 본문을 표시하지 않고 configured/unconfigured 플래그만 표시해야 합니다.
 
-## BLE Enrollment
+설정 AP는 Wi-Fi 또는 MQTT가 비정상일 때 계속 열려 있습니다. 네트워크가 준비되었지만 BLE bond가 없을 때도 열려 있습니다. 일반 Enroll 동작은 포털에 노출되지 않습니다. Home Assistant 버튼 또는 BOOT 버튼을 사용합니다. AP는 Wi-Fi, MQTT, 기존 BLE bond가 모두 준비된 뒤 닫힙니다.
 
-BLE pairing is explicit. An unbonded device does not advertise for ANCS/HID pairing until an Enroll window is opened.
+## iPhone 등록
 
-- With no stored bond, press BOOT for 3 seconds or press the discovered Home Assistant **iPhone 등록 시작** button to open a 120-second pairing window.
-- With a stored bond, the same actions request reconnect to that known iPhone only; they do not permit an unknown phone to pair.
-- Pair from iOS Bluetooth settings with PIN `123456`.
-- Allow iOS notification sharing when prompted.
+BLE 페어링은 명시적으로 열어야 합니다. bond가 없는 장치는 Enroll 창을 열기 전까지 ANCS/HID 페어링 광고를 하지 않습니다.
 
-Use **Replace enrollment** only when intentionally deleting the current iPhone bond and enrolling a new one. BOOT recovery opens the portal or Enroll window; it does not delete BLE bonds.
+- 저장된 bond가 없으면 BOOT 버튼을 3초 누르거나 Home Assistant의 **iPhone 등록 시작** 버튼을 눌러 120초 페어링 창을 엽니다.
+- 저장된 bond가 있으면 같은 동작은 알려진 iPhone 재연결만 요청합니다. 알 수 없는 새 휴대폰 페어링은 허용하지 않습니다.
+- iOS Bluetooth 설정에서 PIN `123456`으로 페어링합니다.
+- iOS가 알림 공유를 요청하면 허용합니다.
 
-## MQTT Topics
+**Replace enrollment**는 현재 iPhone bond를 삭제하고 새 iPhone을 등록하려는 경우에만 사용합니다. BOOT 복구는 포털 또는 Enroll 창을 열지만 BLE bond를 삭제하지 않습니다.
 
-The default base topic is configured in the portal, commonly:
+## Home Assistant와 HACS
+
+MQTT Discovery는 HACS 없이 동작합니다. 브로커에 연결되면 펌웨어가 retained Discovery config를 게시하고 Home Assistant가 장치와 엔티티를 생성합니다. HACS 동반 통합은 Home Assistant 안의 보조 통합이며 ESP32 펌웨어 설치나 업데이트를 수행하지 않습니다.
+
+기존 자동화 파일:
+
+```text
+homeassistant/automation_ios_ancs_c6_relay.yaml
+```
+
+이 파일을 Home Assistant automation YAML에 복사하거나 automation package에서 include할 수 있습니다. 자동화는 MQTT Discovery의 latest notification sensor 상태 변화를 트리거로 사용하고, incomplete 또는 `pre_existing` payload를 무시하며, `unavailable`에서 복구된 전환을 거부해 오래된 `relay_id`가 재전송되지 않게 합니다. 기본 예시는 `notify.mobile_app_example_phone`로 전송하고 모바일 알림 제목에 `[C6묶A]`를 붙입니다.
+
+펌웨어는 `app_id`가 `io.robbie.HomeAssistant`인 ANCS 이벤트를 게시하지 않습니다. 제목 marker는 운영자 가시성을 위해 남지만, loop 방지 경계는 app-level exclusion입니다. marker 유무와 관계없이 Home Assistant 알림은 MQTT로 되돌아가지 않습니다.
+
+MQTT Discovery가 만드는 기본 엔티티:
+
+- `장치 상태`: connectivity `binary_sensor`. Wi-Fi, MQTT, BLE가 모두 연결되었을 때만 `ON`입니다. attributes에는 `ready`, `wifi_connected`, `mqtt_connected`, `ble_connected`, `ble_bonded`, `uptime_seconds`, 한국어 `uptime`, `wifi_ssid`, `wifi_ip`, `wifi_rssi`, counters, manufacturer/model/software/hardware metadata가 포함됩니다.
+- `최근 알림`: 최신 `relay_id`를 state로 유지하고 전체 notification JSON을 attributes로 노출합니다.
+- `알림 제목`, `알림 내용`, `앱 이름`: 집중 notification sensor입니다. state는 255자로 잘리며 전체 원본 값은 `최근 알림`에 남습니다.
+- `iPhone 등록 시작`, `장치 재시작`: non-retained Home Assistant button입니다. Restart는 정확한 `RESTART` 명령만 받습니다.
+
+펌웨어 v0.3.3은 이전 33개 notification-field sensor와 3개 Wi-Fi sensor의 retained Discovery config를 제거하므로, 업그레이드한 장치가 오래된 엔티티를 남기지 않습니다. Discovery와 retained state에는 Wi-Fi 또는 MQTT password가 들어가지 않습니다.
+
+Notification JSON은 원본 `app_id`를 보존하고 friendly `app_name`을 추가합니다. 알 수 없는 bundle identifier는 원본 ID로 안전하게 fallback합니다. 참고 목록은 [`docs/APP_ID_REFERENCE.md`](docs/APP_ID_REFERENCE.md)에 있습니다.
+
+## 정상 동작과 MQTT 토픽
+
+기본 base topic은 포털에서 설정하며 보통 다음 형식입니다.
 
 ```text
 ios-ancs/<device_id>
 ```
 
-Published topics:
+게시 토픽:
 
 ```text
 <base>/notification
@@ -104,65 +153,45 @@ homeassistant/button/<device_id>/enroll/config
 <base>/command/enroll
 ```
 
-Contracts:
+계약:
 
-- `<base>/notification`: ANCS JSON plus `relay_id`, target-specific `source=<target>_ancs`, and uptime; QoS 1; retained false.
-- `<base>/availability`: `online` or `offline`; QoS 1; retained true; LWT publishes `offline`.
-- `<base>/state`: counters and diagnostics; QoS 1; retained true.
-- Discovery configs: retained true. The aggregate sensor uses `relay_id` as
-  its state, and each field sensor extracts one JSON value.
-- The Enroll button publishes the exact payload `ENROLL` to
-  `<base>/command/enroll` with QoS 1. Retained, partial, and malformed commands
-  are ignored.
+- `<base>/notification`: ANCS JSON에 `relay_id`, target별 `source=<target>_ancs`, uptime을 추가합니다. QoS 1, retained false입니다.
+- `<base>/availability`: `online` 또는 `offline`. QoS 1, retained true이며 LWT가 `offline`을 게시합니다.
+- `<base>/state`: counters와 diagnostics. QoS 1, retained true입니다.
+- Discovery configs: retained true입니다. aggregate sensor는 `relay_id`를 state로 사용하고 각 field sensor는 JSON 값 하나를 추출합니다.
+- Enroll button은 정확한 payload `ENROLL`을 `<base>/command/enroll`에 QoS 1로 게시합니다. retained, partial, malformed command는 무시됩니다.
 
-Notifications received while Wi-Fi or MQTT is disconnected are dropped immediately and are not replayed after reconnect. `pre_existing`, incomplete, invalid, duplicate, removed, and marked Home Assistant echo notifications are excluded from MQTT.
+Wi-Fi 또는 MQTT가 끊긴 동안 받은 알림은 즉시 drop되며 재연결 후 replay하지 않습니다. `pre_existing`, incomplete, invalid, duplicate, removed, Home Assistant echo로 표시된 notification은 MQTT에서 제외됩니다.
 
-## Home Assistant
+기존 C6 장치 identity는 `target=esp32c6`, `source=esp32c6_ancs`를 유지합니다. 다른 firmware target은 `target=esp32c3`, `source=esp32c3_ancs`처럼 ESP-IDF target 이름을 그대로 사용합니다.
 
-Install the automation file:
+## 업데이트, 전체 삭제, 장치 교체
 
-```text
-homeassistant/automation_ios_ancs_c6_relay.yaml
-```
+일반 업데이트는 브라우저 설치 페이지에서 같은 보드 모델을 선택해 새 이미지를 플래시합니다. 저장된 Wi-Fi/MQTT/BLE 정보 보존 여부는 erase 방식에 따라 달라집니다.
 
-Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, and rejects transitions restored from `unavailable` so an old `relay_id` is not forwarded after MQTT availability recovers. It sends `notify.mobile_app_example_phone` and prefixes the mobile notification title with `[C6→HA]`.
+전체 삭제가 필요한 경우:
 
-The firmware drops every ANCS event whose `app_id` is `io.robbie.HomeAssistant`. The title marker is retained for operator visibility, but the app-level exclusion is the loop-prevention boundary, so marked and unmarked Home Assistant notifications are never published back to MQTT.
+- 저장된 Wi-Fi/MQTT 설정이 손상되어 설정 AP 복구가 되지 않을 때
+- 잘못된 BLE bond나 iPhone 교체 상태를 완전히 초기화해야 할 때
+- 장치를 다른 사용자나 다른 Home Assistant 환경으로 넘길 때
 
-MQTT Discovery also creates an **iPhone 등록 시작** button. Pressing it starts
-new-iPhone advertising only when no bond exists. If a bond already exists, it
-only requests a reconnect to that known iPhone and never deletes the bond.
+장치 교체 시에는 새 ESP32를 플래시하고, 새 설정 AP에서 Wi-Fi/MQTT를 다시 저장한 뒤, 새 iPhone 등록을 진행합니다. Home Assistant에는 새 device ID와 Discovery 엔티티가 생길 수 있습니다. 같은 broker topic을 재사용하려면 포털의 Advanced MQTT settings에서 base topic과 Client ID를 의도적으로 맞춥니다.
 
-MQTT Discovery keeps the Home Assistant device compact:
+## 문제 해결
 
-- `장치 상태` is one connectivity `binary_sensor`. It is `ON` only while
-  Wi-Fi, MQTT, and BLE are all connected. Its attributes include `ready`,
-  `wifi_connected`, `mqtt_connected`, `ble_connected`, `ble_bonded`,
-  `uptime_seconds`, the Korean-readable `uptime`, `wifi_ssid`, `wifi_ip`,
-  `wifi_rssi`, counters, and manufacturer/model/software/hardware metadata.
-- `최근 알림` keeps the latest `relay_id` as state and exposes the complete
-  notification JSON through attributes.
-- `알림 제목`, `알림 내용`, and `앱 이름` are the only focused notification
-  sensors. Their states are clipped to 255 characters while the complete
-  original values remain in `최근 알림`.
-- `iPhone 등록 시작` and `장치 재시작` are non-retained Home Assistant
-  buttons. Restart accepts only the exact `RESTART` command.
+| 증상 | 확인할 것 |
+| --- | --- |
+| 브라우저에서 설치 버튼이 동작하지 않음 | 데스크톱 Chrome/Edge인지, USB 데이터 케이블인지, OS가 serial access를 막지 않는지 확인합니다. iPhone/iPad 브라우저는 플래시할 수 없습니다. |
+| `IOS-ANCS-SETUP-<SUFFIX>`가 보이지 않음 | 보드 전원과 플래시 성공 여부를 확인합니다. Wi-Fi, MQTT, BLE bond가 모두 정상인 장치는 AP를 닫습니다. |
+| `http://192.168.4.1`이 열리지 않음 | 설정 AP에 실제로 연결되어 있는지 확인하고 모바일 데이터/VPN을 잠시 끕니다. |
+| MQTT가 연결되지 않음 | host, port, TLS CA, username/password, broker ACL, Client ID 중복을 확인합니다. |
+| iPhone이 보이지 않음 | BOOT 3초 또는 Home Assistant **iPhone 등록 시작**으로 120초 Enroll 창을 열었는지 확인합니다. |
+| PIN이 필요함 | `123456`을 입력합니다. |
+| Home Assistant 엔티티가 없음 | MQTT integration, broker 접속, Discovery 활성화, `<base>/state`와 Discovery config retained publish를 확인합니다. HACS는 필수가 아닙니다. |
+| 알림이 오지 않음 | iOS Bluetooth 알림 공유 허용, BLE 연결 상태, Wi-Fi/MQTT 연결 상태, `pre_existing` 또는 Home Assistant echo 제외 여부를 확인합니다. |
+| 재연결 뒤 오래된 알림이 오지 않음 | 정상입니다. 오프라인 중 받은 알림은 replay하지 않습니다. |
 
-Firmware v0.3.3 removes the retained Discovery configs for the former 33
-notification-field sensors and three Wi-Fi sensors, so upgraded devices do not
-leave those entities behind. Neither Discovery nor retained state contains
-Wi-Fi or MQTT passwords.
-
-Notification JSON preserves the original `app_id` and adds a friendly
-`app_name`. Unknown bundle identifiers safely fall back to the original ID.
-The maintained reference list is in
-[`docs/APP_ID_REFERENCE.md`](docs/APP_ID_REFERENCE.md).
-
-For the existing C6 device, the identity remains `target=esp32c6` and `source=esp32c6_ancs`. Other firmware targets use their own exact ESP-IDF target name, such as `target=esp32c3` and `source=esp32c3_ancs`.
-
-## Validation Tools
-
-Serial ANCS capture:
+시리얼 ANCS 캡처:
 
 ```powershell
 python tools/verify_capture.py `
@@ -172,22 +201,33 @@ python tools/verify_capture.py `
   --output artifacts/ancs-capture.jsonl
 ```
 
-MQTT broker event validation:
+MQTT broker event 검증:
 
 ```powershell
 python tools/verify_mqtt_relay.py artifacts/mqtt-events.jsonl `
   --report artifacts/mqtt-relay-report.md
 ```
 
-Use `--expect-offline-drop` when the capture includes offline and reconnect availability events plus state counters proving an offline drop.
+offline drop 증거가 포함된 캡처에는 `--expect-offline-drop`을 사용합니다.
 
-Automated host checks:
+## 개인정보와 보안
+
+- 장치는 Apple 계정, iCloud, iPhone 앱 credential을 사용하지 않습니다.
+- Wi-Fi password, MQTT password, TLS CA 같은 secret은 상태 API, Discovery, retained state, 보고서에 본문으로 노출하지 않습니다.
+- 빈 secret 입력은 저장된 기존 값을 보존합니다.
+- MQTT Discovery와 retained state에는 Wi-Fi/MQTT password가 포함되지 않습니다.
+- iOS 알림 제목, 본문, 앱 이름은 MQTT broker와 Home Assistant에 게시될 수 있으므로 broker 접근 권한을 제한해야 합니다.
+- 페어링 PIN 기본값은 `123456`입니다. 신뢰하는 로컬 환경에서만 Enroll 창을 열고, 장치를 넘기기 전에는 전체 erase와 새 등록을 수행합니다.
+
+## 개발과 검증
+
+자동 host checks:
 
 ```powershell
 python -m pytest tools/tests -q
 ```
 
-Firmware and Unity checks:
+Firmware 및 Unity checks:
 
 ```powershell
 .\tools\build.ps1
@@ -196,3 +236,5 @@ idf.py -B build-tests build
 idf.py -B build-tests -p COM9 flash monitor
 Pop-Location
 ```
+
+검증을 보고할 때는 build verification, hardware flashing, BLE enrollment, live iPhone notification capture를 구분합니다. 예를 들어 v0.3.3의 모든 공개 target은 빌드 검증을 통과했지만, 실제 하드웨어 플래시와 iPhone 알림 캡처 증거는 보드와 환경별로 따로 기록해야 합니다.
