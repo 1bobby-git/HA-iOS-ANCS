@@ -58,7 +58,14 @@ def test_config_flow_user_step_shows_form(hass: HomeAssistant, run) -> None:
 
 
 def test_config_flow_creates_entry_with_canonical_topic(hass: HomeAssistant, run) -> None:
-    with patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)):
+    with (
+        patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)),
+        patch(
+            "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+            new=AsyncMock(return_value=True),
+            create=True,
+        ),
+    ):
         result = run(
             hass.config_entries.flow.async_init(
                 DOMAIN,
@@ -70,6 +77,25 @@ def test_config_flow_creates_entry_with_canonical_topic(hass: HomeAssistant, run
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "HA iOS ANCS (ios_ancs/device-1)"
     assert result["data"] == {CONF_BASE_TOPIC: "ios_ancs/device-1"}
+
+
+def test_config_flow_mqtt_unavailable_returns_field_error(hass: HomeAssistant, run) -> None:
+    with patch(
+        "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+        new=AsyncMock(return_value=False),
+        create=True,
+    ):
+        result = run(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_USER},
+                data={CONF_BASE_TOPIC: "ios_ancs"},
+            )
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {CONF_BASE_TOPIC: "mqtt_unavailable"}
 
 
 def test_config_flow_invalid_topic_returns_field_error(hass: HomeAssistant, run) -> None:
@@ -87,7 +113,14 @@ def test_config_flow_invalid_topic_returns_field_error(hass: HomeAssistant, run)
 
 
 def test_config_flow_duplicate_canonical_topic_aborts(hass: HomeAssistant, run) -> None:
-    with patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)):
+    with (
+        patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)),
+        patch(
+            "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+            new=AsyncMock(return_value=True),
+            create=True,
+        ),
+    ):
         first = run(
             hass.config_entries.flow.async_init(
                 DOMAIN,
@@ -136,6 +169,7 @@ def test_translations_contract() -> None:
         assert data["config"]["step"]["user"]["description"]
         assert data["config"]["step"]["user"]["data"][CONF_BASE_TOPIC]
         assert data["config"]["error"]["invalid_base_topic"]
+        assert data["config"]["error"]["mqtt_unavailable"]
         assert data["config"]["abort"]["already_configured"]
 
     assert en["title"] == "HA iOS ANCS"

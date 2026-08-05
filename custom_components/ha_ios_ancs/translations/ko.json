@@ -10,7 +10,8 @@
       }
     },
     "error": {
-      "invalid_base_topic": "공백, 와일드카드, 빈 경로 구간이 없는 올바른 MQTT 토픽을 입력하세요."
+      "invalid_base_topic": "공백, 와일드카드, 빈 경로 구간이 없는 올바른 MQTT 토픽을 입력하세요.",
+      "mqtt_unavailable": "HA iOS ANCS를 추가하기 전에 Home Assistant MQTT 통합을 설정하세요."
     },
     "abort": {
       "already_configured": "이 HA iOS ANCS MQTT 토픽은 이미 설정되어 있습니다."

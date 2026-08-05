@@ -10,7 +10,8 @@
       }
     },
     "error": {
-      "invalid_base_topic": "Enter a valid MQTT topic without whitespace, wildcards, or empty path segments."
+      "invalid_base_topic": "Enter a valid MQTT topic without whitespace, wildcards, or empty path segments.",
+      "mqtt_unavailable": "Set up the Home Assistant MQTT integration before adding HA iOS ANCS."
     },
     "abort": {
       "already_configured": "This HA iOS ANCS MQTT topic is already configured."

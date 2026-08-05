@@ -10,6 +10,7 @@ import pytest
 
 from homeassistant.components.mqtt.models import ReceiveMessage
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_ios_ancs import async_setup_entry, async_unload_entry
@@ -46,8 +47,8 @@ async def start_runtime_with_subscribe_patch(
     subscriptions: list[tuple[str, Callable[[ReceiveMessage], None], int]] = []
     unsubscribes = [Mock(), Mock()]
 
-    async def fake_wait_for_client(hass: HomeAssistant) -> None:
-        return None
+    async def fake_wait_for_client(hass: HomeAssistant) -> bool:
+        return True
 
     async def fake_subscribe(
         hass: HomeAssistant,
@@ -138,14 +139,69 @@ def test_runtime_listener_self_removal_does_not_break_dispatch(hass: HomeAssista
     run(runtime.async_stop())
 
 
-def test_runtime_rejects_double_start_without_duplicate_subscriptions(hass: HomeAssistant, run) -> None:
+def test_runtime_repeated_start_is_idempotent_without_duplicate_subscriptions(hass: HomeAssistant, run) -> None:
     runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
 
-    with pytest.raises(RuntimeError, match="already started"):
-        run(runtime.async_start())
+    run(runtime.async_start())
 
     assert len(subscriptions) == 2
     run(runtime.async_stop())
+
+
+def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run) -> None:
+    first_unsubscribe = Mock()
+    retry_notification_unsubscribe = Mock()
+    retry_availability_unsubscribe = Mock()
+    subscriptions: list[str] = []
+    subscribe_attempts = 0
+
+    async def fake_wait_for_client(hass: HomeAssistant) -> bool:
+        return True
+
+    async def flaky_subscribe(
+        hass: HomeAssistant,
+        topic: str,
+        msg_callback: Callable[[ReceiveMessage], None],
+        qos: int = 0,
+        encoding: str | None = "utf-8",
+    ) -> Callable[[], None]:
+        nonlocal subscribe_attempts
+        subscribe_attempts += 1
+        subscriptions.append(topic)
+        if subscribe_attempts == 2:
+            raise RuntimeError("availability subscribe failed")
+        return {
+            1: first_unsubscribe,
+            3: retry_notification_unsubscribe,
+            4: retry_availability_unsubscribe,
+        }[subscribe_attempts]
+
+    runtime = AncsMqttRuntime(hass, "ios_ancs")
+    mqtt_api = SimpleNamespace(
+        async_wait_for_mqtt_client=fake_wait_for_client,
+        async_subscribe=flaky_subscribe,
+    )
+
+    with patch("custom_components.ha_ios_ancs.runtime._get_mqtt_api", return_value=mqtt_api):
+        with pytest.raises(RuntimeError, match="availability subscribe failed"):
+            run(runtime.async_start())
+
+        assert first_unsubscribe.call_count == 1
+        assert subscriptions == ["ios_ancs/notification", "ios_ancs/availability"]
+
+        run(runtime.async_start())
+
+    assert subscriptions == [
+        "ios_ancs/notification",
+        "ios_ancs/availability",
+        "ios_ancs/notification",
+        "ios_ancs/availability",
+    ]
+    assert retry_notification_unsubscribe.call_count == 0
+    assert retry_availability_unsubscribe.call_count == 0
+    run(runtime.async_stop())
+    assert retry_notification_unsubscribe.call_count == 1
+    assert retry_availability_unsubscribe.call_count == 1
 
 
 def test_runtime_stop_unsubscribes_once_and_is_idempotent(hass: HomeAssistant, run) -> None:
@@ -186,3 +242,34 @@ def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run
         assert run(async_unload_entry(hass, entry)) is True
         runtime.async_stop.assert_awaited_once()
         assert entry.runtime_data is None
+
+
+def test_setup_entry_raises_not_ready_when_mqtt_client_unavailable(hass: HomeAssistant, run) -> None:
+    entry = ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="HA iOS ANCS (ios_ancs)",
+        data={CONF_BASE_TOPIC: "ios_ancs"},
+        source="user",
+        unique_id="ios_ancs",
+        discovery_keys={},
+        options={},
+        subentries_data={},
+    )
+    subscribe = AsyncMock()
+
+    async def fake_wait_for_client(hass: HomeAssistant) -> bool:
+        return False
+
+    mqtt_api = SimpleNamespace(
+        async_wait_for_mqtt_client=fake_wait_for_client,
+        async_subscribe=subscribe,
+    )
+
+    with patch("custom_components.ha_ios_ancs.runtime._get_mqtt_api", return_value=mqtt_api):
+        with pytest.raises(ConfigEntryNotReady):
+            run(async_setup_entry(hass, entry))
+
+    subscribe.assert_not_awaited()
+    assert getattr(entry, "runtime_data", None) is None

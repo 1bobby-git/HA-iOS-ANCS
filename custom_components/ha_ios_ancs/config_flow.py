@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.core import HomeAssistant
 
 from .const import CONF_BASE_TOPIC, DOMAIN
 
@@ -30,6 +31,14 @@ def normalize_base_topic(raw_topic: str) -> str:
     return topic
 
 
+async def _async_mqtt_available(hass: HomeAssistant) -> bool:
+    """Return whether the Home Assistant MQTT client is available."""
+
+    from homeassistant.components import mqtt
+
+    return await mqtt.async_wait_for_mqtt_client(hass)
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for HA iOS ANCS."""
 
@@ -48,6 +57,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except ValueError:
                 errors[CONF_BASE_TOPIC] = "invalid_base_topic"
             else:
+                if not await _async_mqtt_available(self.hass):
+                    errors[CONF_BASE_TOPIC] = "mqtt_unavailable"
+                    return self.async_show_form(
+                        step_id="user",
+                        data_schema=vol.Schema({vol.Required(CONF_BASE_TOPIC): str}),
+                        errors=errors,
+                    )
+
                 await self.async_set_unique_id(base_topic)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
