@@ -16,5 +16,12 @@
     "abort": {
       "already_configured": "이 HA iOS ANCS MQTT 토픽은 이미 설정되어 있습니다."
     }
+  },
+  "entity": {
+    "event": {
+      "notification": {
+        "name": "알림"
+      }
+    }
   }
 }
