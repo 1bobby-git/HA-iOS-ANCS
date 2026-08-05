@@ -2,6 +2,12 @@
 
 Validation date: 2026-08-04 (Asia/Seoul)
 
+Rename-preparation note: this report contains historical validation evidence
+captured before the GitHub repository rename. Current repository commands below
+use the intended `1bobby-git/HA-iOS-ANCS` slug, but no GitHub repository rename,
+live Pages deployment, or release metadata query has been performed as part of
+this report.
+
 ## Release integrity v0.3.3
 
 - Release identity fields:
@@ -9,7 +15,7 @@ Validation date: 2026-08-04 (Asia/Seoul)
   - `release_name: iOS ANCS MQTT Bridge v0.3.3`
   - `release_title: iOS ANCS MQTT Bridge v0.3.3`
   - `checksum_asset_name: release-fingerprints-v0.3.3.sha256`
-- Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists. Before publishing the checksum asset or declaring release integrity complete, run `gh release view v0.3.3 --repo 1bobby-git/ios-ancs --json tagName,name,url,targetCommitish,isDraft,isPrerelease` and verify the returned tag name, release name/title, target commit, release URL, draft flag, and prerelease flag. Those values are intentionally not hardcoded in this report.
+- Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists. After the repository rename, before publishing the checksum asset or declaring release integrity complete, run `gh release view v0.3.3 --repo 1bobby-git/HA-iOS-ANCS --json tagName,name,url,targetCommitish,isDraft,isPrerelease` and verify the returned tag name, release name/title, target commit, release URL, draft flag, and prerelease flag. This command is the current expected command, not evidence that the query has already been run. Those values are intentionally not hardcoded in this report.
 - Checksum asset: `docs/release-fingerprints-v0.3.3.sha256` is a deterministic sha256sum-style list of the publishable factory binaries, using repository-relative paths and full lowercase SHA-256 values.
 - CI gate: GitHub Pages deployment now waits for a Python 3.12 `release_integrity` job that installs only `pytest` and runs the existing multi-target contract plus the v0.3.3 release-integrity contract.
 - Commands:
