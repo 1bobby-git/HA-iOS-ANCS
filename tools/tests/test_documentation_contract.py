@@ -14,6 +14,53 @@ HACS_MY_LINK = (
 OLD_REPO_URL_RE = re.compile(r"https://github\.com/1bobby-git/ios-ancs(?:/|\b|[?#])")
 OLD_PAGES_URL_RE = re.compile(r"https://1bobby-git\.github\.io/ios-ancs(?:/|\b|[?#])")
 
+PUBLIC_GUIDANCE_SURFACES = (
+    "README.md",
+    "README.en.md",
+    "docs/index.html",
+    "docs/app.js",
+    "docs/IOS_PAIRING.md",
+    "docs/TROUBLESHOOTING.md",
+    "homeassistant/automation_ios_ancs_c6_relay.yaml",
+)
+APP_ID_REFERENCE_SURFACES = (
+    "README.md",
+    "README.en.md",
+    "docs/index.html",
+)
+INSTALLER_SECTION_MARKERS = (
+    "flash",
+    "setup-ap",
+    "provision",
+    "home-assistant",
+    "pair",
+    "verify",
+)
+INSTALLER_FACTS = (
+    "IOS-ANCS-SETUP-XXXXXX",
+    "ancs-xxxxxx",
+    "http://192.168.4.1",
+    "iPhone 등록 시작",
+    "123456",
+)
+LEGACY_INSTALLER_COPY = (
+    "ANCS Flash Station",
+    "모델을 고르고",
+    "현장에서 설치합니다",
+    "FIELD PROCEDURE",
+    "현장 준비",
+)
+PRIVATE_EXAMPLE_GUIDANCE = (
+    "COM7",
+    "COM9",
+    "ABC123",
+    "EXAMPLE_OFFICE",
+    "DAISO",
+    "AX1800",
+    "notify.mobile_app_example_phone",
+    "sensor.ios_ancs_c6_ab12_ios_ancs_c6_ab12_last_notification",
+)
+
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
@@ -21,6 +68,25 @@ def read_text(relative_path: str) -> str:
 
 def read_json(relative_path: str) -> dict:
     return json.loads(read_text(relative_path))
+
+
+def find_section_marker_position(text: str, marker: str) -> int:
+    marker_re = re.escape(marker)
+    patterns = (
+        rf'\bid="{marker_re}(?:[-_][^"]*)?"',
+        rf'\bdata-step="{marker_re}(?:[-_][^"]*)?"',
+        rf'\bhref="#{marker_re}(?:[-_][^"]*)?"',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match is not None:
+            return match.start()
+    return -1
+
+
+def assert_uses_only_canonical_urls(surface: str, text: str) -> None:
+    assert CANONICAL_REPO_URL in text, surface
+    assert CANONICAL_PAGES_URL in text, surface
 
 
 def test_readme_korean_overview_contract():
@@ -54,11 +120,6 @@ def test_readme_korean_guide_headings_are_structured_and_ordered():
     assert positions == sorted(positions)
 
 
-def assert_uses_only_canonical_urls(surface: str, text: str) -> None:
-    assert CANONICAL_REPO_URL in text, surface
-    assert CANONICAL_PAGES_URL in text, surface
-
-
 def test_readmes_expose_canonical_repository_and_pages_urls():
     for surface in ("README.md", "README.en.md"):
         assert_uses_only_canonical_urls(surface, read_text(surface))
@@ -83,8 +144,48 @@ def test_installer_distinguishes_firmware_flashing_from_hacs_integration():
 
     assert "Apple Notification Center Service (ANCS)" in index
     assert "블루투스(BLE)를 통해 아이폰 등의 iOS 기기 알림" in index
-    assert "설치기는 ESP32 펌웨어를 설치합니다" in index
+    assert "웹 설치기는 ESP32 펌웨어를 설치합니다" in index
     assert "HACS는 Home Assistant 동반 통합을 설치합니다" in index
+
+
+def test_installer_title_uses_public_home_assistant_copy_and_rejects_old_copy():
+    index = read_text("docs/index.html")
+
+    assert "<title>Home Assistant iOS ANCS Installer</title>" in index
+    for phrase in LEGACY_INSTALLER_COPY:
+        assert phrase not in index, phrase
+
+
+def test_installer_has_ordered_six_step_public_guidance_markers():
+    index = read_text("docs/index.html")
+
+    positions = []
+    for marker in INSTALLER_SECTION_MARKERS:
+        position = find_section_marker_position(index, marker)
+        assert position >= 0, marker
+        positions.append(position)
+
+    assert positions == sorted(positions)
+
+
+def test_installer_exposes_generic_setup_pairing_and_home_assistant_facts():
+    index = read_text("docs/index.html")
+
+    for fact in INSTALLER_FACTS:
+        assert fact in index, fact
+
+
+def test_readmes_and_installer_link_app_id_reference():
+    for surface in APP_ID_REFERENCE_SURFACES:
+        text = read_text(surface)
+        assert "APP_ID_REFERENCE.md" in text, surface
+
+
+def test_public_guidance_surfaces_reject_machine_and_owner_specific_examples():
+    for surface in PUBLIC_GUIDANCE_SURFACES:
+        text = read_text(surface)
+        for token in PRIVATE_EXAMPLE_GUIDANCE:
+            assert token not in text, f"{surface}: {token}"
 
 
 def test_installer_has_stable_guided_section_ids():
