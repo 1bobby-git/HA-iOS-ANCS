@@ -164,8 +164,11 @@ def test_validation_report_records_non_self_referential_v033_release_integrity()
     assert "`checksum_asset_name: release-fingerprints-v0.3.3.sha256`" in report
     assert f"`docs/release-fingerprints-v{VERSION}.sha256`" in report
     assert "Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists" in report
-    assert "Before publishing the checksum asset or declaring release integrity complete" in report
+    assert "before publishing the checksum asset or declaring release integrity complete" in report
     assert "gh release view v0.3.3 --repo 1bobby-git/HA-iOS-ANCS --json tagName,name,url,targetCommitish,isDraft,isPrerelease" in report
+    old_repo_arg = "--repo 1bobby-git/" + "ios-ancs"
+    assert old_repo_arg not in report
+    assert "not evidence that the query has already been run" in report
     assert "intentionally not hardcoded in this report" in report
     assert "python -m pytest tools/tests/test_release_integrity.py -q" in report
     assert "python -m pytest tools/tests -q" in report
