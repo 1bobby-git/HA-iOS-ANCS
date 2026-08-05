@@ -1,57 +1,49 @@
-# iOS Pairing And Enrollment
+# iOS Pairing Guide
 
-This device uses explicit BLE enrollment. It does not advertise for a new iPhone on normal unbonded boot until the owner opens an Enroll window.
+This device uses explicit BLE enrollment. It does not advertise for a new iPhone until the owner opens an enrollment window.
 
 ## Before Pairing
 
-1. Power the ESP32 board from USB.
-2. If provisioning is not complete, join `IOS-ANCS-SETUP-<SUFFIX>` with password `ancs-<lowercase_suffix>`.
+1. Flash a supported ESP32 board.
+2. Join `IOS-ANCS-SETUP-XXXXXX` with password `ancs-xxxxxx`.
 3. Open `http://192.168.4.1`.
-4. Configure Wi-Fi and MQTT. Home Assistant creates the Enroll button after MQTT connects.
+4. Save Wi-Fi and MQTT settings. The portal stores only Wi-Fi and MQTT configuration.
+5. Wait for Home Assistant MQTT Discovery to create the device and **iPhone 등록 시작** button.
 
-For the current board, `<SUFFIX>` is `572B20`, so the AP is `IOS-ANCS-SETUP-572B20` and the password is `ancs-572b20`. Infrastructure Wi-Fi passwords remain case-sensitive and must be entered exactly as configured on the access point.
+`XXXXXX` is the last six hexadecimal digits of the base Wi-Fi MAC address. Use uppercase in the SSID and lowercase in the password. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number. Infrastructure Wi-Fi passwords are case-sensitive and stored exactly as entered.
 
-## Enroll A First iPhone
+## Pair An iPhone
 
-1. Open an Enroll window by holding BOOT for 3 seconds or pressing the Home Assistant **iPhone 등록 시작** button.
-2. On iPhone, open **Settings > Bluetooth**.
-3. Select `IOS-ANCS-<FAMILY>-<SUFFIX>` when it appears, such as `IOS-ANCS-C6-2B20`.
+1. Hold BOOT for 3 seconds or press Home Assistant **iPhone 등록 시작**.
+2. Pair within the 120-second enrollment window.
+3. On iPhone, open **Settings > Bluetooth** and select the `IOS-ANCS-*` device.
 4. Enter PIN `123456`.
-5. Accept the iOS prompt to share system notifications.
-6. Confirm the device reaches `ancs_ready` in serial logs or validation output.
+5. Allow notification sharing when iOS asks.
+6. Generate a visible notification and confirm Home Assistant updates `최근 알림` and `앱 이름`.
 
-The Enroll window closes after 120 seconds or after a successful bond. If it closes before pairing completes, start Enroll again.
+## Existing Bond
 
-## Existing Bond Reconnect
-
-After a successful bond, rebooting the ESP32 should reconnect to the same iPhone without pressing Enroll. The device should reject new unknown pairing requests while a bond exists.
+After successful pairing, the ESP32 reconnects only to the stored iPhone. BOOT or **iPhone 등록 시작** requests reconnect when a bond exists; it does not permit a different phone to pair.
 
 ## Replace Enrollment
 
-Use **Replace enrollment** only when intentionally moving the relay to another iPhone or repairing a broken bond pair. Replace is different from Enroll:
+Use confirmed Replace enrollment only when moving the relay to another iPhone or repairing a broken bond. Replace deletes stored BLE bonds and opens a new 120-second enrollment window. BOOT fallback and Wi-Fi/MQTT provisioning reset do not delete BLE bonds.
 
-- **Enroll** from Home Assistant or BOOT opens pairing only when no bond exists. With a stored bond it is reconnect-only and rejects unknown phones.
-- **Replace enrollment** requires an explicit confirmed portal action, deletes stored BLE bonds, then opens a new 120-second Enroll window.
-- BOOT does not delete bonds.
-- Provisioning reset does not delete bonds.
+If the iPhone still has the old Bluetooth record, remove it from iOS Bluetooth settings before pairing again.
 
-If the iPhone still has the old Bluetooth record after Replace, remove it from iOS Bluetooth settings before pairing again.
+## Verification Helpers
 
-## Serial Pairing Verification
+Serial capture example:
 
 ```powershell
 python tools/verify_capture.py `
   --target esp32c6 `
-  --port COM9 `
+  --port COMx `
   --baud 115200 `
   --timeout 180 `
   --output artifacts/ancs-capture.jsonl
 ```
 
-Expected readiness line:
+`COMx` is a generic Windows serial-port placeholder. Use the actual connected port. On Linux, a generic example is `/dev/ttyACM0`.
 
-```text
-ANCS_STATE_JSON {"target":"<idf-target>","state":"ancs_ready",...,"bonded":true,"data_source_subscribed":true,"notification_source_subscribed":true}
-```
-
-Generate one visible iOS notification after `ancs_ready`. The verifier writes the raw serial stream and a single capture JSON file. It does not prove MQTT or Home Assistant delivery; use `tools/verify_mqtt_relay.py` with broker events for that layer.
+Serial ANCS capture does not prove MQTT or Home Assistant delivery. Use `tools/verify_mqtt_relay.py` with broker events for that layer.
