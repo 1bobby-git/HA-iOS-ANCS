@@ -2,16 +2,14 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-07-30
+- Last refreshed: 2026-08-05
 - Primary product surfaces: ESP32-C6 captive setup portal at `http://192.168.4.1`
 - Evidence reviewed:
   - `components/portal_http/portal.html`
   - `components/portal_http/portal.css`
   - `components/portal_http/portal.js`
   - `README.md`
-  - `docs/superpowers/specs/2026-07-29-standalone-ancs-mqtt-provisioning-design.md`
-  - `C:\Users\bobby\AppData\Local\Temp\codex-clipboard-036bab47-b0ab-4fb4-a96b-f69f2db74b96.png`
-  - `C:\Users\bobby\AppData\Local\Temp\codex-clipboard-eaf9ac63-4f44-4146-aa9d-4df1015ba04d.png`
+  - `docs/index.html`
 
 ## Brand
 - Personality: Calm, dependable, practical, and appliance-like.
