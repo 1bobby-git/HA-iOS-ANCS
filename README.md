@@ -114,7 +114,9 @@ BLE 페어링은 명시적으로 열어야 합니다. bond가 없는 장치는 E
 
 ## Home Assistant와 HACS
 
-MQTT Discovery는 HACS 없이 동작합니다. 브로커에 연결되면 펌웨어가 retained Discovery config를 게시하고 Home Assistant가 장치와 엔티티를 생성합니다. HACS 동반 통합은 Home Assistant 안의 보조 통합이며 ESP32 펌웨어 설치나 업데이트를 수행하지 않습니다.
+MQTT Discovery는 HACS 없이 동작합니다. 브로커에 연결되면 펌웨어가 retained Discovery config를 게시하고 Home Assistant가 장치와 엔티티를 생성합니다. HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설치하거나 업데이트하지 않습니다.
+
+HACS custom repository로 설치하려면 [HA iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 열고 Home Assistant에서 저장소 추가를 확인합니다. 이 링크는 Home Assistant companion integration 설치만 준비하며, HACS 기본 스토어 승인이나 펌웨어 플래시를 의미하지 않습니다.
 
 기존 자동화 파일:
 
