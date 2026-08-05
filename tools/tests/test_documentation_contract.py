@@ -139,8 +139,11 @@ def test_installer_distinguishes_firmware_flashing_from_hacs_integration():
 
     assert "Apple Notification Center Service (ANCS)" in index
     assert "블루투스(BLE)를 통해 아이폰 등의 iOS 기기 알림" in index
-    assert "웹 설치기는 ESP32 펌웨어를 설치합니다" in index
-    assert "HACS는 Home Assistant 동반 통합을 설치합니다" in index
+    assert "이 페이지는 ESP32 펌웨어 설치용입니다." in index
+    assert (
+        "HACS는 Home Assistant 동반 통합만 설치하며 "
+        "ESP32 펌웨어를 설치하거나 업데이트하지 않습니다."
+    ) in index
 
 
 def test_installer_title_uses_public_home_assistant_copy_and_rejects_old_copy():
