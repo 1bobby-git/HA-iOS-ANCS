@@ -127,6 +127,19 @@ def test_brand_icon_is_square_png_with_recommended_size():
     assert width >= 256
 
 
+def test_hacs_package_contains_the_brand_asset_and_an_osi_license():
+    root_icon = (ROOT / "brand/icon.png").read_bytes()
+    integration_icon = (
+        ROOT / "custom_components/ha_ios_ancs/brand/icon.png"
+    ).read_bytes()
+    license_text = read_text("LICENSE")
+
+    assert integration_icon == root_icon
+    assert license_text.startswith("MIT License\n")
+    assert "Copyright (c) 2026 1bobby-git" in license_text
+    assert "Permission is hereby granted, free of charge" in license_text
+
+
 def test_readmes_include_hacs_my_link_and_firmware_boundary():
     for surface in ("README.md", "README.en.md"):
         content = read_text(surface)
