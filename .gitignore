@@ -5,6 +5,10 @@
 /managed_components/
 /artifacts/
 /output/
+/brand/
+/docs/plans/
+/docs/superpowers/
+/docs/vendor/esp-web-tools-10.4.0/
 /.omx/
 /.playwright-cli/
 /.worktrees/
