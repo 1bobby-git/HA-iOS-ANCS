@@ -91,7 +91,9 @@ Use **Replace enrollment** only when intentionally deleting the current iPhone b
 
 MQTT Discovery works without HACS or any custom integration. Discovery creates the device, focused sensors, status binary sensor, and control buttons from retained MQTT config messages.
 
-HACS, when used, installs only the Home Assistant companion integration. It never flashes ESP32 firmware, does not write factory images, and does not replace the browser installer. Default HACS-store acceptance is not claimed here.
+HACS installs only the Home Assistant companion integration. It never flashes or updates ESP32 firmware, does not write factory images, and does not replace the browser installer.
+
+To install it as a HACS custom repository, open the [HA iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration) and confirm the repository addition in Home Assistant. This documents custom-repository installation only; default HACS-store acceptance is not claimed here.
 
 Install the automation file:
 
