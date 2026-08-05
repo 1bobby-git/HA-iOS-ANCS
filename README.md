@@ -32,17 +32,17 @@ iPhone → BLE ANCS → ESP32 → Wi-Fi/MQTT → Home Assistant
 5. Home Assistant에서 MQTT Discovery로 장치가 보이면 **iPhone 등록 시작** 버튼을 눌러 120초 등록 창을 엽니다.
 6. iOS Bluetooth 설정에서 장치를 선택하고 PIN `123456`을 입력한 뒤 알림 공유를 허용합니다. Home Assistant에서 `최근 알림`과 `앱 이름` 센서가 갱신되는지 확인합니다.
 
-`XXXXXX`는 보드의 base Wi-Fi MAC 마지막 6자리 16진수입니다. SSID에는 대문자를 사용하고, 비밀번호에는 같은 값을 소문자로 사용합니다. 일반 형식은 `ancs-<lowercase_suffix>`이며 예시는 모델 번호가 아닙니다. 인프라 Wi-Fi 비밀번호는 case-sensitive 값으로 그대로 저장됩니다.
+`XXXXXX`는 보드의 기본 Wi-Fi MAC 주소의 마지막 6자리 16진수입니다. SSID에는 대문자를 사용하고, 비밀번호에는 같은 값을 소문자로 사용합니다. 일반 형식은 `ancs-<lowercase_suffix>`이며 예시는 모델 번호가 아닙니다. 인프라 Wi-Fi 비밀번호는 case-sensitive 값으로 그대로 저장됩니다.
 
-BOOT 버튼을 3초 누르면 설정 AP 또는 iPhone 등록 창을 여는 fallback 동작을 수행합니다. 저장된 BLE bond가 있으면 등록 동작은 새 휴대폰을 허용하지 않고 기존 iPhone 재연결만 요청합니다.
+BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저장된 iPhone 페어링 정보(bond)가 있으면 등록 동작은 새 휴대폰을 허용하지 않고 기존 iPhone 재연결만 요청합니다.
 
 ## Wi-Fi와 MQTT 설정
 
-설정 AP와 `http://192.168.4.1` 포털은 Wi-Fi와 MQTT 설정만 저장합니다. `IOS-ANCS-SETUP-XXXXXX`의 `XXXXXX`는 base Wi-Fi MAC 마지막 6자리이며, SSID에는 대문자, `ancs-xxxxxx` 또는 일반 형식 `ancs-<lowercase_suffix>` 비밀번호에는 소문자를 사용합니다. Home Assistant 장치는 MQTT Discovery로 생성됩니다.
+설정 AP와 `http://192.168.4.1` 포털은 Wi-Fi와 MQTT 설정만 저장합니다. `IOS-ANCS-SETUP-XXXXXX`의 `XXXXXX`는 기본 Wi-Fi MAC 주소의 마지막 6자리이며, SSID에는 대문자, `ancs-xxxxxx` 또는 일반 형식 `ancs-<lowercase_suffix>` 비밀번호에는 소문자를 사용합니다. Home Assistant 장치는 MQTT Discovery로 생성됩니다.
 
 ## iPhone 등록
 
-Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 3초 fallback으로 120초 등록 창을 열고, iOS Bluetooth 설정에서 PIN `123456`을 입력한 뒤 알림 공유를 허용합니다. 저장된 bond가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
+Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 버튼을 3초 눌러 120초 등록 창을 열고, iOS Bluetooth 설정에서 PIN `123456`을 입력한 뒤 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
 
 ## 지원 보드와 v0.3.3 빌드 사실
 
@@ -62,7 +62,7 @@ Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 3초 fallback으로
 
 ## Home Assistant와 HACS
 
-MQTT Discovery는 HACS 없이 동작합니다. 장치가 MQTT 브로커에 연결되면 retained Discovery config를 게시하고 Home Assistant가 장치, `최근 알림`, `앱 이름`, 상태 센서, `iPhone 등록 시작` 버튼을 생성합니다.
+MQTT Discovery는 HACS 없이 동작합니다. 장치가 MQTT 브로커에 연결되면 retained Discovery 설정을 게시하고 Home Assistant가 장치, `최근 알림`, `앱 이름`, 상태 센서, `iPhone 등록 시작` 버튼을 생성합니다.
 
 HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설치하거나 업데이트하지 않습니다. HACS custom repository 설치는 [HA iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 열고 Home Assistant에서 저장소 추가를 확인합니다. 이 문서는 custom repository 경로만 설명하며, HACS 기본 스토어 등록을 주장하지 않습니다.
 
@@ -76,12 +76,12 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 
 사용 전에 `sensor.replace_with_your_last_notification_entity`를 본인 Home Assistant의 last-notification sensor로, `notify.replace_with_your_mobile_app_service`를 본인 mobile app notify 서비스로 바꾸세요. 예제는 새 `relay_id` 상태 변화만 전달하고, `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, availability 복구 전환은 전달하지 않습니다.
 
-알림 JSON은 원본 `app_id`를 보존하고 friendly `app_name`을 추가합니다. 알 수 없는 bundle identifier는 원본 ID로 fallback합니다. 대표 매핑은 [App ID Reference](docs/APP_ID_REFERENCE.md)에 있습니다.
+알림 JSON은 원본 `app_id`를 보존하고 표시용 `app_name`을 추가합니다. 목록에 없으면 원본 ID를 그대로 표시합니다. 대표 매핑은 [App ID Reference](docs/APP_ID_REFERENCE.md)에 있습니다.
 
 ## 문제 해결
 
 - 설치 버튼이 보이지 않거나 실패하면 데스크톱 Chrome/Edge, USB 데이터 케이블, OS serial 권한을 확인합니다. iPhone/iPad 브라우저는 USB 플래시를 할 수 없습니다.
-- `IOS-ANCS-SETUP-XXXXXX`가 보이지 않으면 전원과 플래시 성공 여부를 확인하고 BOOT를 3초 눌러 fallback을 시도합니다.
+- `IOS-ANCS-SETUP-XXXXXX`가 보이지 않으면 전원과 플래시 성공 여부를 확인하고 BOOT 버튼을 3초 눌러 복구 창을 엽니다.
 - `http://192.168.4.1`이 열리지 않으면 setup AP에 실제로 연결되어 있는지 확인하고 VPN/모바일 데이터 라우팅을 잠시 끕니다.
 - MQTT가 연결되지 않으면 host, port, TLS CA, username/password, ACL, 중복 Client ID를 확인합니다.
 - iPhone에 장치가 보이지 않으면 `iPhone 등록 시작` 또는 BOOT 3초로 120초 등록 창을 다시 엽니다.

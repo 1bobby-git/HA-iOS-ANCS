@@ -16,10 +16,10 @@ Developer examples use `COMx` on Windows and `/dev/ttyACM0` on Linux. Replace th
 
 - Expected SSID: `IOS-ANCS-SETUP-XXXXXX`.
 - Expected password: `ancs-xxxxxx`.
-- `XXXXXX` is the last six base Wi-Fi MAC hex digits, uppercase in the SSID and lowercase in the password. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number.
+- `XXXXXX` is the last six hexadecimal digits of the base Wi-Fi MAC address, uppercase in the SSID and lowercase in the password. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number.
 - Infrastructure Wi-Fi passwords are case-sensitive and stored exactly as entered.
 - Verify the board is powered and the flash completed.
-- Hold BOOT for 3 seconds to open fallback.
+- Hold BOOT for 3 seconds to open the recovery window.
 
 The setup AP can close after Wi-Fi, MQTT, and an existing BLE bond are all ready.
 
@@ -55,7 +55,7 @@ The setup AP should remain available while Wi-Fi or MQTT is unhealthy so setting
 - Enter PIN `123456`.
 - Allow notification sharing when prompted.
 
-If a bond already exists, enrollment requests reconnect to the stored iPhone only. Use confirmed Replace enrollment only when intentionally deleting the current bond.
+If pairing information already exists, enrollment requests reconnect to the stored iPhone only. Use confirmed Replace enrollment only when intentionally deleting the current iPhone pairing information.
 
 ## Notifications Do Not Arrive
 

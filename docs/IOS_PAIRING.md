@@ -23,11 +23,11 @@ This device uses explicit BLE enrollment. It does not advertise for a new iPhone
 
 ## Existing Bond
 
-After successful pairing, the ESP32 reconnects only to the stored iPhone. BOOT or **iPhone 등록 시작** requests reconnect when a bond exists; it does not permit a different phone to pair.
+After successful pairing, the ESP32 reconnects only to the stored iPhone. BOOT or **iPhone 등록 시작** requests reconnect when pairing information already exists; it does not permit a different phone to pair.
 
 ## Replace Enrollment
 
-Use confirmed Replace enrollment only when moving the relay to another iPhone or repairing a broken bond. Replace deletes stored BLE bonds and opens a new 120-second enrollment window. BOOT fallback and Wi-Fi/MQTT provisioning reset do not delete BLE bonds.
+Use confirmed Replace enrollment only when moving the relay to another iPhone or repairing broken pairing information. Replace deletes stored BLE bonds and opens a new 120-second enrollment window. BOOT recovery and Wi-Fi/MQTT provisioning reset do not delete BLE bonds.
 
 If the iPhone still has the old Bluetooth record, remove it from iOS Bluetooth settings before pairing again.
 
