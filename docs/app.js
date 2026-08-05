@@ -50,7 +50,8 @@ const boards = {
     boot: "GPIO 9",
     validation: "v0.3.3 build verified",
     status: "BUILD VERIFIED",
-    description: "ESP32-C61 계열용 v0.3.3 ANCS-to-MQTT factory build입니다.",
+    description:
+      "ESP32-C61은 ESP32-C6의 리비전이 아니라 별도 최신 칩입니다. 실제 보드 각인이 C61인 경우에 선택하세요.",
     hash: "SHA256 5C231F070FC7",
   },
   esp32s3: {
