@@ -20,6 +20,8 @@ HACS는 ESP32 펌웨어를 플래시하지 않습니다. ESP32 설치는 브라�
 
 공통 펌웨어는 최소 4 MB 플래시 레이아웃을 사용합니다. ESP32-S2는 BLE가 없어서 제외됩니다. ESP32-H2는 Wi-Fi가 없고, ESP32-P4는 내장 Wi-Fi/BLE 라디오가 없어서 제외됩니다.
 
+설치 페이지에 표시되는 모든 v0.3.3 이미지는 컴파일, 링크, 파티션 검증, 병합 factory 이미지 생성을 통과했습니다. ESP32/WROOM 계열 COM7 보드는 v0.3.3 애플리케이션 플래시, 해시 검증, 부팅, 자동 설정 AP 시작까지만 새 하드웨어 증거가 있습니다. 저장된 Wi-Fi가 테스트 위치에서 연결되지 않아 v0.3.3의 MQTT, Home Assistant Discovery, BLE enrollment, live iPhone notification capture는 아직 검증되지 않았습니다. ESP32/WROOM v0.3.2의 MQTT/BLE 증거와 ESP32-C6 v0.3.0 COM9 증거는 과거 참고용입니다.
+
 | 대상 | 일반 모듈/보드 | Factory 이미지 | 검증 상태 |
 | --- | --- | ---: | --- |
 | `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,425,616 bytes | v0.3.3 COM7 플래시, 부팅, 자동 설정 AP 검증 완료; MQTT/BLE 보류 |
@@ -42,7 +44,7 @@ HACS는 ESP32 펌웨어를 플래시하지 않습니다. ESP32 설치는 브라�
 4. 설치가 끝나면 보드가 자동 설정 AP를 띄울 때까지 기다립니다.
 5. `IOS-ANCS-SETUP-<SUFFIX>` Wi-Fi에 연결하고 `http://192.168.4.1`에서 Wi-Fi와 MQTT를 저장합니다.
 
-설치 페이지는 통합 manifest `./manifests/ios-ancs.json`을 사용합니다. 사용자가 모델을 선택하면 안내 문구가 바뀌고, 실제 이미지는 ESP Web Tools가 연결 칩과 manifest를 기준으로 선택합니다.
+설치 페이지는 통합 manifest `./manifests/ios-ancs.json`을 사용합니다. 사용자가 모델을 선택하면 안내 문구가 바뀌고, 실제 이미지는 ESP Web Tools가 연결 칩과 manifest를 기준으로 선택합니다. legacy C6 manifest `./manifests/esp32-c6.json`은 기존 C6 사용자와 오래된 링크를 현재 `esp32c6` v0.3.3 factory 이미지로 안내하기 위한 단일 칩 포인터입니다.
 
 ## 소스 빌드와 플래시
 
@@ -64,6 +66,8 @@ PowerShell:
 .\tools\build.ps1 -Target esp32c6
 .\tools\flash.ps1 -Port COM9
 ```
+
+`-Target`과 serial `-Port`는 예시입니다. 선택한 보드와 현재 감지된 포트에 맞게 바꿔야 하며, `COM9`/C6는 모든 사용자에게 적용되는 기본값이 아닙니다.
 
 모든 지원 타깃을 빌드하고 웹 설치용 병합 이미지를 생성:
 
@@ -118,7 +122,7 @@ MQTT Discovery는 HACS 없이 동작합니다. 브로커에 연결되면 펌웨�
 homeassistant/automation_ios_ancs_c6_relay.yaml
 ```
 
-이 파일을 Home Assistant automation YAML에 복사하거나 automation package에서 include할 수 있습니다. 자동화는 MQTT Discovery의 latest notification sensor 상태 변화를 트리거로 사용하고, incomplete 또는 `pre_existing` payload를 무시하며, `unavailable`에서 복구된 전환을 거부해 오래된 `relay_id`가 재전송되지 않게 합니다. 기본 예시는 `notify.mobile_app_example_phone`로 전송하고 모바일 알림 제목에 `[C6묶A]`를 붙입니다.
+이 파일을 Home Assistant automation YAML에 복사하거나 automation package에서 include할 수 있습니다. 자동화는 MQTT Discovery의 last-notification sensor 상태 변화를 트리거로 사용하고, incomplete 또는 `pre_existing` payload를 무시하며, `unavailable`에서 복구된 전환을 거부해 오래된 `relay_id`가 재전송되지 않게 합니다. 파일 안의 `notify.mobile_app_example_phone`와 `sensor.ios_ancs_c6_ab12_ios_ancs_c6_ab12_last_notification`은 저장소 소유자 환경 예시입니다. 자동화를 켜기 전에 `service:`를 `notify.mobile_app_<your_device>`로 바꾸고, trigger `entity_id:`를 본인 Home Assistant에서 발견된 last-notification sensor로 바꿔야 합니다. 예시 모바일 알림 제목 marker는 `[C6→HA]`입니다.
 
 펌웨어는 `app_id`가 `io.robbie.HomeAssistant`인 ANCS 이벤트를 게시하지 않습니다. 제목 marker는 운영자 가시성을 위해 남지만, loop 방지 경계는 app-level exclusion입니다. marker 유무와 관계없이 Home Assistant 알림은 MQTT로 되돌아가지 않습니다.
 
@@ -150,7 +154,9 @@ ios-ancs/<device_id>
 homeassistant/sensor/<device_id>/last_notification/config
 homeassistant/sensor/<device_id>/<field>/config
 homeassistant/button/<device_id>/enroll/config
+homeassistant/button/<device_id>/restart/config
 <base>/command/enroll
+<base>/command/restart
 ```
 
 계약:
@@ -160,6 +166,7 @@ homeassistant/button/<device_id>/enroll/config
 - `<base>/state`: counters와 diagnostics. QoS 1, retained true입니다.
 - Discovery configs: retained true입니다. aggregate sensor는 `relay_id`를 state로 사용하고 각 field sensor는 JSON 값 하나를 추출합니다.
 - Enroll button은 정확한 payload `ENROLL`을 `<base>/command/enroll`에 QoS 1로 게시합니다. retained, partial, malformed command는 무시됩니다.
+- Restart button은 정확한 payload `RESTART`를 `<base>/command/restart`에 QoS 1, non-retained로 게시합니다. retained, partial, malformed, non-exact command는 펌웨어 계약에 따라 무시됩니다.
 
 Wi-Fi 또는 MQTT가 끊긴 동안 받은 알림은 즉시 drop되며 재연결 후 replay하지 않습니다. `pre_existing`, incomplete, invalid, duplicate, removed, Home Assistant echo로 표시된 notification은 MQTT에서 제외됩니다.
 
@@ -201,6 +208,8 @@ python tools/verify_capture.py `
   --output artifacts/ancs-capture.jsonl
 ```
 
+위 `--port COM9`는 예시입니다. 현재 연결된 보드의 실제 serial port로 바꿔야 합니다.
+
 MQTT broker event 검증:
 
 ```powershell
@@ -236,5 +245,7 @@ idf.py -B build-tests build
 idf.py -B build-tests -p COM9 flash monitor
 Pop-Location
 ```
+
+위 build/flash 예시의 target과 `COM9` 포트는 선택한 보드와 현재 감지된 serial port에 맞게 조정해야 합니다.
 
 검증을 보고할 때는 build verification, hardware flashing, BLE enrollment, live iPhone notification capture를 구분합니다. 예를 들어 v0.3.3의 모든 공개 target은 빌드 검증을 통과했지만, 실제 하드웨어 플래시와 iPhone 알림 캡처 증거는 보드와 환경별로 따로 기록해야 합니다.

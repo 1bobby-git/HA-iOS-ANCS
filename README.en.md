@@ -99,7 +99,7 @@ Install the automation file:
 homeassistant/automation_ios_ancs_c6_relay.yaml
 ```
 
-Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, and rejects transitions restored from `unavailable` so an old `relay_id` is not forwarded after MQTT availability recovers. It sends `notify.mobile_app_example_phone` and prefixes the mobile notification title with `[C6묶A]`.
+Copy its content into Home Assistant automation YAML or include it from your automation package. The automation triggers on the MQTT Discovery last-notification sensor state change, ignores incomplete or `pre_existing` payloads, and rejects transitions restored from `unavailable` so an old `relay_id` is not forwarded after MQTT availability recovers. The `notify.mobile_app_example_phone` service and `sensor.ios_ancs_c6_ab12_ios_ancs_c6_ab12_last_notification` trigger entity in that file are repository-owner examples. Before enabling the automation, replace `service:` with `notify.mobile_app_<your_device>` and replace the trigger `entity_id:` with the last-notification sensor discovered in your Home Assistant instance. The example mobile notification title marker is `[C6→HA]`.
 
 MQTT Discovery also creates an **iPhone 등록 시작** button. Pressing it starts new-iPhone advertising only when no bond exists. If a bond already exists, it only requests a reconnect to that known iPhone and never deletes the bond.
 
@@ -133,7 +133,9 @@ Published topics:
 homeassistant/sensor/<device_id>/last_notification/config
 homeassistant/sensor/<device_id>/<field>/config
 homeassistant/button/<device_id>/enroll/config
+homeassistant/button/<device_id>/restart/config
 <base>/command/enroll
+<base>/command/restart
 ```
 
 Contracts:
@@ -143,6 +145,7 @@ Contracts:
 - `<base>/state`: counters and diagnostics; QoS 1; retained true.
 - Discovery configs: retained true. The aggregate sensor uses `relay_id` as its state, and each field sensor extracts one JSON value.
 - The Enroll button publishes the exact payload `ENROLL` to `<base>/command/enroll` with QoS 1. Retained, partial, and malformed commands are ignored.
+- The Restart button publishes the exact payload `RESTART` to `<base>/command/restart` with QoS 1 and non-retained delivery. Retained, partial, malformed, and non-exact commands are ignored, matching the firmware contract.
 
 ## Updating, Resetting, and Replacing a Device
 
@@ -196,6 +199,8 @@ PowerShell build and flash:
 .\tools\flash.ps1 -Port COM9
 ```
 
+`-Target` and serial `-Port` are examples. They must match the selected board and the currently detected port; `COM9`/C6 is not a universal default.
+
 Build every supported target and generate merged web-installer images:
 
 ```powershell
@@ -218,6 +223,8 @@ python tools/verify_capture.py `
   --timeout 180 `
   --output artifacts/ancs-capture.jsonl
 ```
+
+The `--port COM9` value is an example; replace it with the serial port currently assigned to the connected board.
 
 MQTT broker event validation:
 
@@ -243,3 +250,5 @@ idf.py -B build-tests build
 idf.py -B build-tests -p COM9 flash monitor
 Pop-Location
 ```
+
+Adjust the target and `COM9` examples to the selected board and currently detected serial port before flashing or monitoring.
