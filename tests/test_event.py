@@ -177,7 +177,7 @@ def test_event_entity_availability_follows_runtime_and_ignores_unknown(
     assert state.state == STATE_UNKNOWN
 
 
-def test_event_entity_unload_marks_unavailable_and_removes_runtime_listeners(
+def test_event_entity_unload_removes_state_and_runtime_listeners(
     hass: HomeAssistant, run
 ) -> None:
     runtime = RuntimeStub(available=True)
@@ -284,6 +284,25 @@ def test_setup_entry_cleans_runtime_when_event_forward_fails(
     )
 
 
+def test_setup_entry_does_not_skip_unlocked_forwarding(
+    hass: HomeAssistant, run
+) -> None:
+    entry = make_entry("ios_ancs")
+    runtime = RuntimeStub()
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+
+    with patch("custom_components.ha_ios_ancs.AncsMqttRuntime") as runtime_cls:
+        runtime_cls.return_value = runtime
+
+        assert run(async_setup_entry(hass, entry)) is True
+
+    runtime.async_start.assert_awaited_once()
+    assert entry.runtime_data is runtime
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
+        entry, [Platform.EVENT]
+    )
+
+
 def test_unload_entry_unloads_platform_before_stopping_runtime(
     hass: HomeAssistant, run
 ) -> None:
@@ -310,7 +329,11 @@ def test_unload_entry_unloads_platform_before_stopping_runtime(
 
     async def unload_with_locked_entry() -> bool:
         async with entry.setup_lock:
-            return await async_unload_entry(hass, entry)
+            with patch(
+                "custom_components.ha_ios_ancs.er.async_entries_for_config_entry",
+                return_value=[],
+            ):
+                return await async_unload_entry(hass, entry)
 
     assert run(unload_with_locked_entry()) is True
 

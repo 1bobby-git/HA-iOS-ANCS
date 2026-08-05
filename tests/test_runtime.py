@@ -321,13 +321,29 @@ def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run
         runtime = runtime_cls.return_value
         runtime.async_start = AsyncMock()
         runtime.async_stop = AsyncMock()
+        hass.config_entries.async_forward_entry_setups = AsyncMock()
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
 
-        assert run(async_setup_entry(hass, entry)) is True
+        async def setup_with_locked_entry() -> bool:
+            async with entry.setup_lock:
+                return await async_setup_entry(hass, entry)
+
+        assert run(setup_with_locked_entry()) is True
         assert entry.runtime_data is runtime
         runtime_cls.assert_called_once_with(hass, "ios_ancs")
         runtime.async_start.assert_awaited_once()
+        hass.config_entries.async_forward_entry_setups.assert_awaited_once()
 
-        assert run(async_unload_entry(hass, entry)) is True
+        async def unload_with_locked_entry() -> bool:
+            async with entry.setup_lock:
+                with patch(
+                    "custom_components.ha_ios_ancs.er.async_entries_for_config_entry",
+                    return_value=[],
+                ):
+                    return await async_unload_entry(hass, entry)
+
+        assert run(unload_with_locked_entry()) is True
+        hass.config_entries.async_unload_platforms.assert_awaited_once()
         runtime.async_stop.assert_awaited_once()
         assert entry.runtime_data is None
 
