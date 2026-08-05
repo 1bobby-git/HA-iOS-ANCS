@@ -188,6 +188,50 @@ def test_runtime_concurrent_starts_create_one_subscription_pair(hass: HomeAssist
     assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
 
 
+def test_runtime_stop_waits_for_in_flight_start_and_unsubscribes(hass: HomeAssistant, run) -> None:
+    wait_started = asyncio.Event()
+    release_wait = asyncio.Event()
+    subscriptions: list[str] = []
+    unsubscribes = [Mock(), Mock()]
+
+    async def fake_wait_for_client(hass: HomeAssistant) -> bool:
+        wait_started.set()
+        await release_wait.wait()
+        return True
+
+    async def fake_subscribe(
+        hass: HomeAssistant,
+        topic: str,
+        msg_callback: Callable[[ReceiveMessage], None],
+        qos: int = 0,
+        encoding: str | None = "utf-8",
+    ) -> Callable[[], None]:
+        subscriptions.append(topic)
+        return unsubscribes[len(subscriptions) - 1]
+
+    async def start_then_stop() -> AncsMqttRuntime:
+        runtime = AncsMqttRuntime(hass, "ios_ancs")
+        mqtt_api = SimpleNamespace(
+            async_wait_for_mqtt_client=fake_wait_for_client,
+            async_subscribe=fake_subscribe,
+        )
+        with patch("custom_components.ha_ios_ancs.runtime._get_mqtt_api", return_value=mqtt_api):
+            start_task = asyncio.create_task(runtime.async_start())
+            await wait_started.wait()
+            stop_task = asyncio.create_task(runtime.async_stop())
+            await asyncio.sleep(0)
+            release_wait.set()
+            await asyncio.gather(start_task, stop_task)
+        return runtime
+
+    runtime = run(start_then_stop())
+
+    assert subscriptions == ["ios_ancs/notification", "ios_ancs/availability"]
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+    run(runtime.async_stop())
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+
+
 def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run) -> None:
     first_unsubscribe = Mock()
     retry_notification_unsubscribe = Mock()

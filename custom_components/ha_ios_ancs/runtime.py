@@ -84,12 +84,13 @@ class AncsMqttRuntime:
     async def async_stop(self) -> None:
         """Unsubscribe and clear listeners."""
 
-        unsubscribes = self._unsubscribes
-        self._unsubscribes = []
-        for unsubscribe in unsubscribes:
-            unsubscribe()
-        self._notification_listeners.clear()
-        self._availability_listeners.clear()
+        async with self._start_lock:
+            unsubscribes = self._unsubscribes
+            self._unsubscribes = []
+            for unsubscribe in unsubscribes:
+                unsubscribe()
+            self._notification_listeners.clear()
+            self._availability_listeners.clear()
 
     @callback
     def async_add_notification_listener(
