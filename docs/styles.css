@@ -46,11 +46,20 @@ body::before {
 
 a {
   color: inherit;
+  overflow-wrap: anywhere;
 }
 
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+.skip-link:focus-visible,
+a:focus-visible,
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 4px;
 }
 
 .skip-link {
@@ -653,10 +662,45 @@ h1 span {
 
 .flash-panel > p:not(.panel-kicker) {
   max-width: 680px;
-  min-height: 58px;
+  min-height: 0;
   margin-bottom: 30px;
   color: var(--muted);
   word-break: keep-all;
+}
+
+.action-warning {
+  display: grid;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid #574317;
+  background: rgba(255, 182, 41, 0.04);
+  gap: 4px;
+}
+
+.action-warning strong {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.action-warning span {
+  color: #d7c497;
+  font-size: 0.82rem;
+}
+
+.action-warning.danger {
+  border-color: rgba(255, 109, 77, 0.5);
+  background: rgba(255, 109, 77, 0.045);
+}
+
+.action-warning.danger strong {
+  color: var(--danger);
+}
+
+.action-warning.danger span {
+  color: #e0a99b;
 }
 
 .flash-route {
@@ -756,7 +800,7 @@ esp-web-install-button {
 .procedure-section {
   display: grid;
   grid-template-columns: 0.82fr 1.18fr;
-  gap: 8vw;
+  gap: 6vw;
   border-top: 1px solid var(--line);
 }
 
@@ -794,6 +838,64 @@ esp-web-install-button {
   display: block;
   margin-bottom: 3px;
   color: var(--amber);
+}
+
+.guided-grid {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.flow-section {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  background: rgba(17, 20, 17, 0.72);
+}
+
+.flow-index {
+  margin: 0 0 18px;
+  color: var(--acid);
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.flow-section h3 {
+  margin-bottom: 22px;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.flow-block {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.flow-block + .flow-block {
+  margin-top: 16px;
+}
+
+.flow-block h4 {
+  margin: 0 0 6px;
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+}
+
+.flow-block p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  word-break: keep-all;
+}
+
+.flow-block a {
+  color: var(--ink);
+  text-underline-offset: 4px;
 }
 
 .procedure-list {
@@ -966,6 +1068,12 @@ footer p {
   }
 }
 
+@media (min-width: 900px) {
+  .guided-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 680px) {
   .site-header,
   main,
@@ -992,6 +1100,8 @@ footer p {
 
   .header-links {
     gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .hero {
@@ -1079,6 +1189,14 @@ footer p {
     gap: 7px;
   }
 
+  .flash-route span {
+    font-size: 0.56rem;
+  }
+
+  .flow-section {
+    padding: 20px;
+  }
+
   .procedure-list li {
     min-height: 150px;
     grid-template-columns: 56px 1fr;
@@ -1099,5 +1217,7 @@ footer p {
 
   .footer-links {
     margin-top: 28px;
+    flex-wrap: wrap;
+    gap: 14px 20px;
   }
 }
