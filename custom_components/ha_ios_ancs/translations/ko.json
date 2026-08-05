@@ -1,0 +1,19 @@
+{
+  "title": "HA iOS ANCS",
+  "config": {
+    "step": {
+      "user": {
+        "description": "HA iOS ANCS relay가 사용하는 MQTT 기본 토픽을 입력하세요.",
+        "data": {
+          "base_topic": "MQTT 기본 토픽"
+        }
+      }
+    },
+    "error": {
+      "invalid_base_topic": "공백, 와일드카드, 빈 경로 구간이 없는 올바른 MQTT 토픽을 입력하세요."
+    },
+    "abort": {
+      "already_configured": "이 HA iOS ANCS MQTT 토픽은 이미 설정되어 있습니다."
+    }
+  }
+}
