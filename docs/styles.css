@@ -205,6 +205,15 @@ h1 span {
   word-break: keep-all;
 }
 
+.ancs-definition {
+  display: block;
+  margin-top: 14px;
+}
+
+.ancs-definition strong {
+  color: var(--ink);
+}
+
 .jump-link {
   display: inline-flex;
   min-width: 250px;

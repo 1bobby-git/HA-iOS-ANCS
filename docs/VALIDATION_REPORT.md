@@ -1,12 +1,15 @@
 # Validation Report
 
-Validation date: 2026-08-04 (Asia/Seoul)
+Validation date: 2026-08-05 (Asia/Seoul)
 
-Rename-preparation note: this report contains historical validation evidence
-captured before the GitHub repository rename. Current repository commands below
-use the intended `1bobby-git/HA-iOS-ANCS` slug, but no GitHub repository rename,
-live Pages deployment, or release metadata query has been performed as part of
-this report.
+Publication note: the GitHub repository is now
+`1bobby-git/HA-iOS-ANCS`, and the browser installer is live at
+`https://1bobby-git.github.io/HA-iOS-ANCS/`. The legacy Pages URL returned HTTP
+404 during the 2026-08-05 verification. The HACS and Hassfest validation jobs
+and the Pages deployment both passed for release candidate commit
+`e415c25566f485180794f3272fa5ee68aa1b7776`. Historical hardware evidence below
+keeps its original version and device boundaries; publication does not upgrade
+older hardware evidence to the current firmware or companion integration.
 
 ## Release integrity v0.3.3
 
@@ -15,8 +18,9 @@ this report.
   - `release_name: iOS ANCS MQTT Bridge v0.3.3`
   - `release_title: iOS ANCS MQTT Bridge v0.3.3`
   - `checksum_asset_name: release-fingerprints-v0.3.3.sha256`
-- Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists. After the repository rename, before publishing the checksum asset or declaring release integrity complete, run `gh release view v0.3.3 --repo 1bobby-git/HA-iOS-ANCS --json tagName,name,url,targetCommitish,isDraft,isPrerelease` and verify the returned tag name, release name/title, target commit, release URL, draft flag, and prerelease flag. This command is the current expected command, not evidence that the query has already been run. Those values are intentionally not hardcoded in this report.
+- Publish-time release metadata was verified on 2026-08-05 with `gh release view v0.3.3 --repo 1bobby-git/HA-iOS-ANCS --json tagName,name,url,targetCommitish,isDraft,isPrerelease`. The full release is neither a draft nor a prerelease: `targetCommitish: main`, `release_commit: dc297cf87e97c27f5fad05f9b0994fb0fb62b3ef`, and `release_url: https://github.com/1bobby-git/HA-iOS-ANCS/releases/tag/v0.3.3`. The release contains all seven factory binaries and the checksum asset, so v0.3.3 release integrity is complete.
 - Checksum asset: `docs/release-fingerprints-v0.3.3.sha256` is a deterministic sha256sum-style list of the publishable factory binaries, using repository-relative paths and full lowercase SHA-256 values.
+- Public artifact verification: All seven public Pages firmware downloads matched the checked-in SHA-256 values on 2026-08-05.
 - CI gate: GitHub Pages deployment now waits for a Python 3.12 `release_integrity` job that installs only `pytest` and runs the existing multi-target contract plus the v0.3.3 release-integrity contract.
 - Commands:
   - `python -m pytest tools/tests/test_release_integrity.py -q`

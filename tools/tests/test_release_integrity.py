@@ -163,22 +163,20 @@ def test_validation_report_records_non_self_referential_v033_release_integrity()
     assert "`release_title: iOS ANCS MQTT Bridge v0.3.3`" in report
     assert "`checksum_asset_name: release-fingerprints-v0.3.3.sha256`" in report
     assert f"`docs/release-fingerprints-v{VERSION}.sha256`" in report
-    assert "Publish-time release metadata verification is pending until the `v0.3.3` GitHub release exists" in report
-    assert "before publishing the checksum asset or declaring release integrity complete" in report
+    assert "Publish-time release metadata was verified on 2026-08-05" in report
     assert "gh release view v0.3.3 --repo 1bobby-git/HA-iOS-ANCS --json tagName,name,url,targetCommitish,isDraft,isPrerelease" in report
     old_repo_arg = "--repo 1bobby-git/" + "ios-ancs"
     assert old_repo_arg not in report
-    assert "not evidence that the query has already been run" in report
-    assert "intentionally not hardcoded in this report" in report
+    assert "release_url: https://github.com/1bobby-git/HA-iOS-ANCS/releases/tag/v0.3.3" in report
+    assert "release_commit: dc297cf87e97c27f5fad05f9b0994fb0fb62b3ef" in report
+    assert "All seven public Pages firmware downloads matched" in report
     assert "python -m pytest tools/tests/test_release_integrity.py -q" in report
     assert "python -m pytest tools/tests -q" in report
 
     section = report.split("## Release integrity v0.3.3", 1)[1].split("\n## ", 1)[0]
-    assert " are verified from this command" not in section
-    assert "release integrity complete" in section
-    assert "git rev-parse HEAD" not in section
-    assert "targetCommitish:" not in section
-    assert "release_url:" not in section
+    assert "release integrity is complete" in section
+    assert "targetCommitish: main" in section
+    assert "release_url:" in section
     for _chip_family, _part_path, binary in release_builds():
         assert binary.relative_to(ROOT).as_posix() in section
 
