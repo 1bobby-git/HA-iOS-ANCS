@@ -182,6 +182,19 @@ def test_config_flow_duplicate_canonical_topic_aborts(hass: HomeAssistant, run) 
 def test_manifest_contract() -> None:
     manifest = json.loads((ROOT / "custom_components/ha_ios_ancs/manifest.json").read_text(encoding="utf-8"))
 
+    assert list(manifest) == [
+        "domain",
+        "name",
+        "codeowners",
+        "config_flow",
+        "dependencies",
+        "documentation",
+        "integration_type",
+        "iot_class",
+        "issue_tracker",
+        "requirements",
+        "version",
+    ]
     assert manifest == {
         "domain": "ha_ios_ancs",
         "name": "HA iOS ANCS",
@@ -189,9 +202,9 @@ def test_manifest_contract() -> None:
         "config_flow": True,
         "dependencies": ["mqtt"],
         "documentation": "https://github.com/1bobby-git/HA-iOS-ANCS",
-        "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "integration_type": "device",
         "iot_class": "local_push",
+        "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
         "version": "0.4.0",
     }
