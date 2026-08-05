@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 
 from .const import AVAILABILITY_TOPIC_SUFFIX, NOTIFICATION_TOPIC_SUFFIX
@@ -46,23 +47,36 @@ class AncsMqttRuntime:
         """Wait for MQTT and subscribe to notification and availability topics."""
 
         if self._unsubscribes:
-            raise RuntimeError("HA iOS ANCS MQTT runtime is already started")
+            return
 
         mqtt_api = _get_mqtt_api()
-        await mqtt_api.async_wait_for_mqtt_client(self._hass)
-        notification_unsub = await mqtt_api.async_subscribe(
-            self._hass,
-            self._notification_topic,
-            self._handle_notification,
-            _QOS,
-        )
-        availability_unsub = await mqtt_api.async_subscribe(
-            self._hass,
-            self._availability_topic,
-            self._handle_availability,
-            _QOS,
-        )
-        self._unsubscribes = [notification_unsub, availability_unsub]
+        if not await mqtt_api.async_wait_for_mqtt_client(self._hass):
+            raise ConfigEntryNotReady("MQTT client is not available")
+
+        unsubscribes: list[CALLBACK_TYPE] = []
+        try:
+            unsubscribes.append(
+                await mqtt_api.async_subscribe(
+                    self._hass,
+                    self._notification_topic,
+                    self._handle_notification,
+                    _QOS,
+                )
+            )
+            unsubscribes.append(
+                await mqtt_api.async_subscribe(
+                    self._hass,
+                    self._availability_topic,
+                    self._handle_availability,
+                    _QOS,
+                )
+            )
+        except Exception:
+            for unsubscribe in unsubscribes:
+                unsubscribe()
+            raise
+
+        self._unsubscribes = unsubscribes
 
     async def async_stop(self) -> None:
         """Unsubscribe and clear listeners."""
