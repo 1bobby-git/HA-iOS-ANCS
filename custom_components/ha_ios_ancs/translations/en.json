@@ -16,5 +16,12 @@
     "abort": {
       "already_configured": "This HA iOS ANCS MQTT topic is already configured."
     }
+  },
+  "entity": {
+    "event": {
+      "notification": {
+        "name": "Notification"
+      }
+    }
   }
 }
