@@ -1,9 +1,9 @@
-alias: Relay iOS ANCS C6 notifications to 1bobby
-id: ios_ancs_relay_to_example_phone
-description: Forward newly received, complete C6 ANCS notifications without availability restores.
+alias: Relay iOS ANCS notifications to your mobile app
+id: ios_ancs_relay_to_mobile_app
+description: Forward newly received, complete iOS ANCS notifications without availability restores.
 trigger:
   - platform: state
-    entity_id: sensor.ios_ancs_c6_ab12_ios_ancs_c6_ab12_last_notification
+    entity_id: sensor.replace_with_your_last_notification_entity
 condition:
   - condition: template
     value_template: >-
@@ -22,9 +22,9 @@ condition:
     value_template: >-
       {{ not (trigger.to_state.attributes.get('pre_existing', true) | bool(true)) }}
 action:
-  - service: notify.mobile_app_example_phone
+  - service: notify.replace_with_your_mobile_app_service
     data:
-      title: "[C6\u2192HA] {{ trigger.to_state.attributes.get('title') or trigger.to_state.attributes.get('app_id') }}"
+      title: "[iOS ANCS] {{ trigger.to_state.attributes.get('title') or trigger.to_state.attributes.get('app_id') }}"
       message: >-
         {{ trigger.to_state.attributes.get('message')
            or trigger.to_state.attributes.get('subtitle')
