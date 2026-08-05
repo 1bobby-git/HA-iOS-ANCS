@@ -460,8 +460,7 @@ h1 span {
 }
 
 .installer-section,
-.procedure-section,
-.safety-section {
+.procedure-section {
   padding: 130px 0;
 }
 
@@ -474,8 +473,7 @@ h1 span {
 }
 
 .section-heading h2,
-.procedure-copy h2,
-.safety-section > h2 {
+.procedure-copy h2 {
   margin-bottom: 0;
   font-size: clamp(2.3rem, 4.8vw, 5.1rem);
   letter-spacing: -0.06em;
@@ -898,82 +896,10 @@ esp-web-install-button {
   text-underline-offset: 4px;
 }
 
-.procedure-list {
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  list-style: none;
-}
-
-.procedure-list li {
-  display: grid;
-  min-height: 170px;
-  padding: 32px 4px;
-  align-items: start;
-  border-bottom: 1px solid var(--line);
-  grid-template-columns: 90px 1fr;
-}
-
-.procedure-list li > span {
-  color: var(--acid);
-  font-family: var(--mono);
-  font-size: 0.72rem;
-}
-
-.procedure-list h3 {
-  margin-bottom: 10px;
-  font-size: 1.4rem;
-}
-
-.procedure-list p {
-  max-width: 620px;
-  margin: 0;
-  color: var(--muted);
-  word-break: keep-all;
-}
-
 code {
   color: var(--acid);
   font-family: var(--mono);
   font-size: 0.9em;
-}
-
-.safety-section {
-  border-top: 1px solid var(--line);
-}
-
-.safety-grid {
-  display: grid;
-  margin-top: 54px;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-}
-
-.safety-grid article {
-  min-height: 240px;
-  padding: 30px;
-  background: var(--panel);
-}
-
-.safety-grid article > span {
-  color: var(--amber);
-  font-family: var(--mono);
-  font-size: 0.63rem;
-  letter-spacing: 0.1em;
-}
-
-.safety-grid h3 {
-  margin: 40px 0 12px;
-  font-size: 1.25rem;
-}
-
-.safety-grid p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-  word-break: keep-all;
 }
 
 footer {
@@ -1053,8 +979,7 @@ footer p {
     border-left: 0;
   }
 
-  .installer-console,
-  .safety-grid {
+  .installer-console {
     grid-template-columns: 1fr;
   }
 
@@ -1152,8 +1077,7 @@ footer p {
   }
 
   .installer-section,
-  .procedure-section,
-  .safety-section {
+  .procedure-section {
     padding: 88px 0;
   }
 
@@ -1195,11 +1119,6 @@ footer p {
 
   .flow-section {
     padding: 20px;
-  }
-
-  .procedure-list li {
-    min-height: 150px;
-    grid-template-columns: 56px 1fr;
   }
 
   footer {

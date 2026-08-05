@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -51,7 +51,7 @@
           </a>
         </div>
 
-        <div class="hero-instrument" aria-label="선택한 펌웨어 상태">
+        <div class="hero-instrument" role="group" aria-label="선택한 펌웨어 상태">
           <div class="instrument-top">
             <span>LIVE TARGET</span>
             <span id="clock">--:--:-- KST</span>
@@ -60,7 +60,7 @@
             <div class="signal-orbit orbit-one"></div>
             <div class="signal-orbit orbit-two"></div>
             <div class="signal-core">
-              <span id="signal-chip">C6</span>
+              <span id="signal-chip">32</span>
               <small>ANCS</small>
             </div>
             <i class="signal-dot dot-one"></i>
@@ -137,15 +137,15 @@
             <dl class="target-facts">
               <div>
                 <dt>FAMILY</dt>
-                <dd id="target-family">ESP32-C6</dd>
+                <dd id="target-family">ESP32 / WROOM-32</dd>
               </div>
               <div>
                 <dt>BOOT GPIO</dt>
-                <dd id="target-boot">GPIO 9</dd>
+                <dd id="target-boot">GPIO 0</dd>
               </div>
               <div>
                 <dt>VALIDATION</dt>
-                <dd id="target-validation">COM9 쓰기 검증</dd>
+                <dd id="target-validation">v0.3.3 firmware build verified · COM7 write verified</dd>
               </div>
               <div>
                 <dt>IMAGE</dt>
@@ -158,18 +158,19 @@
             <div class="flash-panel-head">
               <div>
                 <p class="panel-kicker">READY TO FLASH</p>
-                <h3 id="selected-name">ESP32-C6</h3>
+                <h3 id="selected-name">ESP32 / WROOM-32</h3>
               </div>
-              <span class="verified-badge" id="selected-status">HARDWARE VERIFIED</span>
+              <span class="verified-badge" id="selected-status">BUILD VERIFIED</span>
             </div>
             <p id="selected-description">
-              Home Assistant 등록 버튼과 BOOT 3초 누르기로 안전하게 iPhone 등록을 시작합니다.
+              ESP32-WROOM-32와 WROOM-D32 계열을 위한 Xtensa 듀얼 코어 ANCS-to-MQTT 빌드입니다.
             </p>
 
             <div class="action-warning" role="note">
               <strong>설치 전 제한</strong>
               <span>
                 데스크톱 Chrome 또는 Edge와 데이터 전송 USB 케이블이 필요합니다.
+                iPhone/iPad 브라우저는 Web Serial USB 플래시를 지원하지 않습니다.
                 충전 전용 케이블은 직렬 포트를 표시하지 않습니다.
               </span>
             </div>
@@ -181,7 +182,7 @@
               </span>
             </div>
 
-            <div class="flash-route" aria-label="설치 흐름">
+            <div class="flash-route" role="group" aria-label="설치 흐름">
               <span>USB</span>
               <i aria-hidden="true"></i>
               <span>AUTO DETECT</span>
@@ -195,7 +196,7 @@
                 <span aria-hidden="true">→</span>
               </button>
               <span class="installer-message" slot="unsupported">
-                이 브라우저는 USB 설치를 지원하지 않습니다. Windows Chrome 또는 Edge를 사용하세요.
+                이 브라우저는 USB 설치를 지원하지 않습니다. iPhone/iPad 브라우저는 Web Serial USB 플래시를 지원하지 않습니다. Windows Chrome 또는 Edge를 사용하세요.
               </span>
               <span class="installer-message" slot="not-allowed">
                 USB 설치는 HTTPS 또는 localhost에서만 실행할 수 있습니다.
@@ -204,7 +205,7 @@
 
             <div class="build-proof">
               <span id="build-version">v0.3.3 · ESP-IDF 6.0.2</span>
-              <span id="build-hash">SHA256 확인 중</span>
+              <span id="build-hash">SHA256 A6A2CCEB6421</span>
             </div>
           </div>
         </div>
@@ -223,20 +224,21 @@
           <p class="eyebrow">FIELD PROCEDURE</p>
           <h2 id="procedure-title">설치 후 바로 검증합니다.</h2>
           <p>
-            절차는 준비, USB 플래시, 설정 AP 프로비저닝, iPhone ANCS 등록,
-            Home Assistant 연결, 증상별 복구 순서로 진행합니다. MQTT Discovery는
+            절차는 준비, USB 플래시, 설정 AP 프로비저닝, Home Assistant 연결,
+            iPhone ANCS 등록, 증상별 복구 순서로 진행합니다. MQTT Discovery는
             HACS 없이 동작하고, HACS는 ESP32를 플래시하지 않습니다.
           </p>
           <aside class="compatibility-note">
             <span aria-hidden="true">!</span>
             <div>
               <strong>데이터 전송이 되는 USB 케이블이 필요합니다.</strong>
-              충전 전용 케이블은 전원만 공급하고 브라우저에 직렬 포트를 표시하지 않습니다.
+              데스크톱 Chrome 또는 Edge에서만 Web Serial USB 플래시가 가능합니다.
+              iPhone/iPad 브라우저는 Web Serial USB 플래시를 지원하지 않습니다.
             </div>
           </aside>
         </div>
 
-        <div class="guided-grid" aria-label="설치 절차">
+        <div class="guided-grid" role="group" aria-label="설치 절차">
           <section class="flow-section" id="prepare" aria-labelledby="prepare-title">
             <p class="flow-index">01 / PREPARE</p>
             <h3 id="prepare-title">현장 준비</h3>
@@ -288,25 +290,8 @@
             </div>
           </section>
 
-          <section class="flow-section" id="pair" aria-labelledby="pair-title">
-            <p class="flow-index">04 / PAIR</p>
-            <h3 id="pair-title">iPhone 등록</h3>
-            <div class="flow-block">
-              <h4>할 일</h4>
-              <p>Home Assistant 등록 버튼이나 BOOT 3초 누르기로 enrollment 창을 열고 iPhone에서 Bluetooth 페어링을 승인합니다. PIN은 <code>123456</code>입니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>성공 확인</h4>
-              <p>iPhone Bluetooth 목록에 장치가 유지되고 알림 공유가 허용됩니다. 첫 iOS 알림이 MQTT payload로 전달됩니다.</p>
-            </div>
-            <div class="flow-block">
-              <h4>문제가 있으면</h4>
-              <p>iPhone의 기존 Bluetooth 기록을 삭제하고 enrollment 창을 다시 연 뒤, 알림 미리보기와 Bluetooth 공유 권한을 확인합니다.</p>
-            </div>
-          </section>
-
           <section class="flow-section" id="home-assistant" aria-labelledby="home-assistant-title">
-            <p class="flow-index">05 / HOME ASSISTANT</p>
+            <p class="flow-index">04 / HOME ASSISTANT</p>
             <h3 id="home-assistant-title">MQTT Discovery와 HACS 동반 통합</h3>
             <div class="flow-block">
               <h4>할 일</h4>
@@ -319,6 +304,23 @@
             <div class="flow-block">
               <h4>문제가 있으면</h4>
               <p>HACS는 ESP32를 플래시하지 않습니다. 펌웨어 문제는 이 설치기와 MQTT 로그에서, HA 동반 통합 문제는 HACS와 Home Assistant 로그에서 분리해 확인합니다.</p>
+            </div>
+          </section>
+
+          <section class="flow-section" id="pair" aria-labelledby="pair-title">
+            <p class="flow-index">05 / PAIR</p>
+            <h3 id="pair-title">iPhone 등록</h3>
+            <div class="flow-block">
+              <h4>할 일</h4>
+              <p>BOOT 3초 누르기는 모든 보드에서 enrollment 창을 여는 공통 방법입니다. Home Assistant 등록 버튼은 MQTT Discovery가 control entity를 만든 뒤에만 나타납니다. enrollment 창이 열리면 iPhone에서 Bluetooth 페어링을 승인합니다. PIN은 <code>123456</code>입니다.</p>
+            </div>
+            <div class="flow-block">
+              <h4>성공 확인</h4>
+              <p>iPhone Bluetooth 목록에 장치가 유지되고 알림 공유가 허용됩니다. 첫 iOS 알림이 MQTT payload로 전달됩니다.</p>
+            </div>
+            <div class="flow-block">
+              <h4>문제가 있으면</h4>
+              <p>iPhone의 기존 Bluetooth 기록을 삭제하고 enrollment 창을 다시 연 뒤, 알림 미리보기와 Bluetooth 공유 권한을 확인합니다.</p>
             </div>
           </section>
 
