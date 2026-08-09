@@ -466,6 +466,62 @@ def test_all_companion_platforms_share_source_device_and_unload_cleanly(
     } == mqtt_before
 
 
+def test_unknown_enum_values_do_not_block_event_delivery(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = make_entry()
+    runtime = RuntimeStub(available=True)
+    _, sensor_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            sensor_component,
+            ancs_sensor,
+            Platform.SENSOR,
+        )
+    )
+    _, event_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            event_component,
+            ancs_event,
+            Platform.EVENT,
+        )
+    )
+    registry = entity_registry.async_get(hass)
+    sensor_entries = {
+        item.unique_id.rsplit(":", 1)[-1]: item.entity_id
+        for item in entity_registry.async_entries_for_config_entry(
+            registry, entry.entry_id
+        )
+        if item.domain == Platform.SENSOR
+    }
+
+    payload = firmware_notification()
+    payload["event"] = "future_event"
+    payload["category"] = "future_category"
+    payload["title"] = "Still delivered"
+    runtime.fire_notification(payload)
+
+    event_sensor = hass.states.get(sensor_entries["event"])
+    category_sensor = hass.states.get(sensor_entries["category"])
+    title_sensor = hass.states.get(sensor_entries["title"])
+    event_state = hass.states.get(event_ids[0])
+    assert event_sensor is not None
+    assert category_sensor is not None
+    assert title_sensor is not None
+    assert event_state is not None
+    assert event_sensor.state == STATE_UNKNOWN
+    assert category_sensor.state == STATE_UNKNOWN
+    assert title_sensor.state == "Still delivered"
+    assert event_state.attributes["event"] == "future_event"
+    assert event_state.attributes["category"] == "future_category"
+
+
 def test_event_entity_unload_removes_state_and_runtime_listeners(
     hass: HomeAssistant, run
 ) -> None:
