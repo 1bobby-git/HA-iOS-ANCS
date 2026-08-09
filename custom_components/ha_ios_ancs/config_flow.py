@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import re
 from typing import Any
 
@@ -10,6 +11,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
@@ -24,6 +26,10 @@ from .source import AncsSource, async_discover_ancs_sources
 
 
 _WHITESPACE = re.compile(r"\s")
+_RECOMMENDED_LEGACY_TOPIC = re.compile(
+    r"^ios[-_]ancs/([a-z0-9][a-z0-9_-]*)(?:/(?:state|notification))?$",
+    re.IGNORECASE,
+)
 
 
 def normalize_base_topic(raw_topic: object) -> str:
@@ -61,9 +67,49 @@ def _source_data(source: AncsSource) -> dict[str, str]:
     }
 
 
-def _source_schema(sources: list[AncsSource]) -> vol.Schema:
+def _default_source_unique_id(
+    sources: list[AncsSource],
+    entry_data: Mapping[str, Any],
+) -> str | None:
+    """Return the current or safely inferred MQTT source for reconfigure."""
+
+    current_unique_id = entry_data.get(CONF_SOURCE_ENTITY_UNIQUE_ID)
+    if isinstance(current_unique_id, str):
+        return current_unique_id
+
+    base_topic = entry_data.get(CONF_BASE_TOPIC)
+    if not isinstance(base_topic, str):
+        return None
+
+    match = _RECOMMENDED_LEGACY_TOPIC.fullmatch(base_topic.strip().strip("/"))
+    if match is None:
+        return None
+
+    expected_identifier = f"ios_ancs_{match.group(1).replace('-', '_')}"
+    matches = [
+        source.entity_unique_id
+        for source in sources
+        if source.mqtt_device_identifier.casefold()
+        == expected_identifier.casefold()
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _source_schema(
+    sources: list[AncsSource],
+    default_source_unique_id: str | None = None,
+) -> vol.Schema:
     """Return a device-name selector for compatible MQTT sources."""
 
+    source_unique_ids = {source.entity_unique_id for source in sources}
+    source_key = (
+        vol.Required(
+            CONF_SOURCE_ENTITY_UNIQUE_ID,
+            default=default_source_unique_id,
+        )
+        if default_source_unique_id in source_unique_ids
+        else vol.Required(CONF_SOURCE_ENTITY_UNIQUE_ID)
+    )
     options: list[selector.SelectOptionDict] = [
         {
             "value": source.entity_unique_id,
@@ -73,7 +119,7 @@ def _source_schema(sources: list[AncsSource]) -> vol.Schema:
     ]
     return vol.Schema(
         {
-            vol.Required(CONF_SOURCE_ENTITY_UNIQUE_ID): selector.SelectSelector(
+            source_key: selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=options,
                     mode=selector.SelectSelectorMode.DROPDOWN,
@@ -155,9 +201,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_devices_found")
 
         if user_input is None:
+            entry = self._get_reconfigure_entry()
             return self.async_show_form(
                 step_id="reconfigure",
-                data_schema=_source_schema(sources),
+                data_schema=_source_schema(
+                    sources,
+                    _default_source_unique_id(sources, entry.data),
+                ),
             )
 
         source = _selected_source(sources, user_input)
@@ -190,14 +240,29 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 DOMAIN,
                 old_event_unique_id,
             ):
-                entity_registry.async_update_entity(
-                    event_entity_id,
-                    new_unique_id=(
-                        f"{source.mqtt_device_identifier}:"
-                        f"{EVENT_TYPE_NOTIFICATION}"
-                    ),
-                    device_id=source.device_id,
+                event_entity = entity_registry.async_get(event_entity_id)
+                target_event_unique_id = (
+                    f"{source.mqtt_device_identifier}:"
+                    f"{EVENT_TYPE_NOTIFICATION}"
                 )
+                entity_updates: dict[str, str] = {}
+                if (
+                    event_entity is not None
+                    and event_entity.unique_id != target_event_unique_id
+                ):
+                    entity_updates["new_unique_id"] = target_event_unique_id
+                if (
+                    event_entity is not None
+                    and event_entity.device_id != source.device_id
+                ):
+                    entity_updates["device_id"] = source.device_id
+                if entity_updates:
+                    entity_registry.async_update_entity(
+                        event_entity_id,
+                        **entity_updates,
+                    )
+
+        self._async_remove_orphan_legacy_device(entry.entry_id)
 
         return self.async_update_reload_and_abort(
             entry,
@@ -206,3 +271,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             title=source.name,
             reason="reconfigure_successful",
         )
+
+    def _async_remove_orphan_legacy_device(self, entry_id: str) -> None:
+        """Remove the old integration-owned device when no entity uses it."""
+
+        device_registry = dr.async_get(self.hass)
+        device_entry = device_registry.async_get_device(
+            identifiers={(DOMAIN, entry_id)}
+        )
+        if device_entry is None:
+            return
+
+        device_id = device_entry.id
+        entity_registry = er.async_get(self.hass)
+        if any(
+            entity_entry.device_id == device_id
+            for entity_entry in entity_registry.entities.values()
+        ):
+            return
+
+        device_registry.async_remove_device(device_id)

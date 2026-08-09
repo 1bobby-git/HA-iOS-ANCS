@@ -297,11 +297,10 @@ class AncsSourceRuntime:
             self._device_entry = device_entry
 
             current_state = self._hass.states.get(source.entity_id)
-            if current_state is None or current_state.state in (
-                STATE_UNKNOWN,
-                STATE_UNAVAILABLE,
-            ):
+            if current_state is None or current_state.state == STATE_UNAVAILABLE:
                 self._set_available(False)
+            elif current_state.state == STATE_UNKNOWN:
+                self._set_available(True)
             else:
                 self._set_available(True)
                 parse_notification_data(
@@ -376,11 +375,11 @@ class AncsSourceRuntime:
         """Dispatch accepted notifications from MQTT sensor state changes."""
 
         new_state = event.data["new_state"]
-        if new_state is None or new_state.state in (
-            STATE_UNKNOWN,
-            STATE_UNAVAILABLE,
-        ):
+        if new_state is None or new_state.state == STATE_UNAVAILABLE:
             self._set_available(False)
+            return
+        if new_state.state == STATE_UNKNOWN:
+            self._set_available(True)
             return
 
         self._set_available(True)
