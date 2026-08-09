@@ -1,4 +1,4 @@
-"""Shared entities and payload extraction for HA iOS ANCS."""
+"""Shared entities and payload extraction for iOS ANCS."""
 
 from __future__ import annotations
 

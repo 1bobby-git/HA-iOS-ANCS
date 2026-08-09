@@ -1,4 +1,4 @@
-"""MQTT runtime for HA iOS ANCS."""
+"""MQTT runtime for iOS ANCS."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def _get_mqtt_api() -> Any:
 
 
 class AncsMqttRuntime:
-    """Manage MQTT subscriptions and listeners for HA iOS ANCS."""
+    """Manage MQTT subscriptions and listeners for iOS ANCS."""
 
     def __init__(self, hass: HomeAssistant, base_topic: str) -> None:
         self._hass = hass

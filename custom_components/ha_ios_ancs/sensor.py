@@ -1,4 +1,4 @@
-"""Sensor platform for HA iOS ANCS notification details."""
+"""Sensor platform for iOS ANCS notification details."""
 
 from __future__ import annotations
 

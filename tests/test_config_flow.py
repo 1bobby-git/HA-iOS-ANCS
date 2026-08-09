@@ -13,7 +13,11 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.ha_ios_ancs.config_flow import normalize_base_topic
+import custom_components.ha_ios_ancs as integration
+from custom_components.ha_ios_ancs.config_flow import (
+    ConfigFlow,
+    normalize_base_topic,
+)
 from custom_components.ha_ios_ancs.const import (
     CONF_BASE_TOPIC,
     CONF_MQTT_DEVICE_IDENTIFIER,
@@ -81,6 +85,44 @@ def test_normalize_base_topic_rejects_non_string_values(raw: object) -> None:
         normalize_base_topic(raw)
 
 
+def test_config_flow_uses_version_two() -> None:
+    assert ConfigFlow.VERSION == 2
+
+
+def test_migrate_entry_renames_without_changing_source_identity(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = config_entries.ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="Kitchen iPhone Relay",
+        data={
+            CONF_SOURCE_ENTITY_UNIQUE_ID: "ios_ancs_A1B2C3_last_notification",
+            CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+        },
+        source="user",
+        unique_id="ios_ancs_A1B2C3",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
+    original_data = dict(entry.data)
+
+    assert run(integration.async_migrate_entry(hass, entry)) is True
+    assert entry.version == 2
+    assert entry.title == "iOS ANCS (ios_ancs_A1B2C3)"
+    assert entry.data == original_data
+    assert entry.unique_id == "ios_ancs_A1B2C3"
+
+
 def test_config_flow_auto_creates_entry_for_one_mqtt_ancs_device(
     registry_hass: HomeAssistant, run
 ) -> None:
@@ -107,7 +149,7 @@ def test_config_flow_auto_creates_entry_for_one_mqtt_ancs_device(
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Kitchen iPhone Relay"
+    assert result["title"] == "iOS ANCS (ios_ancs_A1B2C3)"
     assert result["data"] == {
         CONF_SOURCE_ENTITY_UNIQUE_ID: registered.entity.unique_id,
         CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
@@ -158,7 +200,7 @@ def test_config_flow_shows_device_selector_for_multiple_sources(
     assert form["step_id"] == "user"
     assert schema_keys == [CONF_SOURCE_ENTITY_UNIQUE_ID]
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Office Relay"
+    assert result["title"] == "iOS ANCS (ios_ancs_D4E5F6)"
     assert result["data"] == {
         CONF_SOURCE_ENTITY_UNIQUE_ID: second.entity.unique_id,
         CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_D4E5F6",
@@ -340,7 +382,7 @@ def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_entities(
         CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
     }
     assert legacy_entry.unique_id == "ios_ancs_A1B2C3"
-    assert legacy_entry.title == "Kitchen iPhone Relay"
+    assert legacy_entry.title == "iOS ANCS (ios_ancs_A1B2C3)"
     migrated = entity_registry.async_get(legacy_event.entity_id)
     assert migrated is not None
     assert migrated.id == legacy_event.id
@@ -690,7 +732,7 @@ def test_manifest_contract() -> None:
     ]
     assert manifest == {
         "domain": "ha_ios_ancs",
-        "name": "HA iOS ANCS",
+        "name": "iOS ANCS",
         "codeowners": ["@1bobby-git"],
         "config_flow": True,
         "dependencies": ["mqtt"],
@@ -699,7 +741,7 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.0",
+        "version": "0.6.1",
     }
 
 
@@ -804,7 +846,9 @@ def test_translations_contract() -> None:
             "reserved",
         }
 
-    assert en["title"] == "HA iOS ANCS"
+    assert strings["title"] == "iOS ANCS"
+    assert en["title"] == "iOS ANCS"
+    assert ko["title"] == "iOS ANCS"
     assert (
         en["config"]["step"]["user"]["data"][CONF_SOURCE_ENTITY_UNIQUE_ID]
         == "MQTT device"

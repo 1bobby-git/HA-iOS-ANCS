@@ -190,18 +190,18 @@ def test_hacs_metadata_matches_custom_integration_contract():
     metadata = read_json("hacs.json")
 
     assert metadata == {
-        "name": "HA iOS ANCS",
+        "name": "iOS ANCS",
         "homeassistant": "2026.7.0",
     }
 
     manifest = read_json("custom_components/ha_ios_ancs/manifest.json")
     assert manifest["domain"] == "ha_ios_ancs"
-    assert manifest["name"] == "HA iOS ANCS"
+    assert manifest["name"] == "iOS ANCS"
     assert manifest["documentation"] == CANONICAL_REPO_URL
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.6.0"
+    assert manifest["version"] == "0.6.1"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -243,6 +243,7 @@ def test_readmes_include_hacs_my_link_and_firmware_boundary():
     assert "ESP32 펌웨어를 설치하거나 업데이트하지 않습니다" in korean
     assert "HACS installs only the Home Assistant companion integration" in english
     assert "never flashes or updates ESP32 firmware" in english
+    assert "repository name and URL remain `HA-iOS-ANCS`" in english
 
 
 def test_readmes_document_registry_backed_hacs_device_setup():
@@ -251,17 +252,19 @@ def test_readmes_document_registry_backed_hacs_device_setup():
 
     korean_phrases = (
         "HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다.",
-        "호환 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.",
-        "`알림` 이벤트 엔티티는 새 장치를 만들지 않고 기존 MQTT 장치에 추가됩니다.",
+        "호환 소스 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.",
+        "`알림` 이벤트 엔티티와 상세 엔티티는 MQTT 장치와 분리된 별도 `iOS ANCS (...)` 장치에 등록됩니다.",
+        "MQTT 장치를 `via_device`로 연결하지 않으며",
         "retained `최근 알림` 상태를 새 알림으로 재생하지 않습니다.",
-        "기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 장치를 선택할 때까지 기존 방식으로 유지됩니다.",
+        "엔티티 ID와 기록을 보존한 채 별도 iOS ANCS 장치로 이동합니다.",
     )
     english_phrases = (
-        "Adding the HACS integration no longer asks for an MQTT base topic.",
-        "One compatible device is selected automatically; multiple devices are shown by name.",
-        "The `Notification` event entity is added to the existing MQTT device instead of creating another device.",
+        "Adding the HACS integration does not ask for an MQTT base topic.",
+        "One compatible source device is selected automatically; multiple source devices are shown by name.",
+        "The `Notification` event entity and detail entities are registered on a separate `iOS ANCS (...)` device",
+        "not through a `via_device` relationship",
         "does not replay the retained `Last notification` state as a new event",
-        "Legacy manual-topic entries keep working until you choose **Reconfigure** and select their MQTT device.",
+        "preserves its entity IDs and history while moving its companion entities",
     )
 
     for phrase in korean_phrases:
@@ -276,6 +279,7 @@ def test_readmes_document_companion_details_mqtt_coexistence_and_privacy():
 
     korean_phrases = (
         "MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다.",
+        "별도 iOS ANCS 장치에 알림 이벤트",
         "목적별 센서 25개와 엄격한 바이너리 센서 11개",
         "진단용 `원본 알림` 센서",
         "센서 상태는 최대 255자",
@@ -284,6 +288,7 @@ def test_readmes_document_companion_details_mqtt_coexistence_and_privacy():
     )
     english_phrases = (
         "keeps MQTT Discovery entities unchanged and enabled",
+        "On the separate iOS ANCS device",
         "25 purpose-specific sensors and 11 strict binary sensors",
         "diagnostic `Raw notification` sensor",
         "sensor state is limited to 255 characters",

@@ -1,4 +1,4 @@
-"""Binary sensor platform for HA iOS ANCS notification flags."""
+"""Binary sensor platform for iOS ANCS notification flags."""
 
 from __future__ import annotations
 

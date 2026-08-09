@@ -1,4 +1,4 @@
-"""Config flow for the HA iOS ANCS integration."""
+"""Config flow for the iOS ANCS integration."""
 
 from __future__ import annotations
 
@@ -15,13 +15,14 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
 from .const import (
+    CONFIG_ENTRY_VERSION,
     CONF_BASE_TOPIC,
     CONF_MQTT_DEVICE_IDENTIFIER,
     CONF_SOURCE_ENTITY_UNIQUE_ID,
     DOMAIN,
     EVENT_TYPE_NOTIFICATION,
 )
-from .device import async_ensure_integration_device
+from .device import async_ensure_integration_device, source_title
 from .source import AncsSource, async_discover_ancs_sources
 
 
@@ -146,9 +147,9 @@ def _selected_source(
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for HA iOS ANCS."""
+    """Handle a config flow for iOS ANCS."""
 
-    VERSION = 1
+    VERSION = CONFIG_ENTRY_VERSION
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -184,7 +185,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(source.mqtt_device_identifier)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(
-            title=source.name,
+            title=source_title(source.mqtt_device_identifier),
             data=_source_data(source),
         )
 
@@ -246,7 +247,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             entry,
             data=_source_data(source),
             unique_id=source.mqtt_device_identifier,
-            title=source.name,
+            title=source_title(source.mqtt_device_identifier),
             reason="reconfigure_successful",
         )
 

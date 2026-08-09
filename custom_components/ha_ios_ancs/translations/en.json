@@ -1,25 +1,25 @@
 {
-  "title": "HA iOS ANCS",
+  "title": "iOS ANCS",
   "config": {
     "step": {
       "user": {
-        "description": "Select the existing MQTT-discovered HA iOS ANCS device.",
+        "description": "Select the existing MQTT-discovered iOS ANCS source device.",
         "data": {
           "source_entity_unique_id": "MQTT device"
         }
       },
       "reconfigure": {
-        "description": "Select the MQTT-discovered device for this HA iOS ANCS entry.",
+        "description": "Select the MQTT-discovered source device for this iOS ANCS entry.",
         "data": {
           "source_entity_unique_id": "MQTT device"
         }
       }
     },
     "abort": {
-      "already_configured": "This HA iOS ANCS MQTT device is already configured.",
-      "mqtt_unavailable": "Set up the Home Assistant MQTT integration before adding HA iOS ANCS.",
-      "no_devices_found": "No compatible MQTT-discovered HA iOS ANCS device was found.",
-      "reconfigure_successful": "The HA iOS ANCS device was updated."
+      "already_configured": "This iOS ANCS MQTT source device is already configured.",
+      "mqtt_unavailable": "Set up the Home Assistant MQTT integration before adding iOS ANCS.",
+      "no_devices_found": "No compatible MQTT-discovered iOS ANCS source device was found.",
+      "reconfigure_successful": "The iOS ANCS device was updated."
     }
   },
   "entity": {
