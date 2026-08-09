@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -21,6 +22,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     AVAILABILITY_TOPIC_SUFFIX,
+    DEFAULT_RELAY_ID_WINDOW_SIZE,
     EVENT_TYPE_NOTIFICATION,
     NOTIFICATION_TOPIC_SUFFIX,
 )
@@ -88,6 +90,10 @@ class AncsMqttRuntime:
         self._availability_topic = f"{base_topic}/{AVAILABILITY_TOPIC_SUFFIX}"
         self._seen = RelayIdWindow()
         self._notification_listeners: list[NotificationListener] = []
+        # Subscriptions can receive data before the EventEntity listener attaches.
+        self._pending_notifications: deque[dict[str, Any]] = deque(
+            maxlen=DEFAULT_RELAY_ID_WINDOW_SIZE
+        )
         self._availability_listeners: list[AvailabilityListener] = []
         self._unsubscribes: list[CALLBACK_TYPE] = []
         self._start_lock = asyncio.Lock()
@@ -156,6 +162,7 @@ class AncsMqttRuntime:
             for unsubscribe in unsubscribes:
                 unsubscribe()
             self._notification_listeners.clear()
+            self._pending_notifications.clear()
             self._availability_listeners.clear()
 
     @callback
@@ -165,6 +172,8 @@ class AncsMqttRuntime:
         """Add a notification listener and return a removal callback."""
 
         self._notification_listeners.append(listener)
+        while self._pending_notifications:
+            listener(self._pending_notifications.popleft())
 
         @callback
         def remove_listener() -> None:
@@ -192,6 +201,10 @@ class AncsMqttRuntime:
     def _handle_notification(self, msg: Any) -> None:
         notification = parse_notification(msg.payload, self._seen)
         if notification is None:
+            return
+
+        if not self._notification_listeners:
+            self._pending_notifications.append(notification)
             return
 
         for listener in tuple(self._notification_listeners):
@@ -230,6 +243,10 @@ class AncsSourceRuntime:
         self._mqtt_device_identifier = mqtt_device_identifier
         self._seen = RelayIdWindow()
         self._notification_listeners: list[NotificationListener] = []
+        # State changes can arrive before the EventEntity listener attaches.
+        self._pending_notifications: deque[dict[str, Any]] = deque(
+            maxlen=DEFAULT_RELAY_ID_WINDOW_SIZE
+        )
         self._availability_listeners: list[AvailabilityListener] = []
         self._unsubscribe: CALLBACK_TYPE | None = None
         self._start_lock = asyncio.Lock()
@@ -306,6 +323,7 @@ class AncsSourceRuntime:
                 self._unsubscribe()
                 self._unsubscribe = None
             self._notification_listeners.clear()
+            self._pending_notifications.clear()
             self._availability_listeners.clear()
 
     @callback
@@ -315,6 +333,8 @@ class AncsSourceRuntime:
         """Add a notification listener and return a removal callback."""
 
         self._notification_listeners.append(listener)
+        while self._pending_notifications:
+            listener(self._pending_notifications.popleft())
 
         @callback
         def remove_listener() -> None:
@@ -369,6 +389,10 @@ class AncsSourceRuntime:
             self._seen,
         )
         if notification is None:
+            return
+
+        if not self._notification_listeners:
+            self._pending_notifications.append(notification)
             return
 
         for listener in tuple(self._notification_listeners):
