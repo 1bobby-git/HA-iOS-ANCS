@@ -7,16 +7,32 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_BASE_TOPIC
-from .runtime import AncsMqttRuntime
+from .const import (
+    CONF_BASE_TOPIC,
+    CONF_MQTT_DEVICE_IDENTIFIER,
+    CONF_SOURCE_ENTITY_UNIQUE_ID,
+)
+from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
 PLATFORMS = [Platform.EVENT]
+
+
+def _runtime_from_entry(hass: HomeAssistant, entry: ConfigEntry) -> AncsRuntime:
+    """Create the source-backed or legacy runtime described by an entry."""
+
+    if CONF_SOURCE_ENTITY_UNIQUE_ID in entry.data:
+        return AncsSourceRuntime(
+            hass,
+            entry.data[CONF_SOURCE_ENTITY_UNIQUE_ID],
+            entry.data[CONF_MQTT_DEVICE_IDENTIFIER],
+        )
+    return AncsMqttRuntime(hass, entry.data[CONF_BASE_TOPIC])
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HA iOS ANCS from a config entry."""
 
-    runtime = AncsMqttRuntime(hass, entry.data[CONF_BASE_TOPIC])
+    runtime = _runtime_from_entry(hass, entry)
     await runtime.async_start()
     entry.runtime_data = runtime
 
