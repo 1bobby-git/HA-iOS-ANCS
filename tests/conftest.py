@@ -8,6 +8,8 @@ import pytest
 from homeassistant.config_entries import ConfigEntries
 from homeassistant.core import HomeAssistant
 from homeassistant import loader
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import DATA_COMPONENTS
 from homeassistant.util.unit_system import METRIC_SYSTEM
 
@@ -47,3 +49,11 @@ def hass(event_loop: asyncio.AbstractEventLoop, tmp_path) -> Generator[HomeAssis
         yield hass
     finally:
         event_loop.run_until_complete(hass.async_stop(force=True))
+
+
+@pytest.fixture
+def registry_hass(hass: HomeAssistant, run) -> HomeAssistant:
+    dr.async_setup(hass)
+    run(dr.async_load(hass, load_empty=True))
+    run(er.async_get(hass).async_load(load_empty=True))
+    return hass
