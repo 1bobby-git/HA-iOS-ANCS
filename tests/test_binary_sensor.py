@@ -73,6 +73,7 @@ def entry_with_runtime(payload: dict[str, Any]) -> SimpleNamespace:
         entry_id="entry-1",
         unique_id="ios_ancs_A1B2C3",
         title="Kitchen Relay",
+        data={CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3"},
         runtime_data=RuntimeStub(payload),
     )
 
