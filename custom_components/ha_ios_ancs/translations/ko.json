@@ -23,6 +23,70 @@
     }
   },
   "entity": {
+    "sensor": {
+      "app_name": {"name": "앱 이름"},
+      "app_id": {"name": "앱 ID"},
+      "title": {"name": "알림 제목"},
+      "subtitle": {"name": "알림 부제목"},
+      "message": {"name": "알림 내용"},
+      "event": {
+        "name": "알림 이벤트",
+        "state": {
+          "added": "추가됨",
+          "modified": "수정됨",
+          "removed": "제거됨"
+        }
+      },
+      "category": {
+        "name": "알림 카테고리",
+        "state": {
+          "other": "기타",
+          "incoming_call": "수신 전화",
+          "missed_call": "부재중 전화",
+          "voicemail": "음성사서함",
+          "social": "소셜",
+          "schedule": "일정",
+          "email": "이메일",
+          "news": "뉴스",
+          "health_and_fitness": "건강 및 피트니스",
+          "business_and_finance": "비즈니스 및 금융",
+          "location": "위치",
+          "entertainment": "엔터테인먼트",
+          "reserved": "예약됨"
+        }
+      },
+      "date": {"name": "알림 날짜"},
+      "uid": {"name": "알림 UID"},
+      "session_id": {"name": "세션 ID"},
+      "event_id": {"name": "이벤트 ID"},
+      "event_flags": {"name": "이벤트 플래그"},
+      "category_id": {"name": "카테고리 ID"},
+      "category_count": {"name": "카테고리 수"},
+      "message_size": {"name": "메시지 크기"},
+      "schema_version": {"name": "스키마 버전"},
+      "relay_id": {"name": "릴레이 ID"},
+      "target": {"name": "대상"},
+      "source": {"name": "소스"},
+      "device_name": {"name": "기기 이름"},
+      "received_at_ms": {"name": "수신 시점 기기 가동시간"},
+      "published_at_ms": {"name": "발행 시점 기기 가동시간"},
+      "error_code": {"name": "오류 코드"},
+      "error_name": {"name": "오류 이름"},
+      "raw_notification": {"name": "원본 알림"}
+    },
+    "binary_sensor": {
+      "complete": {"name": "수집 완료"},
+      "silent": {"name": "무음 알림"},
+      "important": {"name": "중요 알림"},
+      "pre_existing": {"name": "기존 알림"},
+      "positive_action_available": {"name": "긍정 동작 가능"},
+      "negative_action_available": {"name": "부정 동작 가능"},
+      "app_id_truncated": {"name": "앱 ID 잘림"},
+      "title_truncated": {"name": "제목 잘림"},
+      "subtitle_truncated": {"name": "부제목 잘림"},
+      "message_truncated": {"name": "내용 잘림"},
+      "has_error": {"name": "오류 발생"}
+    },
     "event": {
       "notification": {
         "name": "알림"

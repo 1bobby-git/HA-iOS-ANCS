@@ -645,7 +645,7 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.5.1",
+        "version": "0.6.0",
     }
 
 
@@ -666,6 +666,50 @@ def test_translations_contract() -> None:
         )
     )
 
+    expected_entity_keys = {
+        "sensor": {
+            "app_name",
+            "app_id",
+            "title",
+            "subtitle",
+            "message",
+            "event",
+            "category",
+            "date",
+            "uid",
+            "session_id",
+            "event_id",
+            "event_flags",
+            "category_id",
+            "category_count",
+            "message_size",
+            "schema_version",
+            "relay_id",
+            "target",
+            "source",
+            "device_name",
+            "received_at_ms",
+            "published_at_ms",
+            "error_code",
+            "error_name",
+            "raw_notification",
+        },
+        "binary_sensor": {
+            "complete",
+            "silent",
+            "important",
+            "pre_existing",
+            "positive_action_available",
+            "negative_action_available",
+            "app_id_truncated",
+            "title_truncated",
+            "subtitle_truncated",
+            "message_truncated",
+            "has_error",
+        },
+        "event": {"notification"},
+    }
+
     assert strings.keys() == en.keys() == ko.keys()
     assert strings["config"].keys() == en["config"].keys() == ko["config"].keys()
     for data in (strings, en, ko):
@@ -680,6 +724,31 @@ def test_translations_contract() -> None:
         assert data["config"]["abort"]["already_configured"]
         assert data["config"]["abort"]["mqtt_unavailable"]
         assert data["config"]["abort"]["no_devices_found"]
+        assert set(data["entity"]) == set(expected_entity_keys)
+        for platform, keys in expected_entity_keys.items():
+            assert set(data["entity"][platform]) == keys
+            assert all(data["entity"][platform][key]["name"] for key in keys)
+
+        assert set(data["entity"]["sensor"]["event"]["state"]) == {
+            "added",
+            "modified",
+            "removed",
+        }
+        assert set(data["entity"]["sensor"]["category"]["state"]) == {
+            "other",
+            "incoming_call",
+            "missed_call",
+            "voicemail",
+            "social",
+            "schedule",
+            "email",
+            "news",
+            "health_and_fitness",
+            "business_and_finance",
+            "location",
+            "entertainment",
+            "reserved",
+        }
 
     assert en["title"] == "HA iOS ANCS"
     assert (
@@ -689,3 +758,5 @@ def test_translations_contract() -> None:
     assert "MQTT" in en["config"]["step"]["user"]["description"]
     assert "MQTT" in ko["config"]["step"]["user"]["description"]
     assert ko["entity"]["event"]["notification"]["name"] == "알림"
+    assert ko["entity"]["sensor"]["message"]["name"] == "알림 내용"
+    assert ko["entity"]["binary_sensor"]["has_error"]["name"] == "오류 발생"

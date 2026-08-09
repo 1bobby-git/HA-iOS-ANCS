@@ -23,6 +23,70 @@
     }
   },
   "entity": {
+    "sensor": {
+      "app_name": {"name": "App name"},
+      "app_id": {"name": "App ID"},
+      "title": {"name": "Notification title"},
+      "subtitle": {"name": "Notification subtitle"},
+      "message": {"name": "Notification message"},
+      "event": {
+        "name": "Notification event",
+        "state": {
+          "added": "Added",
+          "modified": "Modified",
+          "removed": "Removed"
+        }
+      },
+      "category": {
+        "name": "Notification category",
+        "state": {
+          "other": "Other",
+          "incoming_call": "Incoming call",
+          "missed_call": "Missed call",
+          "voicemail": "Voicemail",
+          "social": "Social",
+          "schedule": "Schedule",
+          "email": "Email",
+          "news": "News",
+          "health_and_fitness": "Health and fitness",
+          "business_and_finance": "Business and finance",
+          "location": "Location",
+          "entertainment": "Entertainment",
+          "reserved": "Reserved"
+        }
+      },
+      "date": {"name": "Notification date"},
+      "uid": {"name": "Notification UID"},
+      "session_id": {"name": "Session ID"},
+      "event_id": {"name": "Event ID"},
+      "event_flags": {"name": "Event flags"},
+      "category_id": {"name": "Category ID"},
+      "category_count": {"name": "Category count"},
+      "message_size": {"name": "Message size"},
+      "schema_version": {"name": "Schema version"},
+      "relay_id": {"name": "Relay ID"},
+      "target": {"name": "Target"},
+      "source": {"name": "Source"},
+      "device_name": {"name": "Device name"},
+      "received_at_ms": {"name": "Received at device uptime"},
+      "published_at_ms": {"name": "Published at device uptime"},
+      "error_code": {"name": "Error code"},
+      "error_name": {"name": "Error name"},
+      "raw_notification": {"name": "Raw notification"}
+    },
+    "binary_sensor": {
+      "complete": {"name": "Collection complete"},
+      "silent": {"name": "Silent"},
+      "important": {"name": "Important"},
+      "pre_existing": {"name": "Pre-existing"},
+      "positive_action_available": {"name": "Positive action available"},
+      "negative_action_available": {"name": "Negative action available"},
+      "app_id_truncated": {"name": "App ID truncated"},
+      "title_truncated": {"name": "Title truncated"},
+      "subtitle_truncated": {"name": "Subtitle truncated"},
+      "message_truncated": {"name": "Message truncated"},
+      "has_error": {"name": "Error present"}
+    },
     "event": {
       "notification": {
         "name": "Notification"

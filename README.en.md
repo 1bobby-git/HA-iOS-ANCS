@@ -62,6 +62,8 @@ Adding the HACS integration no longer asks for an MQTT base topic. It finds the 
 
 The `Notification` event entity is added to the existing MQTT device instead of creating another device. It emits only newly received complete notifications and does not replay the retained `Last notification` state as a new event after Home Assistant restarts. Legacy manual-topic entries keep working until you choose **Reconfigure** and select their MQTT device.
 
+The companion integration keeps MQTT Discovery entities unchanged and enabled. On the same device, it adds the notification event, 25 purpose-specific sensors and 11 strict binary sensors, plus a diagnostic `Raw notification` sensor. Text shown as a sensor state is limited to 255 characters; long values remain in the `full_value` attribute and the complete raw JSON remains in attributes. Notification titles and messages can be recorded by Home Assistant unless those entities are excluded from Recorder.
+
 Example automation:
 
 ```text

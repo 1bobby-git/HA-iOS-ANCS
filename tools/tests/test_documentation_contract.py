@@ -201,7 +201,7 @@ def test_hacs_metadata_matches_custom_integration_contract():
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.5.1"
+    assert manifest["version"] == "0.6.0"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -262,6 +262,33 @@ def test_readmes_document_registry_backed_hacs_device_setup():
         "The `Notification` event entity is added to the existing MQTT device instead of creating another device.",
         "does not replay the retained `Last notification` state as a new event",
         "Legacy manual-topic entries keep working until you choose **Reconfigure** and select their MQTT device.",
+    )
+
+    for phrase in korean_phrases:
+        assert phrase in korean
+    for phrase in english_phrases:
+        assert phrase in english
+
+
+def test_readmes_document_companion_details_mqtt_coexistence_and_privacy():
+    korean = read_text("README.md")
+    english = read_text("README.en.md")
+
+    korean_phrases = (
+        "MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다.",
+        "목적별 센서 25개와 엄격한 바이너리 센서 11개",
+        "진단용 `원본 알림` 센서",
+        "센서 상태는 최대 255자",
+        "전체 원본 JSON은 속성에 유지됩니다.",
+        "Recorder에서 제외",
+    )
+    english_phrases = (
+        "keeps MQTT Discovery entities unchanged and enabled",
+        "25 purpose-specific sensors and 11 strict binary sensors",
+        "diagnostic `Raw notification` sensor",
+        "sensor state is limited to 255 characters",
+        "complete raw JSON remains in attributes",
+        "excluded from Recorder",
     )
 
     for phrase in korean_phrases:
