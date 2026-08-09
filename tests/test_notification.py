@@ -5,7 +5,11 @@ import json
 import pytest
 
 from custom_components.ha_ios_ancs.const import HA_ECHO_APP_ID
-from custom_components.ha_ios_ancs.notification import RelayIdWindow, parse_notification
+from custom_components.ha_ios_ancs.notification import (
+    RelayIdWindow,
+    parse_notification,
+    parse_notification_data,
+)
 
 
 def payload(**overrides: object) -> dict[str, object]:
@@ -44,6 +48,24 @@ def test_parse_valid_bytes_payload() -> None:
     parsed = parse_notification(encode(payload()).encode("utf-8"), seen)
 
     assert parsed == payload()
+
+
+def test_parse_notification_data_accepts_mapping_and_copies() -> None:
+    seen = RelayIdWindow()
+    original = payload(extra={"nested": True})
+
+    parsed = parse_notification_data(original, seen)
+
+    assert parsed == original
+    assert parsed is not original
+    assert "relay-1" in seen
+
+
+def test_parse_notification_data_rejected_value_does_not_consume_id() -> None:
+    seen = RelayIdWindow()
+
+    assert parse_notification_data(payload(complete=False), seen) is None
+    assert parse_notification_data(payload(), seen) is not None
 
 
 @pytest.mark.parametrize(

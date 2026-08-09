@@ -35,18 +35,10 @@ class RelayIdWindow:
             self._ids.remove(oldest)
 
 
-def parse_notification(payload: str | bytes, seen: RelayIdWindow) -> dict[str, Any] | None:
-    """Parse and validate a relay notification payload."""
-
-    try:
-        if isinstance(payload, bytes):
-            payload = payload.decode("utf-8", errors="strict")
-        data = json.loads(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return None
-
-    if not isinstance(data, Mapping):
-        return None
+def parse_notification_data(
+    data: Mapping[str, Any], seen: RelayIdWindow
+) -> dict[str, Any] | None:
+    """Validate notification data and return an independent mapping."""
 
     relay_id = data.get("relay_id")
     if not isinstance(relay_id, str) or not relay_id.strip():
@@ -69,3 +61,21 @@ def parse_notification(payload: str | bytes, seen: RelayIdWindow) -> dict[str, A
 
     seen.add(relay_id)
     return dict(data)
+
+
+def parse_notification(
+    payload: str | bytes, seen: RelayIdWindow
+) -> dict[str, Any] | None:
+    """Decode and validate a relay notification payload."""
+
+    try:
+        if isinstance(payload, bytes):
+            payload = payload.decode("utf-8", errors="strict")
+        data = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(data, Mapping):
+        return None
+
+    return parse_notification_data(data, seen)
