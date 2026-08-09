@@ -8,13 +8,17 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_BASE_TOPIC,
     CONF_MQTT_DEVICE_IDENTIFIER,
     CONF_SOURCE_ENTITY_UNIQUE_ID,
     DOMAIN,
+    EVENT_TYPE_NOTIFICATION,
 )
 from .source import AncsSource, async_discover_ancs_sources
 
@@ -79,6 +83,22 @@ def _source_schema(sources: list[AncsSource]) -> vol.Schema:
     )
 
 
+def _selected_source(
+    sources: list[AncsSource], user_input: dict[str, Any]
+) -> AncsSource | None:
+    """Return the currently discovered source selected by the user."""
+
+    selected_unique_id = user_input[CONF_SOURCE_ENTITY_UNIQUE_ID]
+    return next(
+        (
+            source
+            for source in sources
+            if source.entity_unique_id == selected_unique_id
+        ),
+        None,
+    )
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for HA iOS ANCS."""
 
@@ -100,15 +120,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self._async_create_source_entry(sources[0])
 
         if user_input is not None:
-            selected_unique_id = user_input[CONF_SOURCE_ENTITY_UNIQUE_ID]
-            selected_source = next(
-                (
-                    source
-                    for source in sources
-                    if source.entity_unique_id == selected_unique_id
-                ),
-                None,
-            )
+            selected_source = _selected_source(sources, user_input)
             if selected_source is None:
                 return self.async_abort(reason="no_devices_found")
             return await self._async_create_source_entry(selected_source)
@@ -128,4 +140,69 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=source.name,
             data=_source_data(source),
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Explicitly attach an existing entry to a discovered MQTT device."""
+
+        if not await _async_mqtt_available(self.hass):
+            return self.async_abort(reason="mqtt_unavailable")
+
+        sources = async_discover_ancs_sources(self.hass)
+        if not sources:
+            return self.async_abort(reason="no_devices_found")
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reconfigure",
+                data_schema=_source_schema(sources),
+            )
+
+        source = _selected_source(sources, user_input)
+        if source is None:
+            return self.async_abort(reason="no_devices_found")
+
+        entry = self._get_reconfigure_entry()
+        if any(
+            candidate.entry_id != entry.entry_id
+            and candidate.unique_id == source.mqtt_device_identifier
+            for candidate in self._async_current_entries()
+        ):
+            return self.async_abort(reason="already_configured")
+
+        old_event_unique_id: str | None = None
+        if isinstance(base_topic := entry.data.get(CONF_BASE_TOPIC), str):
+            old_event_unique_id = f"{base_topic}:{EVENT_TYPE_NOTIFICATION}"
+        elif isinstance(
+            old_device_identifier := entry.data.get(CONF_MQTT_DEVICE_IDENTIFIER),
+            str,
+        ):
+            old_event_unique_id = (
+                f"{old_device_identifier}:{EVENT_TYPE_NOTIFICATION}"
+            )
+
+        if old_event_unique_id is not None:
+            entity_registry = er.async_get(self.hass)
+            if event_entity_id := entity_registry.async_get_entity_id(
+                Platform.EVENT,
+                DOMAIN,
+                old_event_unique_id,
+            ):
+                entity_registry.async_update_entity(
+                    event_entity_id,
+                    new_unique_id=(
+                        f"{source.mqtt_device_identifier}:"
+                        f"{EVENT_TYPE_NOTIFICATION}"
+                    ),
+                    device_id=source.device_id,
+                )
+
+        return self.async_update_reload_and_abort(
+            entry,
+            data=_source_data(source),
+            unique_id=source.mqtt_device_identifier,
+            title=source.name,
+            reason="reconfigure_successful",
         )

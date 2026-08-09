@@ -7,8 +7,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from homeassistant import config_entries
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.ha_ios_ancs.config_flow import normalize_base_topic
 from custom_components.ha_ios_ancs.const import (
@@ -18,7 +21,7 @@ from custom_components.ha_ios_ancs.const import (
     DOMAIN,
 )
 
-from tests.helpers import async_register_mqtt_ancs_source
+from tests.helpers import EMPTY_DISCOVERY_KEYS, async_register_mqtt_ancs_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +222,179 @@ def test_config_flow_duplicate_mqtt_device_identifier_aborts(
     assert first["type"] is FlowResultType.CREATE_ENTRY
     assert duplicate["type"] is FlowResultType.ABORT
     assert duplicate["reason"] == "already_configured"
+
+
+def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_event(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen iPhone Relay",
+        )
+    )
+    legacy_entry = config_entries.ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="HA iOS ANCS (ios_ancs/legacy)",
+        data={CONF_BASE_TOPIC: "ios_ancs/legacy"},
+        source="user",
+        unique_id="ios_ancs/legacy",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(legacy_entry))
+
+    legacy_device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=legacy_entry.entry_id,
+        identifiers={(DOMAIN, legacy_entry.entry_id)},
+        name=legacy_entry.title,
+    )
+    entity_registry = er.async_get(hass)
+    legacy_event = entity_registry.async_get_or_create(
+        Platform.EVENT,
+        DOMAIN,
+        "ios_ancs/legacy:notification",
+        config_entry=legacy_entry,
+        device_id=legacy_device.id,
+        suggested_object_id="ha_ios_ancs_notification",
+    )
+
+    with (
+        patch(
+            "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+            new=AsyncMock(return_value=True),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_reload",
+            new=AsyncMock(return_value=True),
+        ),
+    ):
+        form = run(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={
+                    "source": config_entries.SOURCE_RECONFIGURE,
+                    "entry_id": legacy_entry.entry_id,
+                },
+            )
+        )
+        result = run(
+            hass.config_entries.flow.async_configure(
+                form["flow_id"],
+                {CONF_SOURCE_ENTITY_UNIQUE_ID: registered.entity.unique_id},
+            )
+        )
+
+    assert form["type"] is FlowResultType.FORM
+    assert form["step_id"] == "reconfigure"
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert legacy_entry.data == {
+        CONF_SOURCE_ENTITY_UNIQUE_ID: registered.entity.unique_id,
+        CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+    }
+    assert legacy_entry.unique_id == "ios_ancs_A1B2C3"
+    assert legacy_entry.title == "Kitchen iPhone Relay"
+    migrated = entity_registry.async_get(legacy_event.entity_id)
+    assert migrated is not None
+    assert migrated.id == legacy_event.id
+    assert migrated.unique_id == "ios_ancs_A1B2C3:notification"
+    assert migrated.device_id == registered.device.id
+
+
+def test_config_flow_reconfigure_duplicate_leaves_legacy_entry_unchanged(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen iPhone Relay",
+        )
+    )
+    configured_entry = config_entries.ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="Kitchen iPhone Relay",
+        data={
+            CONF_SOURCE_ENTITY_UNIQUE_ID: registered.entity.unique_id,
+            CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+        },
+        source="user",
+        unique_id="ios_ancs_A1B2C3",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+    legacy_entry = config_entries.ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="HA iOS ANCS (ios_ancs/legacy)",
+        data={CONF_BASE_TOPIC: "ios_ancs/legacy"},
+        source="user",
+        unique_id="ios_ancs/legacy",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(configured_entry))
+        run(hass.config_entries.async_add(legacy_entry))
+
+    entity_registry = er.async_get(hass)
+    legacy_event = entity_registry.async_get_or_create(
+        Platform.EVENT,
+        DOMAIN,
+        "ios_ancs/legacy:notification",
+        config_entry=legacy_entry,
+        suggested_object_id="ha_ios_ancs_notification",
+    )
+
+    with patch(
+        "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+        new=AsyncMock(return_value=True),
+    ):
+        form = run(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={
+                    "source": config_entries.SOURCE_RECONFIGURE,
+                    "entry_id": legacy_entry.entry_id,
+                },
+            )
+        )
+        result = run(
+            hass.config_entries.flow.async_configure(
+                form["flow_id"],
+                {CONF_SOURCE_ENTITY_UNIQUE_ID: registered.entity.unique_id},
+            )
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert legacy_entry.data == {CONF_BASE_TOPIC: "ios_ancs/legacy"}
+    assert legacy_entry.unique_id == "ios_ancs/legacy"
+    unchanged = entity_registry.async_get(legacy_event.entity_id)
+    assert unchanged is not None
+    assert unchanged.unique_id == "ios_ancs/legacy:notification"
 
 
 def test_manifest_contract() -> None:
