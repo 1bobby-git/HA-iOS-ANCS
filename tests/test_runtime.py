@@ -872,7 +872,10 @@ def test_source_runtime_missing_registry_source_raises_not_ready(
         run(runtime.async_start())
 
 
-def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run) -> None:
+def test_setup_entry_stores_runtime_and_unload_stops_it(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
     entry = ConfigEntry(
         version=1,
         minor_version=1,
@@ -885,6 +888,12 @@ def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run
         options={},
         subentries_data={},
     )
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
 
     with patch("custom_components.ha_ios_ancs.AncsMqttRuntime") as runtime_cls:
         runtime = runtime_cls.return_value
@@ -917,7 +926,10 @@ def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run
         assert entry.runtime_data is None
 
 
-def test_setup_entry_raises_not_ready_when_mqtt_client_unavailable(hass: HomeAssistant, run) -> None:
+def test_setup_entry_raises_not_ready_when_mqtt_client_unavailable(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
     entry = ConfigEntry(
         version=1,
         minor_version=1,
@@ -930,6 +942,12 @@ def test_setup_entry_raises_not_ready_when_mqtt_client_unavailable(hass: HomeAss
         options={},
         subentries_data={},
     )
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
     subscribe = AsyncMock()
 
     async def fake_wait_for_client(hass: HomeAssistant) -> bool:
