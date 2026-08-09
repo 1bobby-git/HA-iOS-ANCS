@@ -221,6 +221,7 @@ def test_setup_entry_moves_only_companion_entities_to_owned_device(
         identifiers={(DOMAIN, entry.entry_id)}
     )
     assert companion_device is not None
+    assert companion_device.name == "iOS ANCS (ios_ancs_A1B2C3)"
     assert companion_device.id != registered.device.id
     assert companion_device.via_device_id is None
 

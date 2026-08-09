@@ -1,4 +1,4 @@
-"""Home Assistant setup for the HA iOS ANCS integration."""
+"""Home Assistant setup for the iOS ANCS integration."""
 
 from __future__ import annotations
 
@@ -8,14 +8,31 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    CONFIG_ENTRY_VERSION,
     CONF_BASE_TOPIC,
     CONF_MQTT_DEVICE_IDENTIFIER,
     CONF_SOURCE_ENTITY_UNIQUE_ID,
 )
-from .device import async_ensure_integration_device
+from .device import async_ensure_integration_device, entry_title
 from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> bool:
+    """Migrate an iOS ANCS config entry without changing its source."""
+
+    if entry.version > CONFIG_ENTRY_VERSION:
+        return False
+    if entry.version < CONFIG_ENTRY_VERSION:
+        hass.config_entries.async_update_entry(
+            entry,
+            title=entry_title(entry),
+            version=CONFIG_ENTRY_VERSION,
+        )
+    return True
 
 
 def _runtime_from_entry(hass: HomeAssistant, entry: ConfigEntry) -> AncsRuntime:
@@ -31,7 +48,7 @@ def _runtime_from_entry(hass: HomeAssistant, entry: ConfigEntry) -> AncsRuntime:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up HA iOS ANCS from a config entry."""
+    """Set up iOS ANCS from a config entry."""
 
     async_ensure_integration_device(hass, entry)
     runtime = _runtime_from_entry(hass, entry)
@@ -49,7 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload HA iOS ANCS."""
+    """Unload iOS ANCS."""
 
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False

@@ -1,4 +1,4 @@
-"""Registry-backed MQTT source discovery for HA iOS ANCS."""
+"""Registry-backed MQTT source discovery for iOS ANCS."""
 
 from __future__ import annotations
 

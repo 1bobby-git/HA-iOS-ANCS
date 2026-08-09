@@ -64,13 +64,13 @@ Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 버튼을 3초 눌�
 
 MQTT Discovery는 HACS 없이 동작합니다. 장치가 MQTT 브로커에 연결되면 retained Discovery 설정을 게시하고 Home Assistant가 장치, `최근 알림`, `앱 이름`, 상태 센서, `iPhone 등록 시작` 버튼을 생성합니다.
 
-HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설치하거나 업데이트하지 않습니다. HACS custom repository 설치는 [HA iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 열고 Home Assistant에서 저장소 추가를 확인합니다. 이 문서는 custom repository 경로만 설명하며, HACS 기본 스토어 등록을 주장하지 않습니다.
+HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설치하거나 업데이트하지 않습니다. HACS custom repository 설치는 [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 열고 Home Assistant에서 저장소 추가를 확인합니다. 통합 표시 이름은 `iOS ANCS`이며 기존 HACS 설치 호환성을 위해 저장소 이름과 URL은 `HA-iOS-ANCS`를 그대로 사용합니다. 이 문서는 custom repository 경로만 설명하며, HACS 기본 스토어 등록을 주장하지 않습니다.
 
-HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다. 통합은 MQTT Discovery가 이미 등록한 `최근 알림` 센서와 장치를 찾아 사용합니다. 호환 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.
+HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다. 통합은 MQTT Discovery가 이미 등록한 `최근 알림` 센서를 읽기 전용 알림 소스로 사용합니다. 호환 소스 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.
 
-`알림` 이벤트 엔티티는 새 장치를 만들지 않고 기존 MQTT 장치에 추가됩니다. 새로 수신된 완전한 알림만 이벤트로 표시하며, Home Assistant를 다시 시작해도 retained `최근 알림` 상태를 새 알림으로 재생하지 않습니다. 기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 장치를 선택할 때까지 기존 방식으로 유지됩니다.
+`알림` 이벤트 엔티티와 상세 엔티티는 MQTT 장치와 분리된 별도 `iOS ANCS (...)` 장치에 등록됩니다. MQTT 장치를 `via_device`로 연결하지 않으며 같은 물리 장치를 나타내더라도 두 통합의 기기와 엔티티는 독립적으로 유지됩니다. 이벤트는 새로 수신된 완전한 알림만 표시하며, Home Assistant를 다시 시작해도 retained `최근 알림` 상태를 새 알림으로 재생하지 않습니다. 기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 소스 장치를 선택하면 엔티티 ID와 기록을 보존한 채 별도 iOS ANCS 장치로 이동합니다.
 
-동반 통합은 기존 MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다. 같은 기기에 알림 이벤트, 목적별 센서 25개와 엄격한 바이너리 센서 11개, 진단용 `원본 알림` 센서를 추가합니다. 텍스트 센서 상태는 최대 255자로 제한되며 긴 값은 `full_value` 속성에, 전체 원본 JSON은 속성에 유지됩니다. 알림 제목과 내용 같은 개인정보는 Home Assistant Recorder에 기록될 수 있으므로 기록이 필요하지 않으면 해당 엔터티를 Recorder에서 제외하세요.
+동반 통합은 기존 MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다. 별도 iOS ANCS 장치에 알림 이벤트, 목적별 센서 25개와 엄격한 바이너리 센서 11개, 진단용 `원본 알림` 센서를 추가합니다. 텍스트 센서 상태는 최대 255자로 제한되며 긴 값은 `full_value` 속성에, 전체 원본 JSON은 속성에 유지됩니다. 알림 제목과 내용 같은 개인정보는 Home Assistant Recorder에 기록될 수 있으므로 기록이 필요하지 않으면 해당 엔터티를 Recorder에서 제외하세요.
 
 MQTT Discovery의 compact model은 `최근 알림`, `알림 제목`, `알림 내용`, `앱 이름`, `장치 상태`, `장치 재시작` 엔티티를 중심으로 구성됩니다. 상태 속성에는 `ready`, `uptime_seconds`, `ble_connected`, `wifi_ssid` 같은 진단 값이 포함됩니다.
 

@@ -1,4 +1,4 @@
-"""Event platform for HA iOS ANCS."""
+"""Event platform for iOS ANCS."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up HA iOS ANCS event entities."""
+    """Set up iOS ANCS event entities."""
 
     runtime: AncsRuntime = entry.runtime_data
     async_add_entities([AncsNotificationEvent(entry, runtime)])

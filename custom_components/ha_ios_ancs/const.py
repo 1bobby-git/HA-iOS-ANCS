@@ -1,6 +1,7 @@
-"""Constants for the HA iOS ANCS integration."""
+"""Constants for the iOS ANCS integration."""
 
 DOMAIN = "ha_ios_ancs"
+CONFIG_ENTRY_VERSION = 2
 
 CONF_BASE_TOPIC = "base_topic"
 CONF_SOURCE_ENTITY_UNIQUE_ID = "source_entity_unique_id"

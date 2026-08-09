@@ -1,25 +1,25 @@
 {
-  "title": "HA iOS ANCS",
+  "title": "iOS ANCS",
   "config": {
     "step": {
       "user": {
-        "description": "기존 MQTT 검색으로 등록된 HA iOS ANCS 기기를 선택하세요.",
+        "description": "기존 MQTT 검색으로 등록된 iOS ANCS 소스 기기를 선택하세요.",
         "data": {
           "source_entity_unique_id": "MQTT 기기"
         }
       },
       "reconfigure": {
-        "description": "이 HA iOS ANCS 항목에 연결할 MQTT 검색 기기를 선택하세요.",
+        "description": "이 iOS ANCS 항목에 연결할 MQTT 검색 소스 기기를 선택하세요.",
         "data": {
           "source_entity_unique_id": "MQTT 기기"
         }
       }
     },
     "abort": {
-      "already_configured": "이 HA iOS ANCS MQTT 기기는 이미 설정되어 있습니다.",
-      "mqtt_unavailable": "HA iOS ANCS를 추가하기 전에 Home Assistant MQTT 통합을 설정하세요.",
-      "no_devices_found": "호환되는 MQTT 검색 HA iOS ANCS 기기를 찾지 못했습니다.",
-      "reconfigure_successful": "HA iOS ANCS 기기를 변경했습니다."
+      "already_configured": "이 iOS ANCS MQTT 소스 기기는 이미 설정되어 있습니다.",
+      "mqtt_unavailable": "iOS ANCS를 추가하기 전에 Home Assistant MQTT 통합을 설정하세요.",
+      "no_devices_found": "호환되는 MQTT 검색 iOS ANCS 소스 기기를 찾지 못했습니다.",
+      "reconfigure_successful": "iOS ANCS 기기를 변경했습니다."
     }
   },
   "entity": {
