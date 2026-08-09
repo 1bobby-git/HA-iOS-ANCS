@@ -464,8 +464,7 @@ def test_source_runtime_resolves_renamed_entity_and_dispatches(
 
     assert notifications == [firmware_notification()]
     assert runtime.unique_id == "ios_ancs_A1B2C3:notification"
-    assert runtime.device_entry is not None
-    assert runtime.device_entry.id == registered.device.id
+    assert not hasattr(runtime, "device_entry")
     run(runtime.async_stop())
 
 

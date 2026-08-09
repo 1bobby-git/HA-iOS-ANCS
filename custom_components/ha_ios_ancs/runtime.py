@@ -18,7 +18,6 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
@@ -47,11 +46,6 @@ class AncsRuntime(Protocol):
     @property
     def unique_id(self) -> str:
         """Return the notification event unique ID."""
-        raise NotImplementedError
-
-    @property
-    def device_entry(self) -> dr.DeviceEntry | None:
-        """Return an existing device entry when the source owns one."""
         raise NotImplementedError
 
     @property
@@ -121,12 +115,6 @@ class AncsMqttRuntime:
         """Return the legacy topic-backed event unique ID."""
 
         return f"{self._base_topic}:{EVENT_TYPE_NOTIFICATION}"
-
-    @property
-    def device_entry(self) -> dr.DeviceEntry | None:
-        """Return no external device for a legacy topic entry."""
-
-        return None
 
     @property
     def latest_notification(self) -> dict[str, Any] | None:
@@ -284,7 +272,6 @@ class AncsSourceRuntime:
         self._unsubscribe: CALLBACK_TYPE | None = None
         self._start_lock = asyncio.Lock()
         self._available: bool | None = None
-        self._device_entry: dr.DeviceEntry | None = None
         self._latest_notification: dict[str, Any] | None = None
 
     @property
@@ -298,12 +285,6 @@ class AncsSourceRuntime:
         """Return the device-backed event unique ID."""
 
         return f"{self._mqtt_device_identifier}:{EVENT_TYPE_NOTIFICATION}"
-
-    @property
-    def device_entry(self) -> dr.DeviceEntry | None:
-        """Return the MQTT-owned device entry resolved at startup."""
-
-        return self._device_entry
 
     @property
     def latest_notification(self) -> dict[str, Any] | None:
@@ -332,13 +313,6 @@ class AncsSourceRuntime:
                     "MQTT ANCS source entity "
                     f"{self._source_entity_unique_id} is not registered"
                 )
-
-            device_entry = dr.async_get(self._hass).async_get(source.device_id)
-            if device_entry is None:
-                raise ConfigEntryNotReady(
-                    f"MQTT ANCS source device {source.device_id} is not registered"
-                )
-            self._device_entry = device_entry
 
             current_state = self._hass.states.get(source.entity_id)
             if current_state is None or current_state.state == STATE_UNAVAILABLE:

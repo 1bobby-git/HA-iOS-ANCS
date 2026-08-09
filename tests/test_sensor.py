@@ -267,7 +267,7 @@ def test_sensor_updates_nested_errors_and_rejects_invalid_values(run) -> None:
     assert by_key["error_name"].native_value is None
 
 
-def test_source_sensors_attach_to_mqtt_device_without_mutating_mqtt_registry(
+def test_source_sensors_use_separate_integration_device_without_mutating_mqtt(
     registry_hass, run
 ) -> None:
     hass = registry_hass
@@ -300,13 +300,23 @@ def test_source_sensors_attach_to_mqtt_device_without_mutating_mqtt_registry(
 
     registry = entity_registry.async_get(hass)
     assert len(entity_ids) == len(EXPECTED_SENSOR_KEYS)
-    for entity_id in entity_ids:
-        registry_entry = registry.async_get(entity_id)
-        assert registry_entry is not None
-        assert registry_entry.config_entry_id == entry.entry_id
-        assert registry_entry.device_id == registered.device.id
+    device_ids = {
+        registry_entry.device_id
+        for entity_id in entity_ids
+        if (registry_entry := registry.async_get(entity_id)) is not None
+    }
+    assert len(device_ids) == 1
+    companion_device_id = device_ids.pop()
+    assert companion_device_id is not None
+    assert companion_device_id != registered.device.id
+    companion_device = device_registry.async_get(hass).async_get(
+        companion_device_id
+    )
+    assert companion_device is not None
+    assert companion_device.identifiers == {(DOMAIN, entry.entry_id)}
+    assert companion_device.via_device_id is None
     assert ("mqtt", "ios_ancs_A1B2C3") in registered.device.identifiers
-    assert len(device_registry.async_get(hass).devices) == 1
+    assert len(device_registry.async_get(hass).devices) == 2
     assert mqtt_registry_snapshot(hass) == before
 
     run(sensor_component.async_unload_entry(hass, entry))

@@ -231,7 +231,7 @@ def test_event_entity_triggers_notification_event_with_payload_attributes(
     assert state.attributes["event_types"] == ["notification"]
 
 
-def test_source_event_attaches_to_existing_mqtt_device(
+def test_source_event_uses_separate_integration_device(
     registry_hass: HomeAssistant, run
 ) -> None:
     hass = registry_hass
@@ -248,13 +248,20 @@ def test_source_event_attaches_to_existing_mqtt_device(
         device_entry=registered.device,
     )
 
-    entity_id = run(setup_event_entity(hass, make_source_entry(), runtime))
+    entry = make_source_entry()
+    entity_id = run(setup_event_entity(hass, entry, runtime))
     registry_entry = entity_registry.async_get(hass).async_get(entity_id)
 
     assert registry_entry is not None
     assert registry_entry.unique_id == "ios_ancs_A1B2C3:notification"
-    assert registry_entry.device_id == registered.device.id
-    assert len(device_registry.async_get(hass).devices) == 1
+    assert registry_entry.device_id != registered.device.id
+    companion_device = device_registry.async_get(hass).async_get(
+        registry_entry.device_id
+    )
+    assert companion_device is not None
+    assert companion_device.identifiers == {(DOMAIN, entry.entry_id)}
+    assert companion_device.via_device_id is None
+    assert len(device_registry.async_get(hass).devices) == 2
 
 
 def test_legacy_event_retains_integration_owned_device(
@@ -294,7 +301,7 @@ def test_event_entity_availability_follows_runtime_and_ignores_unknown(
     assert state.state == STATE_UNKNOWN
 
 
-def test_all_companion_platforms_share_source_device_and_unload_cleanly(
+def test_all_companion_platforms_share_owned_device_and_unload_cleanly(
     registry_hass: HomeAssistant, run
 ) -> None:
     hass = registry_hass
@@ -360,13 +367,22 @@ def test_all_companion_platforms_share_source_device_and_unload_cleanly(
     assert len(sensor_ids) == 25
     assert len(binary_sensor_ids) == 11
     assert len(event_ids) == 1
-    assert all(
-        (registry_entry := registry.async_get(entity_id)) is not None
-        and registry_entry.config_entry_id == entry.entry_id
-        and registry_entry.device_id == registered.device.id
+    companion_device_ids = {
+        registry_entry.device_id
         for entity_id in companion_ids
+        if (registry_entry := registry.async_get(entity_id)) is not None
+    }
+    assert len(companion_device_ids) == 1
+    companion_device_id = companion_device_ids.pop()
+    assert companion_device_id is not None
+    assert companion_device_id != registered.device.id
+    companion_device = device_registry.async_get(hass).async_get(
+        companion_device_id
     )
-    assert len(device_registry.async_get(hass).devices) == 1
+    assert companion_device is not None
+    assert companion_device.identifiers == {(DOMAIN, entry.entry_id)}
+    assert companion_device.via_device_id is None
+    assert len(device_registry.async_get(hass).devices) == 2
     assert {
         (item.entity_id, item.disabled_by, item.device_id)
         for item in registry.entities.values()
