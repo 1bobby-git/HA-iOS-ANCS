@@ -282,7 +282,14 @@ class AncsNotificationSensor(AncsNotificationEntity, SensorEntity):
         description = self.entity_description
         if description.kind is SensorValueKind.TEXT:
             value = self._text_value()
-            return None if value is None else preview_text(value)
+            if value is None:
+                return None
+            if (
+                description.options is not None
+                and value not in description.options
+            ):
+                return None
+            return preview_text(value)
         if description.kind is SensorValueKind.INTEGER:
             return as_integer(nested_value(self._payload, description.path))
         if description.kind is SensorValueKind.DECIMAL_TEXT:

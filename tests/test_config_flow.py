@@ -224,7 +224,7 @@ def test_config_flow_duplicate_mqtt_device_identifier_aborts(
     assert duplicate["reason"] == "already_configured"
 
 
-def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_event(
+def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_entities(
     registry_hass: HomeAssistant, run
 ) -> None:
     hass = registry_hass
@@ -268,6 +268,22 @@ def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_event(
         config_entry=legacy_entry,
         device_id=legacy_device.id,
         suggested_object_id="ha_ios_ancs_notification",
+    )
+    legacy_title = entity_registry.async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "ios_ancs/legacy:sensor:title",
+        config_entry=legacy_entry,
+        device_id=legacy_device.id,
+        suggested_object_id="ha_ios_ancs_title",
+    )
+    legacy_has_error = entity_registry.async_get_or_create(
+        Platform.BINARY_SENSOR,
+        DOMAIN,
+        "ios_ancs/legacy:binary_sensor:has_error",
+        config_entry=legacy_entry,
+        device_id=legacy_device.id,
+        suggested_object_id="ha_ios_ancs_has_error",
     )
     assert device_registry.async_get(legacy_device.id) is not None
 
@@ -313,6 +329,19 @@ def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_event(
     assert migrated.id == legacy_event.id
     assert migrated.unique_id == "ios_ancs_A1B2C3:notification"
     assert migrated.device_id == registered.device.id
+    migrated_title = entity_registry.async_get(legacy_title.entity_id)
+    assert migrated_title is not None
+    assert migrated_title.id == legacy_title.id
+    assert migrated_title.unique_id == "ios_ancs_A1B2C3:sensor:title"
+    assert migrated_title.device_id == registered.device.id
+    migrated_has_error = entity_registry.async_get(legacy_has_error.entity_id)
+    assert migrated_has_error is not None
+    assert migrated_has_error.id == legacy_has_error.id
+    assert (
+        migrated_has_error.unique_id
+        == "ios_ancs_A1B2C3:binary_sensor:has_error"
+    )
+    assert migrated_has_error.device_id == registered.device.id
     assert device_registry.async_get(legacy_device.id) is None
 
 

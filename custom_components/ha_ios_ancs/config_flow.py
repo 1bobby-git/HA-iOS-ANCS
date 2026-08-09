@@ -233,34 +233,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 f"{old_device_identifier}:{EVENT_TYPE_NOTIFICATION}"
             )
 
-        if old_event_unique_id is not None:
-            entity_registry = er.async_get(self.hass)
-            if event_entity_id := entity_registry.async_get_entity_id(
-                Platform.EVENT,
-                DOMAIN,
-                old_event_unique_id,
-            ):
-                event_entity = entity_registry.async_get(event_entity_id)
-                target_event_unique_id = (
-                    f"{source.mqtt_device_identifier}:"
-                    f"{EVENT_TYPE_NOTIFICATION}"
-                )
-                entity_updates: dict[str, str] = {}
-                if (
-                    event_entity is not None
-                    and event_entity.unique_id != target_event_unique_id
-                ):
-                    entity_updates["new_unique_id"] = target_event_unique_id
-                if (
-                    event_entity is not None
-                    and event_entity.device_id != source.device_id
-                ):
-                    entity_updates["device_id"] = source.device_id
-                if entity_updates:
-                    entity_registry.async_update_entity(
-                        event_entity_id,
-                        **entity_updates,
-                    )
+        self._async_migrate_companion_entities(
+            entry.entry_id,
+            entry.unique_id or entry.entry_id,
+            old_event_unique_id,
+            source,
+        )
 
         self._async_remove_orphan_legacy_device(entry.entry_id)
 
@@ -271,6 +249,59 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             title=source.name,
             reason="reconfigure_successful",
         )
+
+    def _async_migrate_companion_entities(
+        self,
+        entry_id: str,
+        old_detail_identity: str,
+        old_event_unique_id: str | None,
+        source: AncsSource,
+    ) -> None:
+        """Move existing companion entities to the selected MQTT device."""
+
+        entity_registry = er.async_get(self.hass)
+        target_identity = source.mqtt_device_identifier
+        target_event_unique_id = f"{target_identity}:{EVENT_TYPE_NOTIFICATION}"
+
+        for entity_entry in er.async_entries_for_config_entry(
+            entity_registry, entry_id
+        ):
+            if entity_entry.platform != DOMAIN:
+                continue
+
+            target_unique_id: str | None = None
+            if (
+                entity_entry.domain == Platform.EVENT
+                and old_event_unique_id is not None
+                and entity_entry.unique_id == old_event_unique_id
+            ):
+                target_unique_id = target_event_unique_id
+            elif entity_entry.domain in (
+                Platform.SENSOR,
+                Platform.BINARY_SENSOR,
+            ):
+                detail_prefix = (
+                    f"{old_detail_identity}:{entity_entry.domain}:"
+                )
+                if entity_entry.unique_id.startswith(detail_prefix):
+                    detail_key = entity_entry.unique_id[len(detail_prefix) :]
+                    target_unique_id = (
+                        f"{target_identity}:{entity_entry.domain}:{detail_key}"
+                    )
+
+            if target_unique_id is None:
+                continue
+
+            entity_updates: dict[str, str] = {}
+            if entity_entry.unique_id != target_unique_id:
+                entity_updates["new_unique_id"] = target_unique_id
+            if entity_entry.device_id != source.device_id:
+                entity_updates["device_id"] = source.device_id
+            if entity_updates:
+                entity_registry.async_update_entity(
+                    entity_entry.entity_id,
+                    **entity_updates,
+                )
 
     def _async_remove_orphan_legacy_device(self, entry_id: str) -> None:
         """Remove the old integration-owned device when no entity uses it."""
