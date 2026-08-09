@@ -211,6 +211,28 @@ def test_runtime_snapshot_preserves_pending_event_for_event_listener(
     run(runtime.async_stop())
 
 
+def test_runtime_keeps_event_replay_while_detail_listener_is_already_active(
+    hass: HomeAssistant, run
+) -> None:
+    runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
+    details: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(details.append, replay_pending=False)
+
+    _, callback, _ = subscriptions[0]
+    callback(
+        mqtt_message(
+            "ios_ancs/notification",
+            notification_payload(relay_id="between-platforms"),
+        )
+    )
+    assert [item["relay_id"] for item in details] == ["between-platforms"]
+
+    events: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(events.append, replay_pending=True)
+    assert [item["relay_id"] for item in events] == ["between-platforms"]
+    run(runtime.async_stop())
+
+
 def test_runtime_availability_changes_only_on_exact_online_offline(hass: HomeAssistant, run) -> None:
     runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
     states: list[bool | None] = []
@@ -586,6 +608,41 @@ def test_source_runtime_buffers_notification_until_listener_attaches(
     runtime.async_add_notification_listener(received.append)
 
     assert received == [notification]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_keeps_event_replay_while_detail_listener_is_active(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    run(runtime.async_start())
+    details: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(details.append, replay_pending=False)
+
+    notification = firmware_notification(relay_id="between-platforms", uid=43)
+    hass.states.async_set(
+        registered.entity.entity_id,
+        notification["relay_id"],
+        notification,
+    )
+    run(hass.async_block_till_done())
+    assert details == [notification]
+
+    events: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(events.append, replay_pending=True)
+    assert events == [notification]
     run(runtime.async_stop())
 
 
