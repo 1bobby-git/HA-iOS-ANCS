@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from datetime import timedelta
 import json
 import logging
@@ -9,7 +10,9 @@ from types import MappingProxyType
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.components import binary_sensor as binary_sensor_component
 from homeassistant.components import event as event_component
+from homeassistant.components import sensor as sensor_component
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -17,7 +20,9 @@ from homeassistant.helpers.discovery_flow import DiscoveryKey
 from homeassistant.helpers import device_registry, entity_registry
 from homeassistant.helpers.entity_platform import EntityPlatform
 
+from custom_components.ha_ios_ancs import binary_sensor as ancs_binary_sensor
 from custom_components.ha_ios_ancs import event as ancs_event
+from custom_components.ha_ios_ancs import sensor as ancs_sensor
 from custom_components.ha_ios_ancs import async_setup_entry, async_unload_entry
 from custom_components.ha_ios_ancs.const import (
     CONF_BASE_TOPIC,
@@ -26,10 +31,11 @@ from custom_components.ha_ios_ancs.const import (
     DOMAIN,
 )
 
-from tests.helpers import async_register_mqtt_ancs_source
+from tests.helpers import async_register_mqtt_ancs_source, async_setup_ancs_platform
 
 
 EMPTY_DISCOVERY_KEYS: MappingProxyType[str, tuple[DiscoveryKey, ...]] = MappingProxyType({})
+EXPECTED_PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
 
 
 class RuntimeStub:
@@ -39,28 +45,35 @@ class RuntimeStub:
         *,
         unique_id: str = "ios_ancs/device-1:notification",
         device_entry: device_registry.DeviceEntry | None = None,
+        latest_notification: dict[str, Any] | None = None,
     ) -> None:
         self.available = available
         self.unique_id = unique_id
         self.device_entry = device_entry
+        self.latest_notification = deepcopy(latest_notification)
         self.async_start = AsyncMock()
         self.async_stop = AsyncMock()
-        self._notification_listener: Callable[[dict[str, Any]], None] | None = None
-        self._availability_listener: Callable[[bool | None], None] | None = None
+        self._notification_listeners: list[Callable[[dict[str, Any]], None]] = []
+        self._availability_listeners: list[Callable[[bool | None], None]] = []
+        self.notification_replay_pending: bool | None = None
         self.notification_listener_removed = False
         self.availability_listener_removed = False
 
     @callback
     def async_add_notification_listener(
-        self, listener: Callable[[dict[str, Any]], None]
+        self,
+        listener: Callable[[dict[str, Any]], None],
+        *,
+        replay_pending: bool = True,
     ) -> CALLBACK_TYPE:
-        self._notification_listener = listener
+        self._notification_listeners.append(listener)
+        self.notification_replay_pending = replay_pending
 
         @callback
         def remove_listener() -> None:
             self.notification_listener_removed = True
-            if self._notification_listener is listener:
-                self._notification_listener = None
+            if listener in self._notification_listeners:
+                self._notification_listeners.remove(listener)
 
         return remove_listener
 
@@ -68,26 +81,29 @@ class RuntimeStub:
     def async_add_availability_listener(
         self, listener: Callable[[bool | None], None]
     ) -> CALLBACK_TYPE:
-        self._availability_listener = listener
+        self._availability_listeners.append(listener)
 
         @callback
         def remove_listener() -> None:
             self.availability_listener_removed = True
-            if self._availability_listener is listener:
-                self._availability_listener = None
+            if listener in self._availability_listeners:
+                self._availability_listeners.remove(listener)
 
         return remove_listener
 
     @callback
     def fire_notification(self, payload: dict[str, Any]) -> None:
-        assert self._notification_listener is not None
-        self._notification_listener(payload)
+        assert self._notification_listeners
+        self.latest_notification = deepcopy(payload)
+        for listener in tuple(self._notification_listeners):
+            listener(deepcopy(payload))
 
     @callback
     def fire_availability(self, available: bool | None) -> None:
         self.available = available
-        assert self._availability_listener is not None
-        self._availability_listener(available)
+        assert self._availability_listeners
+        for listener in tuple(self._availability_listeners):
+            listener(available)
 
 
 def make_entry(base_topic: str = "ios_ancs/device-1") -> ConfigEntry:
@@ -198,6 +214,7 @@ def test_event_entity_triggers_notification_event_with_payload_attributes(
     entry = make_entry()
 
     entity_id = run(setup_event_entity(hass, entry, runtime))
+    assert runtime.notification_replay_pending is True
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.state == STATE_UNKNOWN
@@ -277,6 +294,178 @@ def test_event_entity_availability_follows_runtime_and_ignores_unknown(
     assert state.state == STATE_UNKNOWN
 
 
+def test_all_companion_platforms_share_source_device_and_unload_cleanly(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    seed = firmware_notification()
+    hass.states.async_set(
+        registered.entity.entity_id,
+        seed["relay_id"],
+        seed,
+    )
+    mqtt_before = {
+        (item.entity_id, item.disabled_by, item.device_id)
+        for item in entity_registry.async_get(hass).entities.values()
+        if item.platform == "mqtt"
+    }
+    entry = make_source_entry()
+    runtime = RuntimeStub(
+        available=True,
+        unique_id="ios_ancs_A1B2C3:notification",
+        device_entry=registered.device,
+        latest_notification=seed,
+    )
+
+    _, sensor_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            sensor_component,
+            ancs_sensor,
+            Platform.SENSOR,
+        )
+    )
+    _, binary_sensor_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            binary_sensor_component,
+            ancs_binary_sensor,
+            Platform.BINARY_SENSOR,
+        )
+    )
+    _, event_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            event_component,
+            ancs_event,
+            Platform.EVENT,
+        )
+    )
+    companion_ids = sensor_ids + binary_sensor_ids + event_ids
+
+    registry = entity_registry.async_get(hass)
+    assert len(sensor_ids) == 25
+    assert len(binary_sensor_ids) == 11
+    assert len(event_ids) == 1
+    assert all(
+        (registry_entry := registry.async_get(entity_id)) is not None
+        and registry_entry.config_entry_id == entry.entry_id
+        and registry_entry.device_id == registered.device.id
+        for entity_id in companion_ids
+    )
+    assert len(device_registry.async_get(hass).devices) == 1
+    assert {
+        (item.entity_id, item.disabled_by, item.device_id)
+        for item in registry.entities.values()
+        if item.platform == "mqtt"
+    } == mqtt_before
+
+    runtime.fire_availability(False)
+    assert all(
+        (state := hass.states.get(entity_id)) is not None
+        and state.state == STATE_UNAVAILABLE
+        for entity_id in companion_ids
+    )
+    runtime.fire_availability(None)
+    assert all(
+        (state := hass.states.get(entity_id)) is not None
+        and state.state == STATE_UNAVAILABLE
+        for entity_id in companion_ids
+    )
+    runtime.fire_availability(True)
+    assert all(
+        (state := hass.states.get(entity_id)) is not None
+        and state.state != STATE_UNAVAILABLE
+        for entity_id in companion_ids
+    )
+
+    updated = firmware_notification()
+    updated["relay_id"] = "boot1-1-43-aabbcc"
+    updated["uid"] = 43
+    updated["title"] = "Updated private title"
+    updated["important"] = True
+    runtime.fire_notification(updated)
+    title_entry = next(
+        item
+        for item in entity_registry.async_entries_for_config_entry(
+            registry, entry.entry_id
+        )
+        if item.unique_id.endswith(":sensor:title")
+    )
+    important_entry = next(
+        item
+        for item in entity_registry.async_entries_for_config_entry(
+            registry, entry.entry_id
+        )
+        if item.unique_id.endswith(":binary_sensor:important")
+    )
+    title_state = hass.states.get(title_entry.entity_id)
+    important_state = hass.states.get(important_entry.entity_id)
+    event_state = hass.states.get(event_ids[0])
+    assert title_state is not None
+    assert important_state is not None
+    assert event_state is not None
+    assert title_state.state == "Updated private title"
+    assert important_state.state == "on"
+    assert event_state.attributes["relay_id"] == "boot1-1-43-aabbcc"
+    mqtt_state = hass.states.get(registered.entity.entity_id)
+    assert mqtt_state is not None
+    assert mqtt_state.state == seed["relay_id"]
+
+    async def unload_platforms(
+        unload_entry: ConfigEntry,
+        platforms: Iterable[Platform | str],
+    ) -> bool:
+        assert unload_entry is entry
+        assert list(platforms) == EXPECTED_PLATFORMS
+        results = [
+            await sensor_component.async_unload_entry(hass, entry),
+            await binary_sensor_component.async_unload_entry(hass, entry),
+            await event_component.async_unload_entry(hass, entry),
+        ]
+        return all(results)
+
+    cast(Any, hass.config_entries).async_unload_platforms = unload_platforms
+
+    async def unload_with_locked_entry() -> bool:
+        async with entry.setup_lock:
+            return await async_unload_entry(hass, entry)
+
+    assert run(unload_with_locked_entry()) is True
+    run(hass.async_block_till_done())
+
+    remaining_states = {
+        entity_id: state.state
+        for entity_id in companion_ids
+        if (state := hass.states.get(entity_id)) is not None
+    }
+    assert all(event_id not in remaining_states for event_id in event_ids)
+    assert set(remaining_states) == set(sensor_ids + binary_sensor_ids)
+    assert set(remaining_states.values()) == {STATE_UNAVAILABLE}
+    assert runtime._notification_listeners == []
+    assert runtime._availability_listeners == []
+    runtime.async_stop.assert_awaited_once()
+    assert hass.states.get(registered.entity.entity_id) is not None
+    assert {
+        (item.entity_id, item.disabled_by, item.device_id)
+        for item in registry.entities.values()
+        if item.platform == "mqtt"
+    } == mqtt_before
+
+
 def test_event_entity_unload_removes_state_and_runtime_listeners(
     hass: HomeAssistant, run
 ) -> None:
@@ -288,7 +477,7 @@ def test_event_entity_unload_removes_state_and_runtime_listeners(
         entry: ConfigEntry, platforms: Iterable[Platform | str]
     ) -> bool:
         assert entry is unload_entry
-        assert list(platforms) == [Platform.EVENT]
+        assert list(platforms) == EXPECTED_PLATFORMS
         return await event_component.async_unload_entry(hass, entry)
 
     unload_entry = entry
@@ -329,7 +518,7 @@ def test_unload_entry_keeps_other_config_entry_event_state(
         entry: ConfigEntry, platforms: Iterable[Platform | str]
     ) -> bool:
         assert entry is unload_entry
-        assert list(platforms) == [Platform.EVENT]
+        assert list(platforms) == EXPECTED_PLATFORMS
         return await event_component.async_unload_entry(hass, entry)
 
     unload_entry = entry
@@ -380,7 +569,7 @@ def test_setup_entry_cleans_runtime_when_event_forward_fails(
     runtime.async_stop.assert_awaited_once()
     assert entry.runtime_data is None
     hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
-        entry, [Platform.EVENT]
+        entry, EXPECTED_PLATFORMS
     )
 
 
@@ -399,7 +588,7 @@ def test_setup_entry_does_not_skip_unlocked_forwarding(
     runtime.async_start.assert_awaited_once()
     assert entry.runtime_data is runtime
     hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
-        entry, [Platform.EVENT]
+        entry, EXPECTED_PLATFORMS
     )
 
 
@@ -415,7 +604,7 @@ def test_unload_entry_unloads_platform_before_stopping_runtime(
         entry: ConfigEntry, platforms: Iterable[Platform | str]
     ) -> bool:
         assert entry is unload_entry
-        assert list(platforms) == [Platform.EVENT]
+        assert list(platforms) == EXPECTED_PLATFORMS
         assert runtime.async_stop.await_count == 0
         calls.append("platform")
         return True

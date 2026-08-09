@@ -14,7 +14,7 @@ from .const import (
 )
 from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
-PLATFORMS = [Platform.EVENT]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
 
 
 def _runtime_from_entry(hass: HomeAssistant, entry: ConfigEntry) -> AncsRuntime:

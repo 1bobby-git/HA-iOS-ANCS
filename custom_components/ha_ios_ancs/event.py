@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, EVENT_TYPE_NOTIFICATION
+from .const import EVENT_TYPE_NOTIFICATION
+from .entity import AncsNotificationEntity
 from .runtime import AncsRuntime
 
 
@@ -25,49 +27,28 @@ async def async_setup_entry(
     async_add_entities([AncsNotificationEvent(entry, runtime)])
 
 
-class AncsNotificationEvent(EventEntity):
+class AncsNotificationEvent(AncsNotificationEntity, EventEntity):
     """Native Home Assistant event entity for ANCS notifications."""
 
     _attr_event_types: list[str] = [EVENT_TYPE_NOTIFICATION]
-    _attr_has_entity_name: bool = True
     _attr_translation_key: str | None = "notification"
 
     def __init__(self, entry: ConfigEntry, runtime: AncsRuntime) -> None:
         """Initialize the ANCS notification event entity."""
 
-        self._attr_unique_id = runtime.unique_id
-        self.device_entry = runtime.device_entry
-        if self.device_entry is None:
-            self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, entry.entry_id)},
-                name=entry.title,
-            )
-        self._runtime = runtime
-        self._attr_available = runtime.available is not False
-
-    async def async_added_to_hass(self) -> None:
-        """Register runtime listeners."""
-
-        self.async_on_remove(
-            self._runtime.async_add_notification_listener(self._handle_notification)
-        )
-        self.async_on_remove(
-            self._runtime.async_add_availability_listener(self._handle_availability)
+        super().__init__(
+            entry,
+            runtime,
+            Platform.EVENT,
+            "notification",
+            unique_id=runtime.unique_id,
+            replay_pending=True,
         )
 
     @callback
     def _handle_notification(self, payload: dict[str, Any]) -> None:
         """Trigger a Home Assistant event from a parsed ANCS payload."""
 
-        self._trigger_event(EVENT_TYPE_NOTIFICATION, dict(payload))
-        self.async_write_ha_state()
-
-    @callback
-    def _handle_availability(self, available: bool | None) -> None:
-        """Update entity availability from the runtime."""
-
-        if available is None:
-            return
-
-        self._attr_available = available
+        self._payload = deepcopy(payload)
+        self._trigger_event(EVENT_TYPE_NOTIFICATION, deepcopy(payload))
         self.async_write_ha_state()

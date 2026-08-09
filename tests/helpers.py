@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
+import logging
 from types import MappingProxyType
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.discovery_flow import DiscoveryKey
+from homeassistant.helpers.entity_platform import EntityPlatform
 
 
 EMPTY_DISCOVERY_KEYS: MappingProxyType[str, tuple[DiscoveryKey, ...]] = (
@@ -70,3 +75,49 @@ async def async_register_mqtt_ancs_source(
         suggested_object_id=f"{mqtt_device_identifier}_last_notification",
     )
     return RegisteredMqttSource(mqtt_entry, device, entity)
+
+
+async def async_setup_ancs_platform(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    runtime: Any,
+    component: Any,
+    integration_platform: Any,
+    domain: Platform,
+) -> tuple[EntityPlatform, list[str]]:
+    """Set up one companion platform through Home Assistant's entity layer."""
+
+    if component.DATA_COMPONENT not in hass.data:
+        await component.async_setup(hass, {})
+    if hass.config_entries.async_get_entry(entry.entry_id) is None:
+        with patch.object(
+            hass.config_entries,
+            "async_setup",
+            new=AsyncMock(return_value=True),
+        ):
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+    entry.runtime_data = runtime
+
+    platform = EntityPlatform(
+        hass=hass,
+        logger=logging.getLogger(__name__),
+        domain=domain,
+        platform_name="ha_ios_ancs",
+        platform=cast(Any, integration_platform),
+        scan_interval=timedelta(seconds=30),
+        entity_namespace=None,
+    )
+    assert await platform.async_setup_entry(entry) is True
+    hass.data[component.DATA_COMPONENT]._platforms[entry.entry_id] = platform
+    await hass.async_block_till_done()
+
+    entity_ids = [
+        registry_entry.entity_id
+        for registry_entry in er.async_entries_for_config_entry(
+            er.async_get(hass),
+            entry.entry_id,
+        )
+        if registry_entry.domain == domain
+    ]
+    return platform, entity_ids
