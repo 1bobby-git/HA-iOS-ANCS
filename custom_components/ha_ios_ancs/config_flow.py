@@ -64,7 +64,7 @@ def _source_data(source: AncsSource) -> dict[str, str]:
 def _source_schema(sources: list[AncsSource]) -> vol.Schema:
     """Return a device-name selector for compatible MQTT sources."""
 
-    options = [
+    options: list[selector.SelectOptionDict] = [
         {
             "value": source.entity_unique_id,
             "label": f"{source.name} ({source.mqtt_device_identifier})",
