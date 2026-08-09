@@ -9,9 +9,8 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import DOMAIN
+from .device import device_info
 from .runtime import AncsRuntime
 
 MAX_STATE_TEXT_LENGTH = 255
@@ -81,10 +80,7 @@ class AncsNotificationEntity:
         self._runtime = runtime
         self._payload = runtime.latest_notification
         self._replay_pending = replay_pending
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-        )
+        self._attr_device_info = device_info(entry)
         self._attr_available = runtime.available is not False
 
     async def async_added_to_hass(self) -> None:

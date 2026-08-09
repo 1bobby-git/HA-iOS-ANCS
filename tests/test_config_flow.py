@@ -27,6 +27,22 @@ from tests.helpers import EMPTY_DISCOVERY_KEYS, async_register_mqtt_ancs_source
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def mqtt_registry_snapshot(hass: HomeAssistant) -> list[tuple[object, ...]]:
+    """Return stable identity and ownership fields for every MQTT entity."""
+
+    return sorted(
+        (
+            item.id,
+            item.entity_id,
+            item.unique_id,
+            item.disabled_by,
+            item.device_id,
+        )
+        for item in er.async_get(hass).entities.values()
+        if item.platform == "mqtt"
+    )
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -286,6 +302,7 @@ def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_entities(
         suggested_object_id="ha_ios_ancs_has_error",
     )
     assert device_registry.async_get(legacy_device.id) is not None
+    mqtt_before = mqtt_registry_snapshot(hass)
 
     with (
         patch(
@@ -328,12 +345,12 @@ def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_entities(
     assert migrated is not None
     assert migrated.id == legacy_event.id
     assert migrated.unique_id == "ios_ancs_A1B2C3:notification"
-    assert migrated.device_id == registered.device.id
+    assert migrated.device_id == legacy_device.id
     migrated_title = entity_registry.async_get(legacy_title.entity_id)
     assert migrated_title is not None
     assert migrated_title.id == legacy_title.id
     assert migrated_title.unique_id == "ios_ancs_A1B2C3:sensor:title"
-    assert migrated_title.device_id == registered.device.id
+    assert migrated_title.device_id == legacy_device.id
     migrated_has_error = entity_registry.async_get(legacy_has_error.entity_id)
     assert migrated_has_error is not None
     assert migrated_has_error.id == legacy_has_error.id
@@ -341,8 +358,11 @@ def test_config_flow_reconfigure_converts_legacy_entry_and_migrates_entities(
         migrated_has_error.unique_id
         == "ios_ancs_A1B2C3:binary_sensor:has_error"
     )
-    assert migrated_has_error.device_id == registered.device.id
-    assert device_registry.async_get(legacy_device.id) is None
+    assert migrated_has_error.device_id == legacy_device.id
+    owned_device = device_registry.async_get(legacy_device.id)
+    assert owned_device is not None
+    assert owned_device.via_device_id is None
+    assert mqtt_registry_snapshot(hass) == mqtt_before
 
 
 def test_config_flow_reconfigure_defaults_to_current_mqtt_source(
@@ -464,7 +484,7 @@ def test_config_flow_reconfigure_infers_recommended_legacy_topic_source(
     assert source_key.default() == expected.entity.unique_id
 
 
-def test_config_flow_reconfigure_removes_existing_orphan_legacy_device(
+def test_config_flow_reconfigure_keeps_owned_device_and_moves_companion(
     registry_hass: HomeAssistant, run
 ) -> None:
     hass = registry_hass
@@ -513,6 +533,7 @@ def test_config_flow_reconfigure_removes_existing_orphan_legacy_device(
         suggested_object_id="ha_ios_ancs_notification",
     )
     assert device_registry.async_get(legacy_device.id) is not None
+    mqtt_before = mqtt_registry_snapshot(hass)
 
     with (
         patch(
@@ -545,9 +566,13 @@ def test_config_flow_reconfigure_removes_existing_orphan_legacy_device(
     assert result["reason"] == "reconfigure_successful"
     unchanged = entity_registry.async_get(event.entity_id)
     assert unchanged is not None
+    assert unchanged.id == event.id
     assert unchanged.unique_id == "ios_ancs_A1B2C3:notification"
-    assert unchanged.device_id == registered.device.id
-    assert device_registry.async_get(legacy_device.id) is None
+    assert unchanged.device_id == legacy_device.id
+    owned_device = device_registry.async_get(legacy_device.id)
+    assert owned_device is not None
+    assert owned_device.via_device_id is None
+    assert mqtt_registry_snapshot(hass) == mqtt_before
 
 
 def test_config_flow_reconfigure_duplicate_leaves_legacy_entry_unchanged(

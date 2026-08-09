@@ -11,7 +11,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
@@ -22,6 +21,7 @@ from .const import (
     DOMAIN,
     EVENT_TYPE_NOTIFICATION,
 )
+from .device import async_ensure_integration_device
 from .source import AncsSource, async_discover_ancs_sources
 
 
@@ -233,14 +233,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 f"{old_device_identifier}:{EVENT_TYPE_NOTIFICATION}"
             )
 
+        owned_device = async_ensure_integration_device(self.hass, entry)
         self._async_migrate_companion_entities(
             entry.entry_id,
             entry.unique_id or entry.entry_id,
             old_event_unique_id,
             source,
+            owned_device.id,
         )
-
-        self._async_remove_orphan_legacy_device(entry.entry_id)
 
         return self.async_update_reload_and_abort(
             entry,
@@ -256,8 +256,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         old_detail_identity: str,
         old_event_unique_id: str | None,
         source: AncsSource,
+        owned_device_id: str,
     ) -> None:
-        """Move existing companion entities to the selected MQTT device."""
+        """Update companion identities on the integration-owned device."""
 
         entity_registry = er.async_get(self.hass)
         target_identity = source.mqtt_device_identifier
@@ -295,30 +296,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             entity_updates: dict[str, str] = {}
             if entity_entry.unique_id != target_unique_id:
                 entity_updates["new_unique_id"] = target_unique_id
-            if entity_entry.device_id != source.device_id:
-                entity_updates["device_id"] = source.device_id
+            if entity_entry.device_id != owned_device_id:
+                entity_updates["device_id"] = owned_device_id
             if entity_updates:
                 entity_registry.async_update_entity(
                     entity_entry.entity_id,
                     **entity_updates,
                 )
-
-    def _async_remove_orphan_legacy_device(self, entry_id: str) -> None:
-        """Remove the old integration-owned device when no entity uses it."""
-
-        device_registry = dr.async_get(self.hass)
-        device_entry = device_registry.async_get_device(
-            identifiers={(DOMAIN, entry_id)}
-        )
-        if device_entry is None:
-            return
-
-        device_id = device_entry.id
-        entity_registry = er.async_get(self.hass)
-        if any(
-            entity_entry.device_id == device_id
-            for entity_entry in entity_registry.entities.values()
-        ):
-            return
-
-        device_registry.async_remove_device(device_id)

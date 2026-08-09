@@ -617,9 +617,16 @@ def test_korean_translation_defines_notification_entity_name() -> None:
 
 
 def test_setup_entry_cleans_runtime_when_event_forward_fails(
-    hass: HomeAssistant, run
+    registry_hass: HomeAssistant, run
 ) -> None:
+    hass = registry_hass
     entry = make_entry("ios_ancs")
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
     runtime = RuntimeStub()
     forward_error = RuntimeError("event platform failed")
     hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=forward_error)
@@ -646,9 +653,16 @@ def test_setup_entry_cleans_runtime_when_event_forward_fails(
 
 
 def test_setup_entry_does_not_skip_unlocked_forwarding(
-    hass: HomeAssistant, run
+    registry_hass: HomeAssistant, run
 ) -> None:
+    hass = registry_hass
     entry = make_entry("ios_ancs")
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
     runtime = RuntimeStub()
     hass.config_entries.async_forward_entry_setups = AsyncMock()
 

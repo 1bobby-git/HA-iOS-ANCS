@@ -12,6 +12,7 @@ from .const import (
     CONF_MQTT_DEVICE_IDENTIFIER,
     CONF_SOURCE_ENTITY_UNIQUE_ID,
 )
+from .device import async_ensure_integration_device
 from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
@@ -32,6 +33,7 @@ def _runtime_from_entry(hass: HomeAssistant, entry: ConfigEntry) -> AncsRuntime:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HA iOS ANCS from a config entry."""
 
+    async_ensure_integration_device(hass, entry)
     runtime = _runtime_from_entry(hass, entry)
     await runtime.async_start()
     entry.runtime_data = runtime
