@@ -58,6 +58,10 @@ MQTT Discovery works without HACS. After the device connects to the broker, it p
 
 HACS installs only the Home Assistant companion integration; it never flashes or updates ESP32 firmware. To install as a HACS custom repository, open the [HA iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration) and confirm the repository addition in Home Assistant. This documents custom-repository installation only; it does not claim default HACS-store acceptance.
 
+Adding the HACS integration no longer asks for an MQTT base topic. It finds the `Last notification` sensor and device already registered by MQTT Discovery. One compatible device is selected automatically; multiple devices are shown by name.
+
+The `Notification` event entity is added to the existing MQTT device instead of creating another device. It emits only newly received complete notifications and does not replay the retained `Last notification` state as a new event after Home Assistant restarts. Legacy manual-topic entries keep working until you choose **Reconfigure** and select their MQTT device.
+
 Example automation:
 
 ```text

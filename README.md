@@ -66,6 +66,10 @@ MQTT Discovery는 HACS 없이 동작합니다. 장치가 MQTT 브로커에 연�
 
 HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설치하거나 업데이트하지 않습니다. HACS custom repository 설치는 [HA iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 열고 Home Assistant에서 저장소 추가를 확인합니다. 이 문서는 custom repository 경로만 설명하며, HACS 기본 스토어 등록을 주장하지 않습니다.
 
+HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다. 통합은 MQTT Discovery가 이미 등록한 `최근 알림` 센서와 장치를 찾아 사용합니다. 호환 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.
+
+`알림` 이벤트 엔티티는 새 장치를 만들지 않고 기존 MQTT 장치에 추가됩니다. 새로 수신된 완전한 알림만 이벤트로 표시하며, Home Assistant를 다시 시작해도 retained `최근 알림` 상태를 새 알림으로 재생하지 않습니다. 기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 장치를 선택할 때까지 기존 방식으로 유지됩니다.
+
 MQTT Discovery의 compact model은 `최근 알림`, `알림 제목`, `알림 내용`, `앱 이름`, `장치 상태`, `장치 재시작` 엔티티를 중심으로 구성됩니다. 상태 속성에는 `ready`, `uptime_seconds`, `ble_connected`, `wifi_ssid` 같은 진단 값이 포함됩니다.
 
 예제 자동화:
