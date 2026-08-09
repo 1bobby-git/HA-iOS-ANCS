@@ -11,13 +11,21 @@ import pytest
 
 from homeassistant.components.mqtt.models import ReceiveMessage
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    ATTR_FRIENDLY_NAME,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.discovery_flow import DiscoveryKey
 
 from custom_components.ha_ios_ancs import async_setup_entry, async_unload_entry
-from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN
-from custom_components.ha_ios_ancs.runtime import AncsMqttRuntime
+from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN, HA_ECHO_APP_ID
+from custom_components.ha_ios_ancs.runtime import AncsMqttRuntime, AncsSourceRuntime
+
+from tests.helpers import RegisteredMqttSource, async_register_mqtt_ancs_source
 
 
 EMPTY_DISCOVERY_KEYS: MappingProxyType[str, tuple[DiscoveryKey, ...]] = MappingProxyType({})
@@ -33,6 +41,51 @@ def notification_payload(**overrides: object) -> str:
     }
     payload.update(overrides)
     return json.dumps(payload)
+
+
+def firmware_notification(**overrides: object) -> dict[str, object]:
+    data: dict[str, object] = {
+        "schema_version": 1,
+        "target": "esp32c6",
+        "source": "esp32c6_ancs",
+        "relay_id": "boot1-1-42-aabbcc",
+        "device_name": "IOS-ANCS-C6-2B20",
+        "session_id": 1,
+        "event": "added",
+        "event_id": 0,
+        "uid": 42,
+        "app_id": "com.example.chat",
+        "title": "Private title",
+        "subtitle": "",
+        "message": "Private message",
+        "complete": True,
+        "pre_existing": False,
+        "published_at_ms": 123456,
+    }
+    data.update(overrides)
+    return data
+
+
+async def async_make_source_runtime(
+    hass: HomeAssistant,
+    registered: RegisteredMqttSource,
+) -> tuple[AncsSourceRuntime, list[dict[str, Any]], list[bool | None]]:
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        next(
+            value
+            for domain, value in registered.device.identifiers
+            if domain == "mqtt"
+        ),
+    )
+    notifications: list[dict[str, Any]] = []
+    availability: list[bool | None] = []
+    runtime.async_add_notification_listener(notifications.append)
+    runtime.async_add_availability_listener(availability.append)
+    await runtime.async_start()
+    await hass.async_block_till_done()
+    return runtime, notifications, availability
 
 
 def mqtt_message(topic: str, payload: str | bytes) -> ReceiveMessage:
@@ -301,6 +354,260 @@ def test_runtime_stop_unsubscribes_once_and_is_idempotent(hass: HomeAssistant, r
     run(runtime.async_stop())
 
     assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+
+
+def test_source_runtime_resolves_renamed_entity_and_dispatches(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    er.async_get(hass).async_update_entity(
+        registered.entity.entity_id,
+        new_entity_id="sensor.renamed_ancs_notification",
+    )
+    runtime, notifications, _ = run(async_make_source_runtime(hass, registered))
+
+    hass.states.async_set(
+        "sensor.renamed_ancs_notification",
+        "boot1-1-42-aabbcc",
+        firmware_notification(),
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == [firmware_notification()]
+    assert runtime.unique_id == "ios_ancs_A1B2C3:notification"
+    assert runtime.device_entry is not None
+    assert runtime.device_entry.id == registered.device.id
+    run(runtime.async_stop())
+
+
+def test_source_runtime_does_not_replay_existing_startup_state(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        firmware_notification(),
+    )
+
+    runtime, notifications, _ = run(async_make_source_runtime(hass, registered))
+    assert notifications == []
+
+    same_relay = firmware_notification(title="Restored title")
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        same_relay,
+    )
+    run(hass.async_block_till_done())
+    assert notifications == []
+
+    new_notification = firmware_notification(relay_id="boot1-1-43-aabbcc", uid=43)
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-43-aabbcc",
+        new_notification,
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == [new_notification]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_dispatches_firmware_attributes_without_ha_metadata(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    runtime, notifications, _ = run(async_make_source_runtime(hass, registered))
+    attributes = firmware_notification()
+    attributes[ATTR_FRIENDLY_NAME] = "Last notification"
+
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        attributes,
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == [firmware_notification()]
+    assert ATTR_FRIENDLY_NAME not in notifications[0]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_uses_sensor_state_as_relay_id_fallback(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    runtime, notifications, _ = run(async_make_source_runtime(hass, registered))
+    attributes = firmware_notification()
+    attributes.pop("relay_id")
+
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        attributes,
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications[0]["relay_id"] == "boot1-1-42-aabbcc"
+    run(runtime.async_stop())
+
+
+def test_source_runtime_tracks_unavailable_and_recovers_without_replay(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        firmware_notification(),
+    )
+    runtime, notifications, availability = run(
+        async_make_source_runtime(hass, registered)
+    )
+    availability.clear()
+
+    hass.states.async_set(registered.entity.entity_id, STATE_UNKNOWN)
+    hass.states.async_set(registered.entity.entity_id, STATE_UNAVAILABLE)
+    run(hass.async_block_till_done())
+    assert notifications == []
+    assert availability == [False]
+    assert runtime.available is False
+
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        firmware_notification(),
+    )
+    run(hass.async_block_till_done())
+    assert notifications == []
+    assert availability == [False, True]
+
+    recovered = firmware_notification(relay_id="boot1-1-43-aabbcc", uid=43)
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-43-aabbcc",
+        recovered,
+    )
+    run(hass.async_block_till_done())
+    assert notifications == [recovered]
+    run(runtime.async_stop())
+
+
+@pytest.mark.parametrize(
+    ("rejected", "recovered"),
+    [
+        ({"complete": False}, {"complete": True}),
+        ({"pre_existing": True}, {"pre_existing": False}),
+        ({"event": "removed"}, {"event": "added"}),
+        ({"app_id": HA_ECHO_APP_ID}, {"app_id": "com.example.chat"}),
+    ],
+)
+def test_source_runtime_rejected_startup_state_does_not_consume_relay_id(
+    registry_hass: HomeAssistant,
+    run,
+    rejected: dict[str, object],
+    recovered: dict[str, object],
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        firmware_notification(**rejected),
+    )
+    runtime, notifications, _ = run(async_make_source_runtime(hass, registered))
+    assert notifications == []
+
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        firmware_notification(**recovered),
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == [firmware_notification(**recovered)]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_stop_removes_listener_but_keeps_mqtt_entity(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    runtime, notifications, _ = run(async_make_source_runtime(hass, registered))
+
+    run(runtime.async_stop())
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        firmware_notification(),
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == []
+    assert hass.states.get(registered.entity.entity_id) is not None
+    assert er.async_get(hass).async_get(registered.entity.entity_id) is not None
+
+
+def test_source_runtime_missing_registry_source_raises_not_ready(
+    registry_hass: HomeAssistant, run
+) -> None:
+    runtime = AncsSourceRuntime(
+        registry_hass,
+        "missing_last_notification",
+        "missing",
+    )
+
+    with pytest.raises(ConfigEntryNotReady, match="missing_last_notification"):
+        run(runtime.async_start())
 
 
 def test_setup_entry_stores_runtime_and_unload_stops_it(hass: HomeAssistant, run) -> None:
