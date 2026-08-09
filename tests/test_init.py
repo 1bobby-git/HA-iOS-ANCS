@@ -16,6 +16,8 @@ from custom_components.ha_ios_ancs.const import (
 
 from tests.helpers import EMPTY_DISCOVERY_KEYS
 
+EXPECTED_PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
+
 
 def make_source_entry() -> ConfigEntry:
     return ConfigEntry(
@@ -71,7 +73,7 @@ def test_setup_entry_uses_source_runtime_for_device_data(
     assert entry.runtime_data is runtime
     hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
         entry,
-        [Platform.EVENT],
+        EXPECTED_PLATFORMS,
     )
 
 
@@ -91,6 +93,10 @@ def test_setup_entry_keeps_legacy_direct_mqtt_runtime(
     runtime.async_start.assert_awaited_once()
     assert entry.data == {CONF_BASE_TOPIC: "ios_ancs/legacy"}
     assert entry.runtime_data is runtime
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
+        entry,
+        EXPECTED_PLATFORMS,
+    )
 
 
 def test_setup_entry_stops_source_runtime_when_event_forward_fails(

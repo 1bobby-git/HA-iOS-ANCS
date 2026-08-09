@@ -5,13 +5,30 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
+from homeassistant.components import binary_sensor as binary_sensor_component
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
+from homeassistant.helpers import device_registry, entity_registry
 
+from custom_components.ha_ios_ancs import binary_sensor as ancs_binary_sensor
 from custom_components.ha_ios_ancs.binary_sensor import (
     BINARY_SENSOR_DESCRIPTIONS,
     AncsNotificationBinarySensor,
     async_setup_entry,
+)
+from custom_components.ha_ios_ancs.const import (
+    CONF_BASE_TOPIC,
+    CONF_MQTT_DEVICE_IDENTIFIER,
+    CONF_SOURCE_ENTITY_UNIQUE_ID,
+    DOMAIN,
+)
+from custom_components.ha_ios_ancs.runtime import AncsMqttRuntime, AncsSourceRuntime
+
+from tests.helpers import (
+    EMPTY_DISCOVERY_KEYS,
+    async_register_mqtt_ancs_source,
+    async_setup_ancs_platform,
 )
 
 
@@ -58,6 +75,47 @@ def entry_with_runtime(payload: dict[str, Any]) -> SimpleNamespace:
         title="Kitchen Relay",
         runtime_data=RuntimeStub(payload),
     )
+
+
+def source_entry() -> ConfigEntry:
+    return ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="Kitchen Relay",
+        data={
+            CONF_SOURCE_ENTITY_UNIQUE_ID: "ios_ancs_A1B2C3_last_notification",
+            CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+        },
+        source="user",
+        unique_id="ios_ancs_A1B2C3",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+
+
+def legacy_entry() -> ConfigEntry:
+    return ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="HA iOS ANCS (ios_ancs/legacy)",
+        data={CONF_BASE_TOPIC: "ios_ancs/legacy"},
+        source="user",
+        unique_id="ios_ancs/legacy",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+
+
+def mqtt_registry_snapshot(hass) -> set[tuple[str, object, str | None]]:
+    return {
+        (item.entity_id, item.disabled_by, item.device_id)
+        for item in entity_registry.async_get(hass).entities.values()
+        if item.platform == "mqtt"
+    }
 
 
 def test_binary_descriptions_cover_boolean_contract() -> None:
@@ -159,3 +217,87 @@ def test_malformed_nested_values_remain_safe_and_explicit(run) -> None:
         if entity.entity_description.key == "has_error"
     )
     assert missing_error.is_on is None
+
+
+def test_source_binary_sensors_attach_without_mutating_mqtt_registry(
+    registry_hass, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    before = mqtt_registry_snapshot(hass)
+    entry = source_entry()
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    run(runtime.async_start())
+
+    _, entity_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            binary_sensor_component,
+            ancs_binary_sensor,
+            binary_sensor_component.DOMAIN,
+        )
+    )
+
+    registry = entity_registry.async_get(hass)
+    assert len(entity_ids) == len(EXPECTED_BINARY_SENSOR_KEYS)
+    for entity_id in entity_ids:
+        registry_entry = registry.async_get(entity_id)
+        assert registry_entry is not None
+        assert registry_entry.config_entry_id == entry.entry_id
+        assert registry_entry.device_id == registered.device.id
+    assert ("mqtt", "ios_ancs_A1B2C3") in registered.device.identifiers
+    assert len(device_registry.async_get(hass).devices) == 1
+    assert mqtt_registry_snapshot(hass) == before
+
+    run(binary_sensor_component.async_unload_entry(hass, entry))
+    run(runtime.async_stop())
+    assert mqtt_registry_snapshot(hass) == before
+    assert entity_registry.async_get(hass).async_get(registered.entity.entity_id) is not None
+
+
+def test_legacy_binary_sensors_share_one_integration_device(
+    registry_hass, run
+) -> None:
+    hass = registry_hass
+    entry = legacy_entry()
+    runtime = AncsMqttRuntime(hass, "ios_ancs/legacy")
+
+    _, entity_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            binary_sensor_component,
+            ancs_binary_sensor,
+            binary_sensor_component.DOMAIN,
+        )
+    )
+
+    registry = entity_registry.async_get(hass)
+    device_ids = {
+        registry_entry.device_id
+        for entity_id in entity_ids
+        if (registry_entry := registry.async_get(entity_id)) is not None
+    }
+    assert len(entity_ids) == len(EXPECTED_BINARY_SENSOR_KEYS)
+    assert len(device_ids) == 1
+    device_id = device_ids.pop()
+    assert device_id is not None
+    legacy_device = device_registry.async_get(hass).async_get(device_id)
+    assert legacy_device is not None
+    assert (DOMAIN, entry.entry_id) in legacy_device.identifiers
+
+    run(binary_sensor_component.async_unload_entry(hass, entry))
+    run(runtime.async_stop())
