@@ -173,6 +173,44 @@ def test_runtime_buffers_notification_until_listener_attaches(
     run(runtime.async_stop())
 
 
+def test_runtime_snapshot_preserves_pending_event_for_event_listener(
+    hass: HomeAssistant, run
+) -> None:
+    runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
+    _, callback, _ = subscriptions[0]
+    callback(
+        mqtt_message(
+            "ios_ancs/notification",
+            notification_payload(
+                relay_id="relay-before-platforms",
+                title="Original title",
+            ),
+        )
+    )
+
+    detail_updates: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(
+        detail_updates.append,
+        replay_pending=False,
+    )
+    assert detail_updates == []
+
+    snapshot = runtime.latest_notification
+    assert snapshot is not None
+    assert snapshot["relay_id"] == "relay-before-platforms"
+    snapshot["title"] = "Mutated by consumer"
+    latest = runtime.latest_notification
+    assert latest is not None
+    assert latest["title"] == "Original title"
+
+    event_updates: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(event_updates.append)
+    assert [item["relay_id"] for item in event_updates] == [
+        "relay-before-platforms"
+    ]
+    run(runtime.async_stop())
+
+
 def test_runtime_availability_changes_only_on_exact_online_offline(hass: HomeAssistant, run) -> None:
     runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
     states: list[bool | None] = []
@@ -365,14 +403,17 @@ def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run)
 
 
 def test_runtime_stop_unsubscribes_once_and_is_idempotent(hass: HomeAssistant, run) -> None:
-    runtime, _, unsubscribes = run(start_runtime_with_subscribe_patch(hass))
+    runtime, subscriptions, unsubscribes = run(start_runtime_with_subscribe_patch(hass))
     runtime.async_add_notification_listener(lambda notification: None)
     runtime.async_add_availability_listener(lambda available: None)
+    _, callback, _ = subscriptions[0]
+    callback(mqtt_message("ios_ancs/notification", notification_payload()))
 
     run(runtime.async_stop())
     run(runtime.async_stop())
 
     assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+    assert runtime.latest_notification is None
 
 
 def test_source_runtime_resolves_renamed_entity_and_dispatches(
@@ -444,6 +485,38 @@ def test_source_runtime_does_not_replay_existing_startup_state(
     run(hass.async_block_till_done())
 
     assert notifications == [new_notification]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_seeds_snapshot_without_replaying_current_state(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    payload = firmware_notification(relay_id="seed-relay", title="Seed title")
+    hass.states.async_set(
+        registered.entity.entity_id,
+        payload["relay_id"],
+        payload,
+    )
+
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    events: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(events.append)
+    run(runtime.async_start())
+
+    assert events == []
+    assert runtime.latest_notification == payload
     run(runtime.async_stop())
 
 

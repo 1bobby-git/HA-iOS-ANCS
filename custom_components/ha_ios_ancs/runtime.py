@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any, Protocol
 
 from homeassistant.const import ATTR_FRIENDLY_NAME, STATE_UNAVAILABLE, STATE_UNKNOWN
@@ -36,7 +37,7 @@ type AvailabilityListener = Callable[[bool | None], None]
 
 
 class AncsRuntime(Protocol):
-    """Shared runtime contract consumed by the event platform."""
+    """Shared runtime contract consumed by notification entity platforms."""
 
     @property
     def available(self) -> bool | None:
@@ -53,6 +54,11 @@ class AncsRuntime(Protocol):
         """Return an existing device entry when the source owns one."""
         raise NotImplementedError
 
+    @property
+    def latest_notification(self) -> dict[str, Any] | None:
+        """Return a defensive copy of the latest accepted notification."""
+        raise NotImplementedError
+
     async def async_start(self) -> None:
         """Start the runtime."""
         raise NotImplementedError
@@ -62,9 +68,12 @@ class AncsRuntime(Protocol):
         raise NotImplementedError
 
     def async_add_notification_listener(
-        self, listener: NotificationListener
+        self,
+        listener: NotificationListener,
+        *,
+        replay_pending: bool = True,
     ) -> CALLBACK_TYPE:
-        """Add a notification listener."""
+        """Add a listener, optionally replaying queued event notifications."""
         raise NotImplementedError
 
     def async_add_availability_listener(
@@ -98,6 +107,7 @@ class AncsMqttRuntime:
         self._unsubscribes: list[CALLBACK_TYPE] = []
         self._start_lock = asyncio.Lock()
         self._available: bool | None = None
+        self._latest_notification: dict[str, Any] | None = None
 
     @property
     def available(self) -> bool | None:
@@ -116,6 +126,16 @@ class AncsMqttRuntime:
         """Return no external device for a legacy topic entry."""
 
         return None
+
+    @property
+    def latest_notification(self) -> dict[str, Any] | None:
+        """Return a defensive copy of the latest accepted notification."""
+
+        return (
+            None
+            if self._latest_notification is None
+            else deepcopy(self._latest_notification)
+        )
 
     async def async_start(self) -> None:
         """Wait for MQTT and subscribe to notification and availability topics."""
@@ -164,16 +184,21 @@ class AncsMqttRuntime:
             self._notification_listeners.clear()
             self._pending_notifications.clear()
             self._availability_listeners.clear()
+            self._latest_notification = None
 
     @callback
     def async_add_notification_listener(
-        self, listener: NotificationListener
+        self,
+        listener: NotificationListener,
+        *,
+        replay_pending: bool = True,
     ) -> CALLBACK_TYPE:
         """Add a notification listener and return a removal callback."""
 
         self._notification_listeners.append(listener)
-        while self._pending_notifications:
-            listener(self._pending_notifications.popleft())
+        if replay_pending:
+            while self._pending_notifications:
+                listener(deepcopy(self._pending_notifications.popleft()))
 
         @callback
         def remove_listener() -> None:
@@ -203,12 +228,13 @@ class AncsMqttRuntime:
         if notification is None:
             return
 
+        self._latest_notification = deepcopy(notification)
         if not self._notification_listeners:
-            self._pending_notifications.append(notification)
+            self._pending_notifications.append(deepcopy(notification))
             return
 
         for listener in tuple(self._notification_listeners):
-            listener(notification)
+            listener(deepcopy(notification))
 
     @callback
     def _handle_availability(self, msg: Any) -> None:
@@ -252,6 +278,7 @@ class AncsSourceRuntime:
         self._start_lock = asyncio.Lock()
         self._available: bool | None = None
         self._device_entry: dr.DeviceEntry | None = None
+        self._latest_notification: dict[str, Any] | None = None
 
     @property
     def available(self) -> bool | None:
@@ -270,6 +297,16 @@ class AncsSourceRuntime:
         """Return the MQTT-owned device entry resolved at startup."""
 
         return self._device_entry
+
+    @property
+    def latest_notification(self) -> dict[str, Any] | None:
+        """Return a defensive copy of the latest accepted notification."""
+
+        return (
+            None
+            if self._latest_notification is None
+            else deepcopy(self._latest_notification)
+        )
 
     async def async_start(self) -> None:
         """Resolve the source entity, seed dedupe, and track state changes."""
@@ -303,10 +340,12 @@ class AncsSourceRuntime:
                 self._set_available(True)
             else:
                 self._set_available(True)
-                parse_notification_data(
+                seed = parse_notification_data(
                     self._notification_data_from_state(current_state),
                     self._seen,
                 )
+                if seed is not None:
+                    self._latest_notification = deepcopy(seed)
 
             self._unsubscribe = async_track_state_change_event(
                 self._hass,
@@ -324,16 +363,21 @@ class AncsSourceRuntime:
             self._notification_listeners.clear()
             self._pending_notifications.clear()
             self._availability_listeners.clear()
+            self._latest_notification = None
 
     @callback
     def async_add_notification_listener(
-        self, listener: NotificationListener
+        self,
+        listener: NotificationListener,
+        *,
+        replay_pending: bool = True,
     ) -> CALLBACK_TYPE:
         """Add a notification listener and return a removal callback."""
 
         self._notification_listeners.append(listener)
-        while self._pending_notifications:
-            listener(self._pending_notifications.popleft())
+        if replay_pending:
+            while self._pending_notifications:
+                listener(deepcopy(self._pending_notifications.popleft()))
 
         @callback
         def remove_listener() -> None:
@@ -390,12 +434,13 @@ class AncsSourceRuntime:
         if notification is None:
             return
 
+        self._latest_notification = deepcopy(notification)
         if not self._notification_listeners:
-            self._pending_notifications.append(notification)
+            self._pending_notifications.append(deepcopy(notification))
             return
 
         for listener in tuple(self._notification_listeners):
-            listener(notification)
+            listener(deepcopy(notification))
 
     @callback
     def _set_available(self, available: bool) -> None:
