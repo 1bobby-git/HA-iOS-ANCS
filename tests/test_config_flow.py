@@ -11,7 +11,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.ha_ios_ancs.config_flow import normalize_base_topic
-from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN
+from custom_components.ha_ios_ancs.const import (
+    CONF_BASE_TOPIC,
+    CONF_MQTT_DEVICE_IDENTIFIER,
+    CONF_SOURCE_ENTITY_UNIQUE_ID,
+    DOMAIN,
+)
+
+from tests.helpers import async_register_mqtt_ancs_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,132 +62,171 @@ def test_normalize_base_topic_rejects_non_string_values(raw: object) -> None:
         normalize_base_topic(raw)
 
 
-def test_config_flow_user_step_shows_form(hass: HomeAssistant, run) -> None:
-    result = run(hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER}))
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
-
-
-def test_config_flow_creates_entry_with_canonical_topic(hass: HomeAssistant, run) -> None:
+def test_config_flow_auto_creates_entry_for_one_mqtt_ancs_device(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen iPhone Relay",
+        )
+    )
     with (
         patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)),
         patch(
             "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
             new=AsyncMock(return_value=True),
-            create=True,
         ),
     ):
         result = run(
             hass.config_entries.flow.async_init(
                 DOMAIN,
                 context={"source": config_entries.SOURCE_USER},
-                data={CONF_BASE_TOPIC: " /ios_ancs/device-1/ "},
             )
         )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "HA iOS ANCS (ios_ancs/device-1)"
-    assert result["data"] == {CONF_BASE_TOPIC: "ios_ancs/device-1"}
+    assert result["title"] == "Kitchen iPhone Relay"
+    assert result["data"] == {
+        CONF_SOURCE_ENTITY_UNIQUE_ID: registered.entity.unique_id,
+        CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+    }
+    assert CONF_BASE_TOPIC not in result["data"]
 
 
-def test_config_flow_mqtt_unavailable_returns_field_error(hass: HomeAssistant, run) -> None:
-    with patch(
-        "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
-        new=AsyncMock(return_value=False),
-        create=True,
-    ):
-        result = run(
-            hass.config_entries.flow.async_init(
-                DOMAIN,
-                context={"source": config_entries.SOURCE_USER},
-                data={CONF_BASE_TOPIC: "ios_ancs"},
-            )
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_BASE_TOPIC: "mqtt_unavailable"}
-
-
-def test_config_flow_invalid_topic_returns_field_error(hass: HomeAssistant, run) -> None:
-    result = run(
-        hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": config_entries.SOURCE_USER},
-            data={CONF_BASE_TOPIC: "ios ancs"},
-        )
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_BASE_TOPIC: "invalid_base_topic"}
-
-
-def test_config_flow_missing_topic_returns_field_error(hass: HomeAssistant, run) -> None:
-    result = run(
-        hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": config_entries.SOURCE_USER},
-            data={},
-        )
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_BASE_TOPIC: "invalid_base_topic"}
-
-
-@pytest.mark.parametrize("base_topic", [None, 7, [], {}])
-def test_config_flow_non_string_topic_returns_field_error(
-    hass: HomeAssistant, run, base_topic: object
+def test_config_flow_shows_device_selector_for_multiple_sources(
+    registry_hass: HomeAssistant, run
 ) -> None:
-    result = run(
-        hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": config_entries.SOURCE_USER},
-            data={CONF_BASE_TOPIC: base_topic},
+    hass = registry_hass
+    first = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
         )
     )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_BASE_TOPIC: "invalid_base_topic"}
-
-
-def test_config_flow_duplicate_canonical_topic_aborts(hass: HomeAssistant, run) -> None:
+    second = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_D4E5F6",
+            device_name="Office Relay",
+        )
+    )
     with (
         patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)),
         patch(
             "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
             new=AsyncMock(return_value=True),
-            create=True,
+        ),
+    ):
+        form = run(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_USER},
+            )
+        )
+        result = run(
+            hass.config_entries.flow.async_configure(
+                form["flow_id"],
+                {CONF_SOURCE_ENTITY_UNIQUE_ID: second.entity.unique_id},
+            )
+        )
+
+    schema_keys = [key.schema for key in form["data_schema"].schema]
+    assert form["type"] is FlowResultType.FORM
+    assert form["step_id"] == "user"
+    assert schema_keys == [CONF_SOURCE_ENTITY_UNIQUE_ID]
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Office Relay"
+    assert result["data"] == {
+        CONF_SOURCE_ENTITY_UNIQUE_ID: second.entity.unique_id,
+        CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_D4E5F6",
+    }
+    assert first.entity.unique_id != second.entity.unique_id
+
+
+def test_config_flow_aborts_when_no_compatible_device_exists(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    with patch(
+        "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+        new=AsyncMock(return_value=True),
+    ):
+        result = run(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_USER},
+            )
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_devices_found"
+
+
+def test_config_flow_aborts_when_mqtt_is_unavailable(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    with patch(
+        "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+        new=AsyncMock(return_value=False),
+    ):
+        result = run(
+            hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": config_entries.SOURCE_USER},
+            )
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "mqtt_unavailable"
+
+
+def test_config_flow_duplicate_mqtt_device_identifier_aborts(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    with (
+        patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)),
+        patch(
+            "custom_components.ha_ios_ancs.config_flow._async_mqtt_available",
+            new=AsyncMock(return_value=True),
         ),
     ):
         first = run(
             hass.config_entries.flow.async_init(
                 DOMAIN,
                 context={"source": config_entries.SOURCE_USER},
-                data={CONF_BASE_TOPIC: "ios_ancs"},
             )
         )
-        assert first["type"] is FlowResultType.CREATE_ENTRY
-
         duplicate = run(
             hass.config_entries.flow.async_init(
                 DOMAIN,
                 context={"source": config_entries.SOURCE_USER},
-                data={CONF_BASE_TOPIC: "/ios_ancs/"},
             )
         )
 
-        assert duplicate["type"] is FlowResultType.ABORT
-        assert duplicate["reason"] == "already_configured"
+    assert first["type"] is FlowResultType.CREATE_ENTRY
+    assert duplicate["type"] is FlowResultType.ABORT
+    assert duplicate["reason"] == "already_configured"
 
 
 def test_manifest_contract() -> None:
-    manifest = json.loads((ROOT / "custom_components/ha_ios_ancs/manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (ROOT / "custom_components/ha_ios_ancs/manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert list(manifest) == [
         "domain",
@@ -211,18 +257,42 @@ def test_manifest_contract() -> None:
 
 
 def test_translations_contract() -> None:
-    en = json.loads((ROOT / "custom_components/ha_ios_ancs/translations/en.json").read_text(encoding="utf-8"))
-    ko = json.loads((ROOT / "custom_components/ha_ios_ancs/translations/ko.json").read_text(encoding="utf-8"))
+    strings = json.loads(
+        (ROOT / "custom_components/ha_ios_ancs/strings.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    en = json.loads(
+        (ROOT / "custom_components/ha_ios_ancs/translations/en.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    ko = json.loads(
+        (ROOT / "custom_components/ha_ios_ancs/translations/ko.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
-    for data in (en, ko):
+    assert strings.keys() == en.keys() == ko.keys()
+    assert strings["config"].keys() == en["config"].keys() == ko["config"].keys()
+    for data in (strings, en, ko):
         assert data["title"]
         assert data["config"]["step"]["user"]["description"]
-        assert data["config"]["step"]["user"]["data"][CONF_BASE_TOPIC]
-        assert data["config"]["error"]["invalid_base_topic"]
-        assert data["config"]["error"]["mqtt_unavailable"]
+        assert data["config"]["step"]["user"]["data"] == {
+            CONF_SOURCE_ENTITY_UNIQUE_ID: data["config"]["step"]["user"]["data"][
+                CONF_SOURCE_ENTITY_UNIQUE_ID
+            ]
+        }
+        assert CONF_BASE_TOPIC not in data["config"]["step"]["user"]["data"]
         assert data["config"]["abort"]["already_configured"]
+        assert data["config"]["abort"]["mqtt_unavailable"]
+        assert data["config"]["abort"]["no_devices_found"]
 
     assert en["title"] == "HA iOS ANCS"
-    assert en["config"]["step"]["user"]["data"][CONF_BASE_TOPIC] == "Base MQTT topic"
+    assert (
+        en["config"]["step"]["user"]["data"][CONF_SOURCE_ENTITY_UNIQUE_ID]
+        == "MQTT device"
+    )
     assert "MQTT" in en["config"]["step"]["user"]["description"]
     assert "MQTT" in ko["config"]["step"]["user"]["description"]
+    assert ko["entity"]["event"]["notification"]["name"] == "알림"

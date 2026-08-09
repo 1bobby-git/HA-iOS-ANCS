@@ -9,8 +9,14 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import selector
 
-from .const import CONF_BASE_TOPIC, DOMAIN
+from .const import (
+    CONF_MQTT_DEVICE_IDENTIFIER,
+    CONF_SOURCE_ENTITY_UNIQUE_ID,
+    DOMAIN,
+)
+from .source import AncsSource, async_discover_ancs_sources
 
 
 _WHITESPACE = re.compile(r"\s")
@@ -42,6 +48,37 @@ async def _async_mqtt_available(hass: HomeAssistant) -> bool:
     return await mqtt.async_wait_for_mqtt_client(hass)
 
 
+def _source_data(source: AncsSource) -> dict[str, str]:
+    """Return config-entry data for an MQTT ANCS source."""
+
+    return {
+        CONF_SOURCE_ENTITY_UNIQUE_ID: source.entity_unique_id,
+        CONF_MQTT_DEVICE_IDENTIFIER: source.mqtt_device_identifier,
+    }
+
+
+def _source_schema(sources: list[AncsSource]) -> vol.Schema:
+    """Return a device-name selector for compatible MQTT sources."""
+
+    options = [
+        {
+            "value": source.entity_unique_id,
+            "label": f"{source.name} ({source.mqtt_device_identifier})",
+        }
+        for source in sources
+    ]
+    return vol.Schema(
+        {
+            vol.Required(CONF_SOURCE_ENTITY_UNIQUE_ID): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+    )
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for HA iOS ANCS."""
 
@@ -50,33 +87,45 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Handle the initial user step."""
+        """Discover and configure the existing MQTT ANCS device."""
 
-        errors: dict[str, str] = {}
+        if not await _async_mqtt_available(self.hass):
+            return self.async_abort(reason="mqtt_unavailable")
+
+        sources = async_discover_ancs_sources(self.hass)
+        if not sources:
+            return self.async_abort(reason="no_devices_found")
+
+        if user_input is None and len(sources) == 1:
+            return await self._async_create_source_entry(sources[0])
 
         if user_input is not None:
-            try:
-                base_topic = normalize_base_topic(user_input.get(CONF_BASE_TOPIC))
-            except ValueError:
-                errors[CONF_BASE_TOPIC] = "invalid_base_topic"
-            else:
-                if not await _async_mqtt_available(self.hass):
-                    errors[CONF_BASE_TOPIC] = "mqtt_unavailable"
-                    return self.async_show_form(
-                        step_id="user",
-                        data_schema=vol.Schema({vol.Required(CONF_BASE_TOPIC): str}),
-                        errors=errors,
-                    )
-
-                await self.async_set_unique_id(base_topic)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"HA iOS ANCS ({base_topic})",
-                    data={CONF_BASE_TOPIC: base_topic},
-                )
+            selected_unique_id = user_input[CONF_SOURCE_ENTITY_UNIQUE_ID]
+            selected_source = next(
+                (
+                    source
+                    for source in sources
+                    if source.entity_unique_id == selected_unique_id
+                ),
+                None,
+            )
+            if selected_source is None:
+                return self.async_abort(reason="no_devices_found")
+            return await self._async_create_source_entry(selected_source)
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_BASE_TOPIC): str}),
-            errors=errors,
+            data_schema=_source_schema(sources),
+        )
+
+    async def _async_create_source_entry(
+        self, source: AncsSource
+    ) -> config_entries.ConfigFlowResult:
+        """Create a config entry for a discovered MQTT ANCS source."""
+
+        await self.async_set_unique_id(source.mqtt_device_identifier)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=source.name,
+            data=_source_data(source),
         )
