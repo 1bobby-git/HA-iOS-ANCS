@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import CONF_BASE_TOPIC, DOMAIN, EVENT_TYPE_NOTIFICATION
-from .runtime import AncsMqttRuntime
+from .const import DOMAIN, EVENT_TYPE_NOTIFICATION
+from .runtime import AncsRuntime
 
 
 async def async_setup_entry(
@@ -21,7 +21,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up HA iOS ANCS event entities."""
 
-    runtime: AncsMqttRuntime = entry.runtime_data
+    runtime: AncsRuntime = entry.runtime_data
     async_add_entities([AncsNotificationEvent(entry, runtime)])
 
 
@@ -32,15 +32,16 @@ class AncsNotificationEvent(EventEntity):
     _attr_has_entity_name: bool = True
     _attr_translation_key: str | None = "notification"
 
-    def __init__(self, entry: ConfigEntry, runtime: AncsMqttRuntime) -> None:
+    def __init__(self, entry: ConfigEntry, runtime: AncsRuntime) -> None:
         """Initialize the ANCS notification event entity."""
 
-        base_topic: str = entry.data[CONF_BASE_TOPIC]
-        self._attr_unique_id = f"{base_topic}:{EVENT_TYPE_NOTIFICATION}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-        )
+        self._attr_unique_id = runtime.unique_id
+        self.device_entry = runtime.device_entry
+        if self.device_entry is None:
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, entry.entry_id)},
+                name=entry.title,
+            )
         self._runtime = runtime
         self._attr_available = runtime.available is not False
 

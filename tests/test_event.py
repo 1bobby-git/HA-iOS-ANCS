@@ -19,15 +19,30 @@ from homeassistant.helpers.entity_platform import EntityPlatform
 
 from custom_components.ha_ios_ancs import event as ancs_event
 from custom_components.ha_ios_ancs import async_setup_entry, async_unload_entry
-from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN
+from custom_components.ha_ios_ancs.const import (
+    CONF_BASE_TOPIC,
+    CONF_MQTT_DEVICE_IDENTIFIER,
+    CONF_SOURCE_ENTITY_UNIQUE_ID,
+    DOMAIN,
+)
+
+from tests.helpers import async_register_mqtt_ancs_source
 
 
 EMPTY_DISCOVERY_KEYS: MappingProxyType[str, tuple[DiscoveryKey, ...]] = MappingProxyType({})
 
 
 class RuntimeStub:
-    def __init__(self, available: bool | None = None) -> None:
+    def __init__(
+        self,
+        available: bool | None = None,
+        *,
+        unique_id: str = "ios_ancs/device-1:notification",
+        device_entry: device_registry.DeviceEntry | None = None,
+    ) -> None:
         self.available = available
+        self.unique_id = unique_id
+        self.device_entry = device_entry
         self.async_start = AsyncMock()
         self.async_stop = AsyncMock()
         self._notification_listener: Callable[[dict[str, Any]], None] | None = None
@@ -90,16 +105,64 @@ def make_entry(base_topic: str = "ios_ancs/device-1") -> ConfigEntry:
     )
 
 
+def make_source_entry() -> ConfigEntry:
+    return ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="Kitchen Relay",
+        data={
+            CONF_SOURCE_ENTITY_UNIQUE_ID: "ios_ancs_A1B2C3_last_notification",
+            CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+        },
+        source="user",
+        unique_id="ios_ancs_A1B2C3",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+
+
+def firmware_notification() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "target": "esp32c6",
+        "source": "esp32c6_ancs",
+        "relay_id": "boot1-1-42-aabbcc",
+        "device_name": "IOS-ANCS-C6-2B20",
+        "session_id": 1,
+        "event": "added",
+        "event_id": 0,
+        "uid": 42,
+        "app_id": "com.example.chat",
+        "title": "Private title",
+        "subtitle": "",
+        "message": "Private message",
+        "complete": True,
+        "pre_existing": False,
+        "published_at_ms": 123456,
+    }
+
+
 async def setup_event_entity(
     hass: HomeAssistant,
     entry: ConfigEntry,
     runtime: RuntimeStub,
 ) -> str:
     await event_component.async_setup(hass, {})
-    device_registry.async_setup(hass)
-    await device_registry.async_load(hass, load_empty=True)
-    await entity_registry.async_get(hass).async_load(load_empty=True)
-    await hass.config_entries.async_add(entry)
+    try:
+        device_registry.async_get(hass)
+    except RuntimeError:
+        device_registry.async_setup(hass)
+        await device_registry.async_load(hass, load_empty=True)
+        await entity_registry.async_get(hass).async_load(load_empty=True)
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        await hass.config_entries.async_add(entry)
+        await hass.async_block_till_done()
     entry.runtime_data = runtime
 
     platform = EntityPlatform(
@@ -117,9 +180,12 @@ async def setup_event_entity(
     await hass.async_block_till_done()
 
     entity_ids = [
-        state.entity_id
-        for state in hass.states.async_all()
-        if state.entity_id.startswith("event.ha_ios_ancs")
+        registry_entry.entity_id
+        for registry_entry in entity_registry.async_entries_for_config_entry(
+            entity_registry.async_get(hass),
+            entry.entry_id,
+        )
+        if registry_entry.domain == Platform.EVENT
     ]
     assert len(entity_ids) == 1
     return entity_ids[0]
@@ -136,23 +202,57 @@ def test_event_entity_triggers_notification_event_with_payload_attributes(
     assert state is not None
     assert state.state == STATE_UNKNOWN
 
-    payload = {
-        "relay_id": "session:1",
-        "app_id": "com.apple.MobileSMS",
-        "title": "Doorbell",
-        "event": "added",
-    }
+    payload = firmware_notification()
     runtime.fire_notification(payload)
     state = hass.states.get(entity_id)
 
     assert state is not None
     assert state.state != STATE_UNKNOWN
     assert state.attributes["event_type"] == "notification"
-    assert state.attributes["relay_id"] == "session:1"
-    assert state.attributes["app_id"] == "com.apple.MobileSMS"
-    assert state.attributes["title"] == "Doorbell"
-    assert state.attributes["event"] == "added"
+    for key, value in payload.items():
+        assert state.attributes[key] == value
     assert state.attributes["event_types"] == ["notification"]
+
+
+def test_source_event_attaches_to_existing_mqtt_device(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    runtime = RuntimeStub(
+        available=True,
+        unique_id="ios_ancs_A1B2C3:notification",
+        device_entry=registered.device,
+    )
+
+    entity_id = run(setup_event_entity(hass, make_source_entry(), runtime))
+    registry_entry = entity_registry.async_get(hass).async_get(entity_id)
+
+    assert registry_entry is not None
+    assert registry_entry.unique_id == "ios_ancs_A1B2C3:notification"
+    assert registry_entry.device_id == registered.device.id
+    assert len(device_registry.async_get(hass).devices) == 1
+
+
+def test_legacy_event_retains_integration_owned_device(
+    hass: HomeAssistant, run
+) -> None:
+    entry = make_entry()
+    entity_id = run(setup_event_entity(hass, entry, RuntimeStub(available=True)))
+    registry_entry = entity_registry.async_get(hass).async_get(entity_id)
+
+    assert registry_entry is not None
+    assert registry_entry.unique_id == "ios_ancs/device-1:notification"
+    assert registry_entry.device_id is not None
+    legacy_device = device_registry.async_get(hass).async_get(registry_entry.device_id)
+    assert legacy_device is not None
+    assert (DOMAIN, entry.entry_id) in legacy_device.identifiers
 
 
 def test_event_entity_availability_follows_runtime_and_ignores_unknown(
