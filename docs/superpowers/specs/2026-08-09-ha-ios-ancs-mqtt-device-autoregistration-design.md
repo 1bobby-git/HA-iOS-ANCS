@@ -17,7 +17,7 @@ The integration also creates its event entity on a separate `ha_ios_ancs` device
 - Attach the native ANCS event entity to the existing MQTT device.
 - Reuse the MQTT `last_notification` sensor as the authoritative notification source.
 - Surface new firmware notification attributes on the event entity without replaying stale state after startup.
-- Preserve existing manual-topic entries until they can be safely reconfigured or automatically upgraded.
+- Preserve existing manual-topic entries until the user explicitly reconfigures them against a discovered device.
 - Cover the firmware-to-MQTT-to-Home-Assistant contract with regression tests.
 
 ## Non-Goals
@@ -93,9 +93,9 @@ It does not contain `base_topic`.
 
 Existing entries containing only `base_topic` remain loadable. During setup:
 
-- if exactly one compatible MQTT source exists, update the entry to the new source-based data automatically;
-- if no unambiguous source exists, retain the existing direct-MQTT runtime so the update does not break a previously working entry;
-- expose a reconfigure step that uses the same device-selection flow and replaces the legacy data once the user chooses a device.
+- retain the existing direct-MQTT runtime so the update does not redirect a previously working topic entry to an unrelated discovered device;
+- expose a reconfigure step that uses the same device-selection flow and replaces the legacy data only after the user chooses a device;
+- migrate the existing event-entity unique ID during reconfiguration so conversion does not leave a duplicate registry entry.
 
 This compatibility path is intentionally isolated. All newly created entries use only the source-entity runtime.
 
@@ -139,7 +139,7 @@ The HACS integration adds only the native notification event entity.
 - Source entity removed while the entry is loaded: mark the event entity unavailable without firing a notification.
 - Source entity missing during setup or reload: raise `ConfigEntryNotReady` with the missing source unique ID.
 - Source entity renamed: resolve the current entity ID from the stored unique ID on the next setup or reload.
-- Multiple devices during legacy auto-upgrade: keep the legacy runtime until the entry is explicitly reconfigured.
+- Legacy manual-topic entry: keep the direct-MQTT runtime until the entry is explicitly reconfigured.
 - Malformed or incomplete notification attributes: ignore the state change without consuming its relay ID in the deduplication window.
 - Unload: remove state listeners before discarding runtime data; do not remove states or registry entries owned by MQTT.
 
@@ -183,7 +183,7 @@ The HACS integration adds only the native notification event entity.
 - A new valid firmware notification changes the native event entity and exposes the full notification attributes.
 - The event entity appears on the existing MQTT device, alongside the current MQTT sensors and buttons.
 - Restarting Home Assistant does not replay a stale notification as a new event.
-- Existing manual-topic entries are not broken by the upgrade and can be converted through automatic or explicit reconfiguration.
+- Existing manual-topic entries are not broken by the upgrade and can be converted through explicit device reconfiguration.
 - Fresh targeted and full tests prove the new behavior; hardware and live iPhone validation are reported separately if unavailable.
 
 ## References
