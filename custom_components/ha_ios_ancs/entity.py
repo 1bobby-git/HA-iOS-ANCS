@@ -81,12 +81,10 @@ class AncsNotificationEntity:
         self._runtime = runtime
         self._payload = runtime.latest_notification
         self._replay_pending = replay_pending
-        self.device_entry = runtime.device_entry
-        if self.device_entry is None:
-            self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, entry.entry_id)},
-                name=entry.title,
-            )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+        )
         self._attr_available = runtime.available is not False
 
     async def async_added_to_hass(self) -> None:
