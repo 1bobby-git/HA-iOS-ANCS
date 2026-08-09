@@ -154,6 +154,25 @@ def test_runtime_notification_listener_receives_only_accepted_payloads(hass: Hom
     run(runtime.async_stop())
 
 
+def test_runtime_buffers_notification_until_listener_attaches(
+    hass: HomeAssistant, run
+) -> None:
+    runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
+    _, callback, _ = subscriptions[0]
+    callback(
+        mqtt_message(
+            "ios_ancs/notification",
+            notification_payload(relay_id="relay-before-listener"),
+        )
+    )
+
+    received: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(received.append)
+
+    assert [item["relay_id"] for item in received] == ["relay-before-listener"]
+    run(runtime.async_stop())
+
+
 def test_runtime_availability_changes_only_on_exact_online_offline(hass: HomeAssistant, run) -> None:
     runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
     states: list[bool | None] = []
@@ -425,6 +444,42 @@ def test_source_runtime_does_not_replay_existing_startup_state(
     run(hass.async_block_till_done())
 
     assert notifications == [new_notification]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_buffers_notification_until_listener_attaches(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    run(runtime.async_start())
+
+    notification = firmware_notification(
+        relay_id="boot1-1-43-aabbcc",
+        uid=43,
+    )
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-43-aabbcc",
+        notification,
+    )
+    run(hass.async_block_till_done())
+
+    received: list[dict[str, Any]] = []
+    runtime.async_add_notification_listener(received.append)
+
+    assert received == [notification]
     run(runtime.async_stop())
 
 
