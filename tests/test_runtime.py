@@ -447,6 +447,39 @@ def test_source_runtime_does_not_replay_existing_startup_state(
     run(runtime.async_stop())
 
 
+def test_source_runtime_unknown_startup_state_is_ready_without_payload(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(registered.entity.entity_id, STATE_UNKNOWN)
+
+    runtime, notifications, availability = run(
+        async_make_source_runtime(hass, registered)
+    )
+
+    assert notifications == []
+    assert availability == [True]
+    assert runtime.available is True
+
+    notification = firmware_notification()
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        notification,
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == [notification]
+    run(runtime.async_stop())
+
+
 def test_source_runtime_buffers_notification_until_listener_attaches(
     registry_hass: HomeAssistant, run
 ) -> None:
@@ -581,6 +614,51 @@ def test_source_runtime_tracks_unavailable_and_recovers_without_replay(
     )
     run(hass.async_block_till_done())
     assert notifications == [recovered]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_unknown_state_recovers_from_unavailable_without_dispatch(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-41-aabbcc",
+        firmware_notification(relay_id="boot1-1-41-aabbcc", uid=41),
+    )
+    runtime, notifications, availability = run(
+        async_make_source_runtime(hass, registered)
+    )
+    availability.clear()
+
+    hass.states.async_set(registered.entity.entity_id, STATE_UNAVAILABLE)
+    run(hass.async_block_till_done())
+    assert runtime.available is False
+    assert availability == [False]
+
+    hass.states.async_set(registered.entity.entity_id, STATE_UNKNOWN)
+    run(hass.async_block_till_done())
+
+    assert notifications == []
+    assert availability == [False, True]
+    assert runtime.available is True
+
+    notification = firmware_notification()
+    hass.states.async_set(
+        registered.entity.entity_id,
+        "boot1-1-42-aabbcc",
+        notification,
+    )
+    run(hass.async_block_till_done())
+
+    assert notifications == [notification]
     run(runtime.async_stop())
 
 
