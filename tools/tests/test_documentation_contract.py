@@ -201,7 +201,7 @@ def test_hacs_metadata_matches_custom_integration_contract():
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.4.1"
+    assert manifest["version"] == "0.5.0"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -243,6 +243,31 @@ def test_readmes_include_hacs_my_link_and_firmware_boundary():
     assert "ESP32 펌웨어를 설치하거나 업데이트하지 않습니다" in korean
     assert "HACS installs only the Home Assistant companion integration" in english
     assert "never flashes or updates ESP32 firmware" in english
+
+
+def test_readmes_document_registry_backed_hacs_device_setup():
+    korean = read_text("README.md")
+    english = read_text("README.en.md")
+
+    korean_phrases = (
+        "HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다.",
+        "호환 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.",
+        "`알림` 이벤트 엔티티는 새 장치를 만들지 않고 기존 MQTT 장치에 추가됩니다.",
+        "retained `최근 알림` 상태를 새 알림으로 재생하지 않습니다.",
+        "기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 장치를 선택할 때까지 기존 방식으로 유지됩니다.",
+    )
+    english_phrases = (
+        "Adding the HACS integration no longer asks for an MQTT base topic.",
+        "One compatible device is selected automatically; multiple devices are shown by name.",
+        "The `Notification` event entity is added to the existing MQTT device instead of creating another device.",
+        "does not replay the retained `Last notification` state as a new event",
+        "Legacy manual-topic entries keep working until you choose **Reconfigure** and select their MQTT device.",
+    )
+
+    for phrase in korean_phrases:
+        assert phrase in korean
+    for phrase in english_phrases:
+        assert phrase in english
 
 
 def test_validation_workflow_runs_hacs_and_hassfest_without_ignored_checks():
