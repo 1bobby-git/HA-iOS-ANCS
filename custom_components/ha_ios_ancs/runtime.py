@@ -99,6 +99,7 @@ class AncsMqttRuntime:
         self._availability_topic = f"{base_topic}/{AVAILABILITY_TOPIC_SUFFIX}"
         self._seen = RelayIdWindow()
         self._notification_listeners: list[NotificationListener] = []
+        self._notification_replay_listeners: list[NotificationListener] = []
         # Subscriptions can receive data before the EventEntity listener attaches.
         self._pending_notifications: deque[dict[str, Any]] = deque(
             maxlen=DEFAULT_RELAY_ID_WINDOW_SIZE
@@ -182,6 +183,7 @@ class AncsMqttRuntime:
             for unsubscribe in unsubscribes:
                 unsubscribe()
             self._notification_listeners.clear()
+            self._notification_replay_listeners.clear()
             self._pending_notifications.clear()
             self._availability_listeners.clear()
             self._latest_notification = None
@@ -197,6 +199,7 @@ class AncsMqttRuntime:
 
         self._notification_listeners.append(listener)
         if replay_pending:
+            self._notification_replay_listeners.append(listener)
             while self._pending_notifications:
                 listener(deepcopy(self._pending_notifications.popleft()))
 
@@ -204,6 +207,8 @@ class AncsMqttRuntime:
         def remove_listener() -> None:
             if listener in self._notification_listeners:
                 self._notification_listeners.remove(listener)
+            if listener in self._notification_replay_listeners:
+                self._notification_replay_listeners.remove(listener)
 
         return remove_listener
 
@@ -229,8 +234,9 @@ class AncsMqttRuntime:
             return
 
         self._latest_notification = deepcopy(notification)
-        if not self._notification_listeners:
+        if not self._notification_replay_listeners:
             self._pending_notifications.append(deepcopy(notification))
+        if not self._notification_listeners:
             return
 
         for listener in tuple(self._notification_listeners):
@@ -269,6 +275,7 @@ class AncsSourceRuntime:
         self._mqtt_device_identifier = mqtt_device_identifier
         self._seen = RelayIdWindow()
         self._notification_listeners: list[NotificationListener] = []
+        self._notification_replay_listeners: list[NotificationListener] = []
         # State changes can arrive before the EventEntity listener attaches.
         self._pending_notifications: deque[dict[str, Any]] = deque(
             maxlen=DEFAULT_RELAY_ID_WINDOW_SIZE
@@ -361,6 +368,7 @@ class AncsSourceRuntime:
                 self._unsubscribe()
                 self._unsubscribe = None
             self._notification_listeners.clear()
+            self._notification_replay_listeners.clear()
             self._pending_notifications.clear()
             self._availability_listeners.clear()
             self._latest_notification = None
@@ -376,6 +384,7 @@ class AncsSourceRuntime:
 
         self._notification_listeners.append(listener)
         if replay_pending:
+            self._notification_replay_listeners.append(listener)
             while self._pending_notifications:
                 listener(deepcopy(self._pending_notifications.popleft()))
 
@@ -383,6 +392,8 @@ class AncsSourceRuntime:
         def remove_listener() -> None:
             if listener in self._notification_listeners:
                 self._notification_listeners.remove(listener)
+            if listener in self._notification_replay_listeners:
+                self._notification_replay_listeners.remove(listener)
 
         return remove_listener
 
@@ -435,8 +446,9 @@ class AncsSourceRuntime:
             return
 
         self._latest_notification = deepcopy(notification)
-        if not self._notification_listeners:
+        if not self._notification_replay_listeners:
             self._pending_notifications.append(deepcopy(notification))
+        if not self._notification_listeners:
             return
 
         for listener in tuple(self._notification_listeners):
