@@ -66,6 +66,16 @@ MQTT Discovery는 HACS 없이 동작합니다. 장치가 MQTT 브로커에 연�
 
 HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설치하거나 업데이트하지 않습니다. HACS custom repository 설치는 [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 열고 Home Assistant에서 저장소 추가를 확인합니다. 통합 표시 이름은 `iOS ANCS`이며 기존 HACS 설치 호환성을 위해 저장소 이름과 URL은 `HA-iOS-ANCS`를 그대로 사용합니다. 이 문서는 custom repository 경로만 설명하며, HACS 기본 스토어 등록을 주장하지 않습니다.
 
+### HACS 설치
+
+위의 [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 사용하거나 다음 순서로 설치합니다.
+
+1. Home Assistant에서 `HACS` → `Integrations`를 엽니다.
+2. 우측 상단 `⋮` 메뉴에서 `Custom repositories`를 선택합니다.
+3. `Repository`에 `https://github.com/1bobby-git/HA-iOS-ANCS`를 입력합니다.
+4. `Category`에서 `Integration`을 선택하고 `Add`를 누릅니다.
+5. `iOS ANCS`를 설치한 뒤 Home Assistant를 재시작합니다.
+
 HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다. 통합은 MQTT Discovery가 이미 등록한 `최근 알림` 센서를 읽기 전용 알림 소스로 사용합니다. 호환 소스 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.
 
 `알림` 이벤트 엔티티와 상세 엔티티는 MQTT 장치와 분리된 별도 `iOS ANCS (...)` 장치에 등록됩니다. MQTT 장치를 `via_device`로 연결하지 않으며 같은 물리 장치를 나타내더라도 두 통합의 기기와 엔티티는 독립적으로 유지됩니다. 통합은 마지막 완전한 알림을 전용 저장소에 보관하므로 MQTT 알림이 retained가 아니어도 Home Assistant 재시작 뒤 상세 센서가 복원됩니다. 이벤트 엔티티는 새 알림만 표시하며 저장된 세부정보를 새 이벤트로 재생하지 않습니다. 기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 소스 장치를 선택하면 엔티티 ID와 기록을 보존한 채 별도 iOS ANCS 장치로 이동합니다.

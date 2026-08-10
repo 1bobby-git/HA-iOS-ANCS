@@ -201,7 +201,7 @@ def test_hacs_metadata_matches_custom_integration_contract():
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.6.4"
+    assert manifest["version"] == "0.6.5"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -244,6 +244,33 @@ def test_readmes_include_hacs_my_link_and_firmware_boundary():
     assert "HACS installs only the Home Assistant companion integration" in english
     assert "never flashes or updates ESP32 firmware" in english
     assert "repository name and URL remain `HA-iOS-ANCS`" in english
+
+
+def test_readmes_document_manual_hacs_custom_repository_installation():
+    korean = read_text("README.md")
+    english = read_text("README.en.md")
+
+    korean_phrases = (
+        "### HACS 설치",
+        "`HACS` → `Integrations`",
+        "`Custom repositories`",
+        f"`{CANONICAL_REPO_URL}`",
+        "`Category`에서 `Integration`을 선택하고 `Add`를 누릅니다.",
+        "`iOS ANCS`를 설치한 뒤 Home Assistant를 재시작합니다.",
+    )
+    english_phrases = (
+        "### HACS Installation",
+        "`HACS` → `Integrations`",
+        "`Custom repositories`",
+        f"`{CANONICAL_REPO_URL}`",
+        "Select `Integration` for `Category` and click `Add`.",
+        "Install `iOS ANCS`, then restart Home Assistant.",
+    )
+
+    for phrase in korean_phrases:
+        assert phrase in korean
+    for phrase in english_phrases:
+        assert phrase in english
 
 
 def test_readmes_document_registry_backed_hacs_device_setup():
