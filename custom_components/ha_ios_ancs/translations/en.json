@@ -68,7 +68,6 @@
       "target": {"name": "Target"},
       "source": {"name": "Source"},
       "device_name": {"name": "Device name"},
-      "received_at_ms": {"name": "Received at device uptime"},
       "error_code": {"name": "Error code"},
       "error_name": {"name": "Error name"},
       "raw_notification": {"name": "Raw notification"}

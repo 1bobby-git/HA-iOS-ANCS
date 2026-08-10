@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from homeassistant.components import sensor as sensor_component
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfTime
+from homeassistant.const import EntityCategory
 from homeassistant.helpers import device_registry, entity_registry
 
 from custom_components.ha_ios_ancs import sensor as ancs_sensor
@@ -56,7 +56,6 @@ EXPECTED_SENSOR_KEYS = {
     "target",
     "source",
     "device_name",
-    "received_at_ms",
     "error_code",
     "error_name",
     "raw_notification",
@@ -83,7 +82,6 @@ EXPECTED_FIELD_SPECS = {
     "target": (("target",), SensorValueKind.TEXT, None, False),
     "source": (("source",), SensorValueKind.TEXT, None, False),
     "device_name": (("device_name",), SensorValueKind.TEXT, None, True),
-    "received_at_ms": (("received_at_ms",), SensorValueKind.INTEGER, None, False),
     "error_code": (("error", "code"), SensorValueKind.INTEGER, None, False),
     "error_name": (("error", "name"), SensorValueKind.TEXT, None, False),
     "raw_notification": (("relay_id",), SensorValueKind.RAW, None, False),
@@ -199,7 +197,6 @@ def test_sensor_descriptions_cover_complete_contract() -> None:
     descriptions = {description.key: description for description in SENSOR_DESCRIPTIONS}
     assert descriptions["event"].options == EVENT_OPTIONS
     assert descriptions["category"].options == CATEGORY_OPTIONS
-    assert descriptions["received_at_ms"].native_unit_of_measurement == UnitOfTime.MILLISECONDS
     assert descriptions["raw_notification"].entity_category == EntityCategory.DIAGNOSTIC
 
 

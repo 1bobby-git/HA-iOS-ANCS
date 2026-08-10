@@ -53,7 +53,10 @@ async def async_migrate_entry(
                 registry_entry.domain == Platform.SENSOR
                 and registry_entry.platform == DOMAIN
                 and registry_entry.unique_id.endswith(
-                    ":sensor:published_at_ms"
+                    (
+                        ":sensor:published_at_ms",
+                        ":sensor:received_at_ms",
+                    )
                 )
             ):
                 entity_registry.async_remove(registry_entry.entity_id)

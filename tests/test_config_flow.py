@@ -85,8 +85,8 @@ def test_normalize_base_topic_rejects_non_string_values(raw: object) -> None:
         normalize_base_topic(raw)
 
 
-def test_config_flow_uses_version_three() -> None:
-    assert ConfigFlow.VERSION == 3
+def test_config_flow_uses_version_four() -> None:
+    assert ConfigFlow.VERSION == 4
 
 
 def test_migrate_entry_renames_without_changing_source_identity(
@@ -117,18 +117,18 @@ def test_migrate_entry_renames_without_changing_source_identity(
     original_data = dict(entry.data)
 
     assert run(integration.async_migrate_entry(hass, entry)) is True
-    assert entry.version == 3
+    assert entry.version == 4
     assert entry.title == "iOS ANCS (ios_ancs_A1B2C3)"
     assert entry.data == original_data
     assert entry.unique_id == "ios_ancs_A1B2C3"
 
 
-def test_migrate_entry_removes_only_integration_published_uptime_sensor(
+def test_migrate_entry_removes_only_integration_uptime_sensors(
     registry_hass: HomeAssistant, run
 ) -> None:
     hass = registry_hass
     entry = config_entries.ConfigEntry(
-        version=2,
+        version=3,
         minor_version=1,
         domain=DOMAIN,
         title="iOS ANCS (ios_ancs_A1B2C3)",
@@ -171,12 +171,20 @@ def test_migrate_entry_removes_only_integration_published_uptime_sensor(
         config_entry=entry,
         suggested_object_id="mqtt_published_at_ms",
     )
+    mqtt_received_same_suffix = registry.async_get_or_create(
+        Platform.SENSOR,
+        "mqtt",
+        "ios_ancs_A1B2C3:sensor:received_at_ms",
+        config_entry=entry,
+        suggested_object_id="mqtt_received_at_ms",
+    )
 
     assert run(integration.async_migrate_entry(hass, entry)) is True
-    assert entry.version == 3
+    assert entry.version == 4
     assert registry.async_get(integration_published.entity_id) is None
-    assert registry.async_get(integration_received.entity_id) is not None
+    assert registry.async_get(integration_received.entity_id) is None
     assert registry.async_get(mqtt_same_suffix.entity_id) is not None
+    assert registry.async_get(mqtt_received_same_suffix.entity_id) is not None
 
 
 def test_config_flow_auto_creates_entry_for_one_mqtt_ancs_device(
@@ -797,7 +805,7 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.3",
+        "version": "0.6.4",
     }
 
 
@@ -840,7 +848,6 @@ def test_translations_contract() -> None:
             "target",
             "source",
             "device_name",
-            "received_at_ms",
             "error_code",
             "error_name",
             "raw_notification",

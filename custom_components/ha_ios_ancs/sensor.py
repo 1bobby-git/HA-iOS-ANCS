@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, Platform, UnitOfTime
+from homeassistant.const import EntityCategory, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -195,13 +195,6 @@ SENSOR_DESCRIPTIONS: tuple[AncsSensorEntityDescription, ...] = (
         SensorValueKind.TEXT,
         preserve_full_text=True,
         entity_category=_DIAGNOSTIC,
-    ),
-    _description(
-        "received_at_ms",
-        ("received_at_ms",),
-        SensorValueKind.INTEGER,
-        entity_category=_DIAGNOSTIC,
-        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
     ),
     _description(
         "error_code",

@@ -68,7 +68,6 @@
       "target": {"name": "대상"},
       "source": {"name": "소스"},
       "device_name": {"name": "기기 이름"},
-      "received_at_ms": {"name": "수신 시점 기기 가동시간"},
       "error_code": {"name": "오류 코드"},
       "error_name": {"name": "오류 이름"},
       "raw_notification": {"name": "원본 알림"}
