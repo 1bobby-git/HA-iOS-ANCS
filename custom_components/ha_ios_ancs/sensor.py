@@ -204,13 +204,6 @@ SENSOR_DESCRIPTIONS: tuple[AncsSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
     ),
     _description(
-        "published_at_ms",
-        ("published_at_ms",),
-        SensorValueKind.INTEGER,
-        entity_category=_DIAGNOSTIC,
-        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
-    ),
-    _description(
         "error_code",
         ("error", "code"),
         SensorValueKind.INTEGER,

@@ -85,8 +85,8 @@ def test_normalize_base_topic_rejects_non_string_values(raw: object) -> None:
         normalize_base_topic(raw)
 
 
-def test_config_flow_uses_version_two() -> None:
-    assert ConfigFlow.VERSION == 2
+def test_config_flow_uses_version_three() -> None:
+    assert ConfigFlow.VERSION == 3
 
 
 def test_migrate_entry_renames_without_changing_source_identity(
@@ -117,10 +117,66 @@ def test_migrate_entry_renames_without_changing_source_identity(
     original_data = dict(entry.data)
 
     assert run(integration.async_migrate_entry(hass, entry)) is True
-    assert entry.version == 2
+    assert entry.version == 3
     assert entry.title == "iOS ANCS (ios_ancs_A1B2C3)"
     assert entry.data == original_data
     assert entry.unique_id == "ios_ancs_A1B2C3"
+
+
+def test_migrate_entry_removes_only_integration_published_uptime_sensor(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = config_entries.ConfigEntry(
+        version=2,
+        minor_version=1,
+        domain=DOMAIN,
+        title="iOS ANCS (ios_ancs_A1B2C3)",
+        data={
+            CONF_SOURCE_ENTITY_UNIQUE_ID: "ios_ancs_A1B2C3_last_notification",
+            CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+        },
+        source="user",
+        unique_id="ios_ancs_A1B2C3",
+        discovery_keys=EMPTY_DISCOVERY_KEYS,
+        options={},
+        subentries_data={},
+    )
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
+
+    registry = er.async_get(hass)
+    integration_published = registry.async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "ios_ancs_A1B2C3:sensor:published_at_ms",
+        config_entry=entry,
+        suggested_object_id="ios_ancs_published_at_ms",
+    )
+    integration_received = registry.async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "ios_ancs_A1B2C3:sensor:received_at_ms",
+        config_entry=entry,
+        suggested_object_id="ios_ancs_received_at_ms",
+    )
+    mqtt_same_suffix = registry.async_get_or_create(
+        Platform.SENSOR,
+        "mqtt",
+        "ios_ancs_A1B2C3:sensor:published_at_ms",
+        config_entry=entry,
+        suggested_object_id="mqtt_published_at_ms",
+    )
+
+    assert run(integration.async_migrate_entry(hass, entry)) is True
+    assert entry.version == 3
+    assert registry.async_get(integration_published.entity_id) is None
+    assert registry.async_get(integration_received.entity_id) is not None
+    assert registry.async_get(mqtt_same_suffix.entity_id) is not None
 
 
 def test_config_flow_auto_creates_entry_for_one_mqtt_ancs_device(
@@ -785,7 +841,6 @@ def test_translations_contract() -> None:
             "source",
             "device_name",
             "received_at_ms",
-            "published_at_ms",
             "error_code",
             "error_name",
             "raw_notification",
@@ -798,6 +853,7 @@ def test_translations_contract() -> None:
             "positive_action_available",
             "negative_action_available",
             "app_id_truncated",
+            "app_name_truncated",
             "title_truncated",
             "subtitle_truncated",
             "message_truncated",

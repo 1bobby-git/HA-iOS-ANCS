@@ -57,7 +57,6 @@ EXPECTED_SENSOR_KEYS = {
     "source",
     "device_name",
     "received_at_ms",
-    "published_at_ms",
     "error_code",
     "error_name",
     "raw_notification",
@@ -85,7 +84,6 @@ EXPECTED_FIELD_SPECS = {
     "source": (("source",), SensorValueKind.TEXT, None, False),
     "device_name": (("device_name",), SensorValueKind.TEXT, None, True),
     "received_at_ms": (("received_at_ms",), SensorValueKind.INTEGER, None, False),
-    "published_at_ms": (("published_at_ms",), SensorValueKind.INTEGER, None, False),
     "error_code": (("error", "code"), SensorValueKind.INTEGER, None, False),
     "error_name": (("error", "name"), SensorValueKind.TEXT, None, False),
     "raw_notification": (("relay_id",), SensorValueKind.RAW, None, False),
@@ -202,7 +200,6 @@ def test_sensor_descriptions_cover_complete_contract() -> None:
     assert descriptions["event"].options == EVENT_OPTIONS
     assert descriptions["category"].options == CATEGORY_OPTIONS
     assert descriptions["received_at_ms"].native_unit_of_measurement == UnitOfTime.MILLISECONDS
-    assert descriptions["published_at_ms"].native_unit_of_measurement == UnitOfTime.MILLISECONDS
     assert descriptions["raw_notification"].entity_category == EntityCategory.DIAGNOSTIC
 
 
@@ -227,6 +224,7 @@ def test_seeded_sensor_states_preserve_full_notification(run) -> None:
     assert states["error_name"] is None
     assert states["raw_notification"] == payload["relay_id"]
     assert attributes["raw_notification"] == payload
+    assert attributes["raw_notification"]["published_at_ms"] == 123456
 
     attributes["raw_notification"]["future_contract"]["nested"].append(4)
     raw_entity = next(
