@@ -51,10 +51,15 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Prepare public installer artifact
+        run: |
+          mkdir -p pages-site
+          rsync -a --delete --exclude 'superpowers/' docs/ pages-site/
+
       - name: Upload installer artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: docs
+          path: pages-site
 
       - name: Deploy to GitHub Pages
         id: deployment
