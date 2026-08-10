@@ -11,6 +11,9 @@ HACS_MY_LINK = (
     "https://my.home-assistant.io/redirect/hacs_repository/"
     "?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration"
 )
+HACS_BADGE_MARKDOWN = (
+    "https://my.home-assistant.io/badges/hacs_repository.svg"
+)
 OLD_REPO_URL_RE = re.compile(r"https://github\.com/1bobby-git/ios-ancs(?:/|\b|[?#])")
 OLD_PAGES_URL_RE = re.compile(r"https://1bobby-git\.github\.io/ios-ancs(?:/|\b|[?#])")
 
@@ -233,6 +236,7 @@ def test_readmes_include_hacs_my_link_and_firmware_boundary():
     for surface in ("README.md", "README.en.md"):
         content = read_text(surface)
         assert HACS_MY_LINK in content, surface
+        assert HACS_BADGE_MARKDOWN in content, surface
         assert "ESP32" in content, surface
         assert "firmware" in content.lower() or "펌웨어" in content, surface
         assert "HACS" in content, surface
@@ -252,6 +256,8 @@ def test_readmes_document_manual_hacs_custom_repository_installation():
 
     korean_phrases = (
         "### HACS 설치",
+        "아래 버튼을 누르면 Home Assistant의 HACS 커스텀 저장소 추가 화면으로 이동합니다.",
+        "[![Home Assistant에서 HACS 저장소 열기](https://my.home-assistant.io/badges/hacs_repository.svg)]",
         "`HACS` → `Integrations`",
         "`Custom repositories`",
         f"`{CANONICAL_REPO_URL}`",
@@ -260,6 +266,8 @@ def test_readmes_document_manual_hacs_custom_repository_installation():
     )
     english_phrases = (
         "### HACS Installation",
+        "Use the button below to open the HACS custom repository flow in Home Assistant.",
+        "[![Open your Home Assistant instance and show the HACS repository.](https://my.home-assistant.io/badges/hacs_repository.svg)]",
         "`HACS` → `Integrations`",
         "`Custom repositories`",
         f"`{CANONICAL_REPO_URL}`",

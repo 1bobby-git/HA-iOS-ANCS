@@ -68,7 +68,11 @@ HACS는 Home Assistant 동반 통합만 설치합니다. ESP32 펌웨어를 설�
 
 ### HACS 설치
 
-위의 [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)를 사용하거나 다음 순서로 설치합니다.
+아래 버튼을 누르면 Home Assistant의 HACS 커스텀 저장소 추가 화면으로 이동합니다.
+
+[![Home Assistant에서 HACS 저장소 열기](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)
+
+버튼을 사용할 수 없으면 다음 순서로 설치합니다.
 
 1. Home Assistant에서 `HACS` → `Integrations`를 엽니다.
 2. 우측 상단 `⋮` 메뉴에서 `Custom repositories`를 선택합니다.
