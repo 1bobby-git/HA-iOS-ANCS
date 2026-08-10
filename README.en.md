@@ -58,6 +58,16 @@ MQTT Discovery works without HACS. After the device connects to the broker, it p
 
 HACS installs only the Home Assistant companion integration; it never flashes or updates ESP32 firmware. To install as a HACS custom repository, open the [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration) and confirm the repository addition in Home Assistant. The integration display name is `iOS ANCS`; the repository name and URL remain `HA-iOS-ANCS` for existing HACS installations. This documents custom-repository installation only; it does not claim default HACS-store acceptance.
 
+### HACS Installation
+
+Use the [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration), or install it manually:
+
+1. In Home Assistant, open `HACS` → `Integrations`.
+2. Open the `⋮` menu and choose `Custom repositories`.
+3. Enter `https://github.com/1bobby-git/HA-iOS-ANCS` in `Repository`.
+4. Select `Integration` for `Category` and click `Add`.
+5. Install `iOS ANCS`, then restart Home Assistant.
+
 Adding the HACS integration does not ask for an MQTT base topic. It uses the `Last notification` sensor already registered by MQTT Discovery as a read-only notification source. One compatible source device is selected automatically; multiple source devices are shown by name.
 
 The `Notification` event entity and detail entities are registered on a separate `iOS ANCS (...)` device, not on the MQTT device and not through a `via_device` relationship. The MQTT and iOS ANCS devices remain independent even when they represent the same physical relay. The integration privately saves the last complete notification so detail sensors survive a Home Assistant restart even when the source MQTT notification is not retained. The event entity still emits only newly received notifications and never replays the saved details as a new event. Reconfiguring a legacy manual-topic entry preserves its entity IDs and history while moving its companion entities to the separate iOS ANCS device.
