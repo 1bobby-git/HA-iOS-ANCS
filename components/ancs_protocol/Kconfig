@@ -5,6 +5,11 @@ config ANCS_APP_ID_MAX
     default 256
     range 32 1024
 
+config ANCS_APP_NAME_MAX
+    int "Maximum native app display name bytes"
+    default 256
+    range 32 1024
+
 config ANCS_TITLE_MAX
     int "Maximum title bytes"
     default 512

@@ -38,6 +38,12 @@ static void fixture_begin(fixture_builder_t *fixture, uint32_t uid)
     fixture_append(fixture, header, sizeof(header));
 }
 
+static void fixture_begin_app(fixture_builder_t *fixture, const char *app_id)
+{
+    fixture_append_u8(fixture, 0x01);
+    fixture_append(fixture, app_id, strlen(app_id) + 1U);
+}
+
 static void fixture_attribute_bytes(fixture_builder_t *fixture,
                                     uint8_t attribute_id,
                                     const uint8_t *value,
@@ -71,6 +77,18 @@ static void make_complete_fixture(fixture_builder_t *fixture, uint32_t uid)
     fixture_attribute(fixture, 5, "20260728T164500");
 }
 
+static void make_app_fixture(fixture_builder_t *fixture,
+                             const char *app_id,
+                             const uint8_t *display_name,
+                             size_t display_name_length)
+{
+    fixture_begin_app(fixture, app_id);
+    fixture_attribute_bytes(fixture,
+                            ANCS_APP_ATTRIBUTE_DISPLAY_NAME,
+                            display_name,
+                            display_name_length);
+}
+
 static void init_notification(ancs_notification_t *notification, uint32_t uid)
 {
     const ancs_notification_event_t event = {
@@ -102,6 +120,27 @@ static ancs_parser_result_t feed_complete_fixture(const uint8_t *bytes,
                                  length - first_length);
 }
 
+static ancs_parser_result_t feed_app_fixture(const uint8_t *bytes,
+                                             size_t length,
+                                             size_t first_length,
+                                             ancs_notification_t *notification,
+                                             const char *app_id)
+{
+    memset(notification, 0, sizeof(*notification));
+    strcpy(notification->app_id, app_id);
+    ancs_app_data_parser_t parser;
+    ancs_app_data_parser_init(&parser, notification);
+
+    ancs_parser_result_t result =
+        ancs_app_data_parser_feed(&parser, bytes, first_length);
+    if (result == ANCS_PARSER_ERROR) {
+        return result;
+    }
+    return ancs_app_data_parser_feed(&parser,
+                                     bytes + first_length,
+                                     length - first_length);
+}
+
 TEST_CASE("attribute request contains only get-attributes command and required fields",
           "[ancs][control_point]")
 {
@@ -127,6 +166,211 @@ TEST_CASE("attribute request contains only get-attributes command and required f
     };
     TEST_ASSERT_EQUAL_size_t(sizeof(expected), request_length);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, request, sizeof(expected));
+}
+
+TEST_CASE("app attribute request asks only for display name",
+          "[ancs][control_point]")
+{
+    uint8_t request[64] = {0};
+    size_t request_length = 0;
+
+    TEST_ASSERT_EQUAL(
+        ANCS_PROTOCOL_OK,
+        ancs_build_get_app_attributes("com.example.chat",
+                                      request,
+                                      sizeof(request),
+                                      &request_length));
+    const uint8_t expected[] = {
+        0x01,
+        'c', 'o', 'm', '.', 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.',
+        'c', 'h', 'a', 't', 0x00,
+        0x00,
+    };
+    TEST_ASSERT_EQUAL_size_t(sizeof(expected), request_length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, request, sizeof(expected));
+
+    TEST_ASSERT_EQUAL(
+        ANCS_PROTOCOL_ERR_ARGUMENT,
+        ancs_build_get_app_attributes("", request, sizeof(request), &request_length));
+    TEST_ASSERT_EQUAL(
+        ANCS_PROTOCOL_ERR_LENGTH,
+        ancs_build_get_app_attributes("com.example.chat",
+                                      request,
+                                      sizeof(expected) - 1U,
+                                      &request_length));
+}
+
+TEST_CASE("app parser reconstructs UTF-8 display name at every split",
+          "[ancs][app_parser]")
+{
+    static const uint8_t display_name[] = {
+        0xEC, 0xB9, 0xB4, 0xEC, 0xB9, 0xB4,
+        0xEC, 0x98, 0xA4, 0xED, 0x86, 0xA1,
+    };
+    uint8_t storage[128] = {0};
+    fixture_builder_t fixture = {.bytes = storage, .capacity = sizeof(storage)};
+    make_app_fixture(&fixture,
+                     "com.iwilab.KakaoTalk",
+                     display_name,
+                     sizeof(display_name));
+
+    for (size_t split = 0; split <= fixture.length; ++split) {
+        ancs_notification_t notification;
+        TEST_ASSERT_EQUAL(
+            ANCS_PARSER_COMPLETE,
+            feed_app_fixture(storage,
+                             fixture.length,
+                             split,
+                             &notification,
+                             "com.iwilab.KakaoTalk"));
+        TEST_ASSERT_EQUAL_MEMORY(display_name,
+                                 notification.app_name,
+                                 sizeof(display_name));
+        TEST_ASSERT_EQUAL_CHAR('\0', notification.app_name[sizeof(display_name)]);
+        TEST_ASSERT_FALSE(notification.app_name_truncated);
+    }
+}
+
+TEST_CASE("app parser handles one byte at a time and empty names",
+          "[ancs][app_parser]")
+{
+    uint8_t storage[128] = {0};
+    fixture_builder_t fixture = {.bytes = storage, .capacity = sizeof(storage)};
+    make_app_fixture(&fixture,
+                     "com.example.empty",
+                     (const uint8_t *)"",
+                     0U);
+
+    ancs_notification_t notification = {0};
+    strcpy(notification.app_id, "com.example.empty");
+    ancs_app_data_parser_t parser;
+    ancs_app_data_parser_init(&parser, &notification);
+    for (size_t index = 0; index < fixture.length; ++index) {
+        const ancs_parser_result_t result =
+            ancs_app_data_parser_feed(&parser, &storage[index], 1U);
+        TEST_ASSERT_EQUAL(index + 1U == fixture.length
+                              ? ANCS_PARSER_COMPLETE
+                              : ANCS_PARSER_MORE,
+                          result);
+    }
+    TEST_ASSERT_EQUAL_STRING("", notification.app_name);
+    TEST_ASSERT_FALSE(notification.app_name_truncated);
+}
+
+TEST_CASE("app parser bounds oversized display names", "[ancs][app_parser]")
+{
+    const size_t long_length = CONFIG_ANCS_APP_NAME_MAX + 17U;
+    uint8_t *display_name = malloc(long_length);
+    uint8_t *storage = calloc(1, long_length + 64U);
+    TEST_ASSERT_NOT_NULL(display_name);
+    TEST_ASSERT_NOT_NULL(storage);
+    memset(display_name, 'N', long_length);
+    fixture_builder_t fixture = {
+        .bytes = storage,
+        .capacity = long_length + 64U,
+    };
+    make_app_fixture(&fixture,
+                     "com.example.long",
+                     display_name,
+                     long_length);
+
+    ancs_notification_t notification;
+    TEST_ASSERT_EQUAL(
+        ANCS_PARSER_COMPLETE,
+        feed_app_fixture(storage,
+                         fixture.length,
+                         fixture.length - 1U,
+                         &notification,
+                         "com.example.long"));
+    TEST_ASSERT_TRUE(notification.app_name_truncated);
+    TEST_ASSERT_EQUAL_size_t(CONFIG_ANCS_APP_NAME_MAX,
+                             strlen(notification.app_name));
+    TEST_ASSERT_EQUAL_CHAR('\0',
+                           notification.app_name[CONFIG_ANCS_APP_NAME_MAX]);
+
+    free(storage);
+    free(display_name);
+}
+
+TEST_CASE("app parser rejects wrong command app id attribute and trailing data",
+          "[ancs][app_parser]")
+{
+    uint8_t storage[128] = {0};
+    fixture_builder_t fixture = {.bytes = storage, .capacity = sizeof(storage)};
+    make_app_fixture(&fixture,
+                     "com.example.actual",
+                     (const uint8_t *)"Actual",
+                     strlen("Actual"));
+
+    ancs_notification_t notification = {0};
+    strcpy(notification.app_id, "com.example.actual");
+    ancs_app_data_parser_t parser;
+    ancs_app_data_parser_init(&parser, &notification);
+    storage[0] = 0x00;
+    TEST_ASSERT_EQUAL(ANCS_PARSER_ERROR,
+                      ancs_app_data_parser_feed(&parser,
+                                                storage,
+                                                fixture.length));
+    TEST_ASSERT_EQUAL(ANCS_PROTOCOL_ERR_COMMAND, parser.error_code);
+
+    fixture.length = 0U;
+    make_app_fixture(&fixture,
+                     "com.example.other",
+                     (const uint8_t *)"Other",
+                     strlen("Other"));
+    memset(&notification, 0, sizeof(notification));
+    strcpy(notification.app_id, "com.example.actual");
+    ancs_app_data_parser_init(&parser, &notification);
+    TEST_ASSERT_EQUAL(ANCS_PARSER_ERROR,
+                      ancs_app_data_parser_feed(&parser,
+                                                storage,
+                                                fixture.length));
+    TEST_ASSERT_EQUAL(ANCS_PROTOCOL_ERR_APP_ID_MISMATCH, parser.error_code);
+
+    fixture.length = 0U;
+    fixture_begin_app(&fixture, "com.example.actual");
+    fixture_attribute(&fixture, 1U, "Wrong");
+    memset(&notification, 0, sizeof(notification));
+    strcpy(notification.app_id, "com.example.actual");
+    ancs_app_data_parser_init(&parser, &notification);
+    TEST_ASSERT_EQUAL(ANCS_PARSER_ERROR,
+                      ancs_app_data_parser_feed(&parser,
+                                                storage,
+                                                fixture.length));
+    TEST_ASSERT_EQUAL(ANCS_PROTOCOL_ERR_ATTRIBUTE, parser.error_code);
+
+    fixture.length = 0U;
+    make_app_fixture(&fixture,
+                     "com.example.actual",
+                     (const uint8_t *)"Actual",
+                     strlen("Actual"));
+    fixture_append_u8(&fixture, 0xFF);
+    memset(&notification, 0, sizeof(notification));
+    strcpy(notification.app_id, "com.example.actual");
+    ancs_app_data_parser_init(&parser, &notification);
+    TEST_ASSERT_EQUAL(ANCS_PARSER_ERROR,
+                      ancs_app_data_parser_feed(&parser,
+                                                storage,
+                                                fixture.length));
+    TEST_ASSERT_EQUAL(ANCS_PROTOCOL_ERR_SEQUENCE, parser.error_code);
+}
+
+TEST_CASE("app parser rejects unterminated oversized app id",
+          "[ancs][app_parser]")
+{
+    uint8_t storage[CONFIG_ANCS_APP_ID_MAX + 2U] = {0};
+    storage[0] = 0x01;
+    memset(storage + 1U, 'A', CONFIG_ANCS_APP_ID_MAX + 1U);
+    ancs_notification_t notification = {0};
+    strcpy(notification.app_id, "com.example.actual");
+    ancs_app_data_parser_t parser;
+    ancs_app_data_parser_init(&parser, &notification);
+
+    TEST_ASSERT_EQUAL(ANCS_PARSER_ERROR,
+                      ancs_app_data_parser_feed(&parser,
+                                                storage,
+                                                sizeof(storage)));
+    TEST_ASSERT_EQUAL(ANCS_PROTOCOL_ERR_OVERFLOW, parser.error_code);
 }
 
 TEST_CASE("data parser reconstructs all requested attributes", "[ancs][parser]")
