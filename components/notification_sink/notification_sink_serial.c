@@ -245,6 +245,8 @@ int notification_sink_format_json(const ancs_notification_t *notification,
                   ",\"category_count\":%u,\"app_id\":",
                   (unsigned int)notification->category_count);
     writer_string(&writer, notification->app_id);
+    writer_raw(&writer, ",\"app_name\":");
+    writer_string(&writer, notification->app_name);
     writer_raw(&writer, ",\"title\":");
     writer_string(&writer, notification->title);
     writer_raw(&writer, ",\"subtitle\":");
@@ -256,10 +258,11 @@ int notification_sink_format_json(const ancs_notification_t *notification,
     writer_raw(&writer, ",\"date\":");
     writer_string(&writer, notification->date_raw);
     writer_format(&writer,
-                  ",\"complete\":%s,\"truncated\":{\"app_id\":%s,\"title\":%s"
+                  ",\"complete\":%s,\"truncated\":{\"app_id\":%s,\"app_name\":%s,\"title\":%s"
                   ",\"subtitle\":%s,\"message\":%s},\"error\":",
                   json_bool(notification->complete),
                   json_bool(notification->app_id_truncated),
+                  json_bool(notification->app_name_truncated),
                   json_bool(notification->title_truncated),
                   json_bool(notification->subtitle_truncated),
                   json_bool(notification->message_truncated));
@@ -314,6 +317,7 @@ int notification_sink_publish(const ancs_notification_t *notification,
         return -1;
     }
     const size_t text_length = strlen(notification->app_id) +
+                               strlen(notification->app_name) +
                                strlen(notification->title) +
                                strlen(notification->subtitle) +
                                strlen(notification->message) +
