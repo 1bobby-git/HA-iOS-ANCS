@@ -3639,6 +3639,8 @@ CONFIG_WL_SECTOR_SIZE=4096
 # default:
 CONFIG_ANCS_APP_ID_MAX=256
 # default:
+CONFIG_ANCS_APP_NAME_MAX=256
+# default:
 CONFIG_ANCS_TITLE_MAX=512
 # default:
 CONFIG_ANCS_SUBTITLE_MAX=512
@@ -3649,6 +3651,13 @@ CONFIG_ANCS_DATE_MAX=32
 # default:
 CONFIG_ANCS_REQUEST_QUEUE_CAPACITY=16
 # end of ANCS protocol limits
+
+#
+# ANCS app name resolver
+#
+# default:
+CONFIG_ANCS_APP_CACHE_CAPACITY=16
+# end of ANCS app name resolver
 
 #
 # Provision store

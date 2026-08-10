@@ -7,6 +7,9 @@
 #ifndef CONFIG_ANCS_APP_ID_MAX
 #define CONFIG_ANCS_APP_ID_MAX 256
 #endif
+#ifndef CONFIG_ANCS_APP_NAME_MAX
+#define CONFIG_ANCS_APP_NAME_MAX 256
+#endif
 #ifndef CONFIG_ANCS_TITLE_MAX
 #define CONFIG_ANCS_TITLE_MAX 512
 #endif
@@ -31,6 +34,10 @@
 #define ANCS_ATTR_MASK_DATE (1U << 5)
 #define ANCS_ATTR_MASK_REQUIRED ((1U << 6) - 1U)
 
+#define ANCS_COMMAND_GET_NOTIFICATION_ATTRIBUTES 0U
+#define ANCS_COMMAND_GET_APP_ATTRIBUTES 1U
+#define ANCS_APP_ATTRIBUTE_DISPLAY_NAME 0U
+
 typedef enum {
     ANCS_PROTOCOL_OK = 0,
     ANCS_PROTOCOL_ERR_ARGUMENT = -1,
@@ -43,6 +50,7 @@ typedef enum {
     ANCS_PROTOCOL_ERR_SEQUENCE = -8,
     ANCS_PROTOCOL_ERR_CANCELED = -9,
     ANCS_PROTOCOL_ERR_TIMEOUT = -10,
+    ANCS_PROTOCOL_ERR_APP_ID_MISMATCH = -11,
 } ancs_protocol_error_t;
 
 typedef enum {
@@ -69,6 +77,7 @@ typedef struct {
     uint8_t category_id;
     uint8_t category_count;
     char app_id[CONFIG_ANCS_APP_ID_MAX + 1];
+    char app_name[CONFIG_ANCS_APP_NAME_MAX + 1];
     char title[CONFIG_ANCS_TITLE_MAX + 1];
     char subtitle[CONFIG_ANCS_SUBTITLE_MAX + 1];
     char message[CONFIG_ANCS_MESSAGE_MAX + 1];
@@ -76,6 +85,7 @@ typedef struct {
     char date_raw[CONFIG_ANCS_DATE_MAX + 1];
     bool complete;
     bool app_id_truncated;
+    bool app_name_truncated;
     bool title_truncated;
     bool subtitle_truncated;
     bool message_truncated;
@@ -105,6 +115,18 @@ typedef struct {
 } ancs_data_parser_t;
 
 typedef struct {
+    ancs_notification_t *notification;
+    char response_app_id[CONFIG_ANCS_APP_ID_MAX + 1];
+    size_t response_app_id_read;
+    uint16_t attribute_length;
+    uint16_t attribute_read;
+    uint8_t state;
+    uint8_t attribute_id;
+    uint8_t length_bytes_read;
+    int error_code;
+} ancs_app_data_parser_t;
+
+typedef struct {
     ancs_notification_event_t items[CONFIG_ANCS_REQUEST_QUEUE_CAPACITY];
     size_t head;
     size_t count;
@@ -126,6 +148,11 @@ ancs_protocol_error_t ancs_build_get_notification_attributes(
     uint8_t *output,
     size_t output_capacity,
     size_t *output_length);
+ancs_protocol_error_t ancs_build_get_app_attributes(
+    const char *app_id,
+    uint8_t *output,
+    size_t output_capacity,
+    size_t *output_length);
 void ancs_data_parser_init(ancs_data_parser_t *parser,
                            ancs_notification_t *notification,
                            uint32_t expected_uid,
@@ -133,6 +160,11 @@ void ancs_data_parser_init(ancs_data_parser_t *parser,
 ancs_parser_result_t ancs_data_parser_feed(ancs_data_parser_t *parser,
                                            const uint8_t *bytes,
                                            size_t length);
+void ancs_app_data_parser_init(ancs_app_data_parser_t *parser,
+                               ancs_notification_t *notification);
+ancs_parser_result_t ancs_app_data_parser_feed(ancs_app_data_parser_t *parser,
+                                               const uint8_t *bytes,
+                                               size_t length);
 void ancs_request_queue_init(ancs_request_queue_t *queue);
 bool ancs_request_queue_push(ancs_request_queue_t *queue,
                              const ancs_notification_event_t *event);

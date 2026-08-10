@@ -69,7 +69,6 @@
       "source": {"name": "소스"},
       "device_name": {"name": "기기 이름"},
       "received_at_ms": {"name": "수신 시점 기기 가동시간"},
-      "published_at_ms": {"name": "발행 시점 기기 가동시간"},
       "error_code": {"name": "오류 코드"},
       "error_name": {"name": "오류 이름"},
       "raw_notification": {"name": "원본 알림"}
@@ -82,6 +81,7 @@
       "positive_action_available": {"name": "긍정 동작 가능"},
       "negative_action_available": {"name": "부정 동작 가능"},
       "app_id_truncated": {"name": "앱 ID 잘림"},
+      "app_name_truncated": {"name": "앱 이름 잘림"},
       "title_truncated": {"name": "제목 잘림"},
       "subtitle_truncated": {"name": "부제목 잘림"},
       "message_truncated": {"name": "내용 잘림"},

@@ -44,21 +44,21 @@ BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저�
 
 Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 버튼을 3초 눌러 120초 등록 창을 열고, iOS Bluetooth 설정에서 PIN `123456`을 입력한 뒤 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
 
-## 지원 보드와 v0.3.3 빌드 사실
+## 지원 보드와 v0.3.4 빌드 사실
 
 공통 펌웨어는 최소 4 MB 플래시 레이아웃을 사용합니다. ESP32-S2는 BLE가 없고, ESP32-H2는 Wi-Fi가 없으며, ESP32-P4는 내장 Wi-Fi/BLE 라디오가 없어 제외됩니다.
 
-| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.3 상태 |
+| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.4 상태 |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,425,616 bytes | 빌드 검증, 제한적 실보드 플래시/부팅/AP 검증 |
-| `esp32c2` | ESP32-C2 | 1,445,488 bytes | 빌드 검증 |
-| `esp32c3` | ESP32-C3 | 1,634,528 bytes | 빌드 검증 |
-| `esp32c5` | ESP32-C5 | 1,779,664 bytes | 빌드 검증 |
-| `esp32c6` | ESP32-C6 | 1,779,680 bytes | 빌드 검증, 이전 하드웨어 증거는 과거 참고 |
-| `esp32c61` | ESP32-C61 | 1,722,800 bytes | 빌드 검증 |
-| `esp32s3` | ESP32-S3 | 1,407,600 bytes | 빌드 검증 |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,427,376 bytes | 빌드 검증, 제한적 실보드 플래시/부팅/AP 검증 |
+| `esp32c2` | ESP32-C2 | 1,447,504 bytes | 빌드 검증 |
+| `esp32c3` | ESP32-C3 | 1,636,560 bytes | 빌드 검증 |
+| `esp32c5` | ESP32-C5 | 1,781,696 bytes | 빌드 검증 |
+| `esp32c6` | ESP32-C6 | 1,781,712 bytes | 빌드 검증, 이전 하드웨어 증거는 과거 참고 |
+| `esp32c61` | ESP32-C61 | 1,724,816 bytes | 빌드 검증 |
+| `esp32s3` | ESP32-S3 | 1,409,392 bytes | 빌드 검증 |
 
-표의 상태는 공개된 v0.3.3 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
+표의 상태는 공개된 v0.3.4 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
 
 ## Home Assistant와 HACS
 
@@ -70,7 +70,7 @@ HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다. �
 
 `알림` 이벤트 엔티티와 상세 엔티티는 MQTT 장치와 분리된 별도 `iOS ANCS (...)` 장치에 등록됩니다. MQTT 장치를 `via_device`로 연결하지 않으며 같은 물리 장치를 나타내더라도 두 통합의 기기와 엔티티는 독립적으로 유지됩니다. 통합은 마지막 완전한 알림을 전용 저장소에 보관하므로 MQTT 알림이 retained가 아니어도 Home Assistant 재시작 뒤 상세 센서가 복원됩니다. 이벤트 엔티티는 새 알림만 표시하며 저장된 세부정보를 새 이벤트로 재생하지 않습니다. 기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 소스 장치를 선택하면 엔티티 ID와 기록을 보존한 채 별도 iOS ANCS 장치로 이동합니다.
 
-동반 통합은 기존 MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다. 별도 iOS ANCS 장치에 알림 이벤트, 목적별 센서 25개와 엄격한 바이너리 센서 11개, 진단용 `원본 알림` 센서를 추가합니다. 텍스트 센서 상태는 최대 255자로 제한되며 긴 값은 `full_value` 속성에, 전체 원본 JSON은 속성에 유지됩니다. 알림 제목과 내용 같은 개인정보는 Home Assistant Recorder에 기록될 수 있으므로 기록이 필요하지 않으면 해당 엔터티를 Recorder에서 제외하세요.
+동반 통합은 기존 MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다. 별도 iOS ANCS 장치에 알림 이벤트, 목적별 센서 24개와 엄격한 바이너리 센서 12개, 진단용 `원본 알림` 센서를 추가합니다. 텍스트 센서 상태는 최대 255자로 제한되며 긴 값은 `full_value` 속성에, 전체 원본 JSON은 속성에 유지됩니다. 알림 제목과 내용 같은 개인정보는 Home Assistant Recorder에 기록될 수 있으므로 기록이 필요하지 않으면 해당 엔터티를 Recorder에서 제외하세요.
 
 MQTT Discovery의 compact model은 `최근 알림`, `알림 제목`, `알림 내용`, `앱 이름`, `장치 상태`, `장치 재시작` 엔티티를 중심으로 구성됩니다. 상태 속성에는 `ready`, `uptime_seconds`, `ble_connected`, `wifi_ssid` 같은 진단 값이 포함됩니다.
 
@@ -82,7 +82,7 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 
 사용 전에 `sensor.replace_with_your_last_notification_entity`를 본인 Home Assistant의 last-notification sensor로, `notify.replace_with_your_mobile_app_service`를 본인 mobile app notify 서비스로 바꾸세요. 예제는 새 `relay_id` 상태 변화만 전달하고, `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, availability 복구 전환은 전달하지 않습니다.
 
-알림 JSON은 원본 `app_id`를 보존하고 표시용 `app_name`을 추가합니다. 목록에 없으면 원본 ID를 그대로 표시합니다. 대표 매핑은 [App ID Reference](docs/APP_ID_REFERENCE.md)에 있습니다.
+알림 JSON은 원본 `app_id`를 보존하고 표시용 `app_name`을 추가합니다. 펌웨어는 iPhone이 ANCS로 제공한 현지화된 Display Name을 우선 사용합니다. 앱의 첫 알림은 이름 조회 때문에 한 번의 추가 ANCS 요청이 필요할 수 있고, 같은 연결 세션의 다음 알림부터는 제한된 세션 캐시를 사용합니다. 조회가 실패해도 알림 세부정보는 버리지 않고 기존 정적 매핑과 원본 앱 ID 순서로 폴백합니다. 대표 폴백 매핑은 [App ID Reference](docs/APP_ID_REFERENCE.md)에 있습니다.
 
 ## 문제 해결
 

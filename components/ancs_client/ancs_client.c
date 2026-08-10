@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "ancs_app_resolver.h"
 #include "ancs_protocol.h"
 #include "ble_enroll.h"
 #include "driver/gpio.h"
@@ -31,7 +32,7 @@
 #define INVALID_HANDLE 0
 #define ADV_DATA_PENDING (1U << 0)
 #define SCAN_RESPONSE_PENDING (1U << 1)
-#define CONTROL_REQUEST_MAX 32
+#define CONTROL_REQUEST_MAX (CONFIG_ANCS_APP_ID_MAX + 3U)
 #define ADVERTISING_BACKOFF_MAX_MS 4000U
 #define DISCOVERY_BACKOFF_MAX_MS 5000U
 
@@ -64,6 +65,11 @@ typedef enum {
     WORK_CONTROL_WRITE_RESULT,
     WORK_SESSION_RESET,
 } work_type_t;
+
+typedef enum {
+    ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES = 0,
+    ACTIVE_REQUEST_APP_ATTRIBUTES,
+} active_request_kind_t;
 
 typedef struct {
     uint16_t length;
@@ -138,11 +144,14 @@ typedef struct {
     ancs_request_queue_t pending;
     bool active;
     bool active_canceled;
+    active_request_kind_t active_request_kind;
     uint8_t attempt;
     int64_t deadline_ms;
     ancs_notification_event_t active_event;
     ancs_notification_t active_notification;
     ancs_data_parser_t parser;
+    ancs_app_data_parser_t app_parser;
+    ancs_app_resolver_t app_resolver;
     bool last_event_valid;
     ancs_notification_event_t last_event;
     int64_t last_event_ms;
@@ -436,6 +445,9 @@ static void reset_worker_session(uint32_t generation)
     s_worker.last_event_valid = false;
     memset(&s_worker.active_notification, 0, sizeof(s_worker.active_notification));
     memset(&s_worker.parser, 0, sizeof(s_worker.parser));
+    memset(&s_worker.app_parser, 0, sizeof(s_worker.app_parser));
+    ancs_app_resolver_init(&s_worker.app_resolver);
+    s_worker.cache_age = 0U;
     memset(s_worker.cache, 0, sizeof(s_worker.cache));
     ESP_LOGI(TAG, "worker session reset generation=%" PRIu32, generation);
 }
@@ -510,6 +522,15 @@ static void fail_active_request(int error_code)
     s_worker.active_canceled = false;
 }
 
+static void finalize_active_notification(void)
+{
+    (void)notification_sink_publish(
+        &s_worker.active_notification, s_client.device_name);
+    cache_store(&s_worker.active_notification);
+    s_worker.active = false;
+    s_worker.active_canceled = false;
+}
+
 static void abandon_active_request(void)
 {
     s_worker.active = false;
@@ -536,10 +557,15 @@ static esp_err_t write_active_control_request(void)
     uint8_t request[CONTROL_REQUEST_MAX];
     size_t request_length = 0;
     const ancs_protocol_error_t protocol_error =
-        ancs_build_get_notification_attributes(s_worker.active_event.uid,
-                                               request,
-                                               sizeof(request),
-                                               &request_length);
+        s_worker.active_request_kind == ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES
+            ? ancs_build_get_notification_attributes(s_worker.active_event.uid,
+                                                     request,
+                                                     sizeof(request),
+                                                     &request_length)
+            : ancs_build_get_app_attributes(s_worker.active_notification.app_id,
+                                            request,
+                                            sizeof(request),
+                                            &request_length);
     if (protocol_error != ANCS_PROTOCOL_OK) {
         return ESP_ERR_INVALID_SIZE;
     }
@@ -559,14 +585,20 @@ static esp_err_t write_active_control_request(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    ancs_notification_init(&s_worker.active_notification,
-                           session_id,
-                           &s_worker.active_event,
-                           now_ms());
-    ancs_data_parser_init(&s_worker.parser,
-                          &s_worker.active_notification,
-                          s_worker.active_event.uid,
-                          ANCS_ATTR_MASK_REQUIRED);
+    if (s_worker.active_request_kind ==
+        ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES) {
+        ancs_notification_init(&s_worker.active_notification,
+                               session_id,
+                               &s_worker.active_event,
+                               now_ms());
+        ancs_data_parser_init(&s_worker.parser,
+                              &s_worker.active_notification,
+                              s_worker.active_event.uid,
+                              ANCS_ATTR_MASK_REQUIRED);
+    } else {
+        ancs_app_data_parser_init(&s_worker.app_parser,
+                                  &s_worker.active_notification);
+    }
     const esp_err_t error = esp_ble_gattc_write_char(
         gattc_if,
         conn_id,
@@ -578,14 +610,24 @@ static esp_err_t write_active_control_request(void)
     if (error == ESP_OK) {
         s_worker.deadline_ms = now_ms() + CONFIG_ANCS_REQUEST_TIMEOUT_MS;
         ESP_LOGI(TAG,
-                 "requested uid=%" PRIu32 " attempt=%u",
+                 "requested kind=%s uid=%" PRIu32 " attempt=%u",
+                 s_worker.active_request_kind ==
+                         ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES
+                     ? "notification"
+                     : "app",
                  s_worker.active_event.uid,
                  (unsigned int)(s_worker.attempt + 1U));
     }
     return error;
 }
 
-static void retry_or_fail_active(int error_code)
+static void finish_canceled_request(void)
+{
+    s_worker.active = false;
+    s_worker.active_canceled = false;
+}
+
+static void retry_or_finish_active(int error_code, bool recover_stream)
 {
     if (!s_worker.active) {
         return;
@@ -605,14 +647,64 @@ static void retry_or_fail_active(int error_code)
             return;
         }
     }
+    if (s_worker.active_request_kind == ACTIVE_REQUEST_APP_ATTRIBUTES) {
+        (void)ancs_app_resolver_fail(s_worker.active_notification.app_name,
+                                     sizeof(s_worker.active_notification.app_name));
+        if (s_worker.active_canceled) {
+            finish_canceled_request();
+        } else {
+            finalize_active_notification();
+        }
+        if (recover_stream) {
+            recover_data_stream();
+        }
+        return;
+    }
+
     fail_active_request(error_code);
     recover_data_stream();
 }
 
-static void finish_canceled_request(void)
+static void begin_app_name_resolution(void)
 {
-    s_worker.active = false;
-    s_worker.active_canceled = false;
+    const ancs_app_resolution_t resolution = ancs_app_resolver_begin(
+        &s_worker.app_resolver,
+        s_worker.active_notification.app_id,
+        s_worker.active_notification.app_name,
+        sizeof(s_worker.active_notification.app_name));
+    if (resolution != ANCS_APP_RESOLUTION_REQUEST_NATIVE) {
+        finalize_active_notification();
+        return;
+    }
+
+    s_worker.active_request_kind = ACTIVE_REQUEST_APP_ATTRIBUTES;
+    s_worker.attempt = 0U;
+    const esp_err_t error = write_active_control_request();
+    if (error == ESP_ERR_INVALID_STATE) {
+        abandon_active_request();
+    } else if (error != ESP_OK) {
+        retry_or_finish_active(ANCS_PROTOCOL_ERR_SEQUENCE, false);
+    }
+}
+
+static void complete_app_name_resolution(void)
+{
+    if (s_worker.active_notification.app_name_truncated) {
+        finalize_active_notification();
+        return;
+    }
+
+    char display_name[CONFIG_ANCS_APP_NAME_MAX + 1U];
+    memcpy(display_name,
+           s_worker.active_notification.app_name,
+           sizeof(display_name));
+    (void)ancs_app_resolver_complete(
+        &s_worker.app_resolver,
+        s_worker.active_notification.app_id,
+        display_name,
+        s_worker.active_notification.app_name,
+        sizeof(s_worker.active_notification.app_name));
+    finalize_active_notification();
 }
 
 static void start_next_request(void)
@@ -625,12 +717,13 @@ static void start_next_request(void)
     }
     s_worker.active = true;
     s_worker.active_canceled = false;
+    s_worker.active_request_kind = ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES;
     s_worker.attempt = 0U;
     const esp_err_t error = write_active_control_request();
     if (error == ESP_ERR_INVALID_STATE) {
         abandon_active_request();
     } else if (error != ESP_OK) {
-        retry_or_fail_active(ANCS_PROTOCOL_ERR_SEQUENCE);
+        retry_or_finish_active(ANCS_PROTOCOL_ERR_SEQUENCE, false);
     }
 }
 
@@ -687,21 +780,30 @@ static void process_data_fragment(data_fragment_t *fragment)
         return;
     }
     const ancs_parser_result_t result =
-        ancs_data_parser_feed(&s_worker.parser, fragment->bytes, fragment->length);
+        s_worker.active_request_kind == ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES
+            ? ancs_data_parser_feed(
+                  &s_worker.parser, fragment->bytes, fragment->length)
+            : ancs_app_data_parser_feed(
+                  &s_worker.app_parser, fragment->bytes, fragment->length);
     if (result == ANCS_PARSER_COMPLETE) {
         if (s_worker.active_canceled) {
             finish_canceled_request();
+        } else if (s_worker.active_request_kind ==
+                   ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES) {
+            begin_app_name_resolution();
         } else {
-            (void)notification_sink_publish(
-                &s_worker.active_notification, s_client.device_name);
-            cache_store(&s_worker.active_notification);
-            s_worker.active = false;
+            complete_app_name_resolution();
         }
     } else if (result == ANCS_PARSER_ERROR) {
         if (s_worker.active_canceled) {
             finish_canceled_request();
         } else {
-            retry_or_fail_active(s_worker.parser.error_code);
+            const int error_code =
+                s_worker.active_request_kind ==
+                        ACTIVE_REQUEST_NOTIFICATION_ATTRIBUTES
+                    ? s_worker.parser.error_code
+                    : s_worker.app_parser.error_code;
+            retry_or_finish_active(error_code, true);
         }
     }
 }
@@ -710,6 +812,7 @@ static void worker_task(void *argument)
 {
     (void)argument;
     ancs_request_queue_init(&s_worker.pending);
+    ancs_app_resolver_init(&s_worker.app_resolver);
     s_worker.generation = current_generation();
 
     for (;;) {
@@ -736,7 +839,7 @@ static void worker_task(void *argument)
                     if (s_worker.active_canceled) {
                         finish_canceled_request();
                     } else {
-                        retry_or_fail_active(item.data.write_status);
+                        retry_or_finish_active(item.data.write_status, false);
                     }
                 }
                 break;
@@ -754,7 +857,7 @@ static void worker_task(void *argument)
                 finish_canceled_request();
                 recover_data_stream();
             } else {
-                retry_or_fail_active(ANCS_PROTOCOL_ERR_TIMEOUT);
+                retry_or_finish_active(ANCS_PROTOCOL_ERR_TIMEOUT, true);
             }
         }
         start_next_request();

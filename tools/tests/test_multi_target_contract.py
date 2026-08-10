@@ -83,6 +83,7 @@ def test_home_assistant_sensor_receives_complete_notification_attributes():
         "category",
         "category_count",
         "app_id",
+        "app_name",
         "title",
         "subtitle",
         "message",
@@ -207,7 +208,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
     builds = manifest["builds"]
     families = [build["chipFamily"] for build in builds]
 
-    assert manifest["version"] == "0.3.3"
+    assert manifest["version"] == "0.3.4"
     assert len(families) == 7
     assert len(families) == len(set(families))
     assert "ESP32" in families
@@ -219,7 +220,7 @@ def test_unified_manifest_has_unique_builds_and_existing_binaries():
         assert len(build["parts"]) == 1
         part = build["parts"][0]
         assert part["offset"] == 0
-        assert "-v0.3.3.factory.bin" in part["path"]
+        assert "-v0.3.4.factory.bin" in part["path"]
         binary = (MULTI_MANIFEST.parent / part["path"]).resolve()
         assert binary.is_file()
         assert binary.stat().st_size > 0
@@ -242,9 +243,9 @@ def test_c6_manifest_points_existing_users_to_current_image():
     part = build["parts"][0]
     binary = (LEGACY_C6_MANIFEST.parent / part["path"]).resolve()
 
-    assert manifest["version"] == "0.3.3"
+    assert manifest["version"] == "0.3.4"
     assert build["chipFamily"] == "ESP32-C6"
-    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.3.factory.bin"
+    assert part["path"] == "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.4.factory.bin"
     assert binary.is_file()
     assert not (
         ROOT
@@ -305,7 +306,7 @@ def test_flash_helper_uses_the_selected_target_build_directory():
     assert '--target $Target' in script
 
 
-def test_v033_release_guidance_documents_compact_home_assistant_entities():
+def test_v034_release_guidance_documents_compact_home_assistant_entities():
     matrix = read(BUILD_MATRIX)
     build_ps1 = read(ROOT / "tools" / "build.ps1")
     build_sh = read(ROOT / "tools" / "build.sh")
@@ -316,7 +317,7 @@ def test_v033_release_guidance_documents_compact_home_assistant_entities():
 
     cmake = read(ROOT / "CMakeLists.txt")
     for source in (cmake, matrix, build_ps1, build_sh, installer):
-        assert "0.3.3" in source
+        assert "0.3.4" in source
     for source in (readme, pairing, troubleshooting):
         assert "ancs-<lowercase_suffix>" in source
         assert "case-sensitive" in source

@@ -28,10 +28,15 @@ def test_documented_app_ids_are_the_firmware_mapping_source_of_truth():
 
 def test_notification_payload_enriches_app_name_without_replacing_app_id():
     source = read("mqtt_payload.c")
+    serializer = (ROOT / "components" / "notification_sink" / "notification_sink_serial.c").read_text(
+        encoding="utf-8"
+    )
 
     assert '#include "mqtt_app_name.h"' in source
+    assert "notification->app_name[0] != '\\0'" in source
     assert "mqtt_app_name_lookup(notification->app_id)" in source
-    assert '\\"app_name\\"' in source
+    assert "memcpy(enriched.app_name" in source
+    assert '\\"app_name\\"' in serializer
     assert "strlen(app_name)" in source
 
 

@@ -232,6 +232,45 @@ TEST_CASE("notification payload preserves serial fields and adds relay fields",
     free(payload);
 }
 
+TEST_CASE("native ANCS app name wins before mapping and app id fallback",
+          "[mqtt_relay]")
+{
+    ancs_notification_t notification = valid_notification();
+    strcpy(notification.app_id, "com.iwilab.KakaoTalk");
+    strcpy(notification.app_name, "KakaoTalk from iPhone");
+    char *payload = NULL;
+    size_t length = 0;
+
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_payload_build_notification(&notification,
+                                                      "IOS-ANCS-C6-AB12",
+                                                      "relay-1",
+                                                      123456,
+                                                      &payload,
+                                                      &length));
+    TEST_ASSERT_NOT_NULL(payload);
+    TEST_ASSERT_NOT_NULL(
+        strstr(payload, "\"app_name\":\"KakaoTalk from iPhone\""));
+    TEST_ASSERT_NULL(strstr(payload, "\"app_name\":\"카카오톡\""));
+    free(payload);
+
+    notification.app_name[0] = '\0';
+    strcpy(notification.app_id, "com.example.Unknown");
+    payload = NULL;
+    length = 0;
+    TEST_ASSERT_EQUAL(ESP_OK,
+                      mqtt_payload_build_notification(&notification,
+                                                      "IOS-ANCS-C6-AB12",
+                                                      "relay-1",
+                                                      123456,
+                                                      &payload,
+                                                      &length));
+    TEST_ASSERT_NOT_NULL(payload);
+    TEST_ASSERT_NOT_NULL(
+        strstr(payload, "\"app_name\":\"com.example.Unknown\""));
+    free(payload);
+}
+
 TEST_CASE("app names use documented mapping and safe fallback", "[mqtt_relay]")
 {
     TEST_ASSERT_EQUAL_STRING("메시지",

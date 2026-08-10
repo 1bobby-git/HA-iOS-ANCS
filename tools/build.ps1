@@ -11,7 +11,7 @@ param(
     )]
     [string]$Target = 'esp32c6',
     [string]$IdfPath = $env:IDF_PATH,
-    [string]$Version = '0.3.3'
+    [string]$Version = '0.3.4'
 )
 
 $ErrorActionPreference = 'Stop'

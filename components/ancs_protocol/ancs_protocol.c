@@ -13,6 +13,16 @@ enum {
     PARSER_STATE_ERROR,
 };
 
+enum {
+    APP_PARSER_STATE_COMMAND = 0,
+    APP_PARSER_STATE_APP_ID,
+    APP_PARSER_STATE_ATTRIBUTE_ID,
+    APP_PARSER_STATE_ATTRIBUTE_LENGTH,
+    APP_PARSER_STATE_ATTRIBUTE_VALUE,
+    APP_PARSER_STATE_COMPLETE,
+    APP_PARSER_STATE_ERROR,
+};
+
 static uint32_t read_u32_le(const uint8_t *bytes)
 {
     return ((uint32_t)bytes[0]) |
@@ -29,6 +39,20 @@ static ancs_parser_result_t parser_fail(ancs_data_parser_t *parser, int error_co
         if (parser->notification != NULL) {
             parser->notification->complete = false;
             parser->notification->error_code = error_code;
+        }
+    }
+    return ANCS_PARSER_ERROR;
+}
+
+static ancs_parser_result_t app_parser_fail(ancs_app_data_parser_t *parser,
+                                            int error_code)
+{
+    if (parser != NULL) {
+        parser->state = APP_PARSER_STATE_ERROR;
+        parser->error_code = error_code;
+        if (parser->notification != NULL) {
+            parser->notification->app_name[0] = '\0';
+            parser->notification->app_name_truncated = false;
         }
     }
     return ANCS_PARSER_ERROR;
@@ -210,7 +234,7 @@ ancs_protocol_error_t ancs_build_get_notification_attributes(
     const uint16_t subtitle_max = (uint16_t)CONFIG_ANCS_SUBTITLE_MAX;
     const uint16_t message_max = (uint16_t)CONFIG_ANCS_MESSAGE_MAX;
     const uint8_t command[] = {
-        0x00,
+        ANCS_COMMAND_GET_NOTIFICATION_ATTRIBUTES,
         (uint8_t)(uid & 0xFFU),
         (uint8_t)((uid >> 8U) & 0xFFU),
         (uint8_t)((uid >> 16U) & 0xFFU),
@@ -230,6 +254,37 @@ ancs_protocol_error_t ancs_build_get_notification_attributes(
     };
     memcpy(output, command, sizeof(command));
     *output_length = sizeof(command);
+    return ANCS_PROTOCOL_OK;
+}
+
+ancs_protocol_error_t ancs_build_get_app_attributes(
+    const char *app_id,
+    uint8_t *output,
+    size_t output_capacity,
+    size_t *output_length)
+{
+    if (app_id == NULL || output == NULL || output_length == NULL) {
+        return ANCS_PROTOCOL_ERR_ARGUMENT;
+    }
+    *output_length = 0U;
+
+    const size_t app_id_length = strnlen(app_id, CONFIG_ANCS_APP_ID_MAX + 1U);
+    if (app_id_length == 0U) {
+        return ANCS_PROTOCOL_ERR_ARGUMENT;
+    }
+    if (app_id_length > CONFIG_ANCS_APP_ID_MAX) {
+        return ANCS_PROTOCOL_ERR_LENGTH;
+    }
+
+    const size_t required = app_id_length + 3U;
+    if (output_capacity < required) {
+        return ANCS_PROTOCOL_ERR_LENGTH;
+    }
+
+    output[0] = ANCS_COMMAND_GET_APP_ATTRIBUTES;
+    memcpy(output + 1U, app_id, app_id_length + 1U);
+    output[required - 1U] = ANCS_APP_ATTRIBUTE_DISPLAY_NAME;
+    *output_length = required;
     return ANCS_PROTOCOL_OK;
 }
 
@@ -358,6 +413,141 @@ ancs_parser_result_t ancs_data_parser_feed(ancs_data_parser_t *parser,
 
     return parser->state == PARSER_STATE_COMPLETE ? ANCS_PARSER_COMPLETE
                                                    : ANCS_PARSER_MORE;
+}
+
+static ancs_parser_result_t finish_app_attribute(
+    ancs_app_data_parser_t *parser)
+{
+    if (parser->attribute_id != ANCS_APP_ATTRIBUTE_DISPLAY_NAME ||
+        parser->notification == NULL) {
+        return app_parser_fail(parser, ANCS_PROTOCOL_ERR_ATTRIBUTE);
+    }
+
+    const size_t terminator_index =
+        parser->attribute_length < CONFIG_ANCS_APP_NAME_MAX
+            ? parser->attribute_length
+            : CONFIG_ANCS_APP_NAME_MAX;
+    parser->notification->app_name[terminator_index] = '\0';
+    parser->notification->app_name_truncated =
+        (size_t)parser->attribute_length > CONFIG_ANCS_APP_NAME_MAX;
+    parser->state = APP_PARSER_STATE_COMPLETE;
+    parser->error_code = ANCS_PROTOCOL_OK;
+    return ANCS_PARSER_COMPLETE;
+}
+
+void ancs_app_data_parser_init(ancs_app_data_parser_t *parser,
+                               ancs_notification_t *notification)
+{
+    if (parser == NULL) {
+        return;
+    }
+    memset(parser, 0, sizeof(*parser));
+    parser->notification = notification;
+    parser->state = APP_PARSER_STATE_COMMAND;
+    if (notification == NULL || notification->app_id[0] == '\0') {
+        (void)app_parser_fail(parser, ANCS_PROTOCOL_ERR_ARGUMENT);
+        return;
+    }
+    notification->app_name[0] = '\0';
+    notification->app_name_truncated = false;
+}
+
+ancs_parser_result_t ancs_app_data_parser_feed(ancs_app_data_parser_t *parser,
+                                               const uint8_t *bytes,
+                                               size_t length)
+{
+    if (parser == NULL || (bytes == NULL && length != 0U)) {
+        return app_parser_fail(parser, ANCS_PROTOCOL_ERR_ARGUMENT);
+    }
+    if (parser->state == APP_PARSER_STATE_ERROR) {
+        return ANCS_PARSER_ERROR;
+    }
+    if (parser->state == APP_PARSER_STATE_COMPLETE) {
+        return length == 0U
+                   ? ANCS_PARSER_COMPLETE
+                   : app_parser_fail(parser, ANCS_PROTOCOL_ERR_SEQUENCE);
+    }
+
+    for (size_t index = 0; index < length; ++index) {
+        const uint8_t byte = bytes[index];
+        switch (parser->state) {
+        case APP_PARSER_STATE_COMMAND:
+            if (byte != ANCS_COMMAND_GET_APP_ATTRIBUTES) {
+                return app_parser_fail(parser, ANCS_PROTOCOL_ERR_COMMAND);
+            }
+            parser->state = APP_PARSER_STATE_APP_ID;
+            break;
+
+        case APP_PARSER_STATE_APP_ID:
+            if (byte == 0U) {
+                parser->response_app_id[parser->response_app_id_read] = '\0';
+                if (strcmp(parser->response_app_id,
+                           parser->notification->app_id) != 0) {
+                    return app_parser_fail(
+                        parser, ANCS_PROTOCOL_ERR_APP_ID_MISMATCH);
+                }
+                parser->state = APP_PARSER_STATE_ATTRIBUTE_ID;
+                break;
+            }
+            if (parser->response_app_id_read >= CONFIG_ANCS_APP_ID_MAX) {
+                return app_parser_fail(parser, ANCS_PROTOCOL_ERR_OVERFLOW);
+            }
+            parser->response_app_id[parser->response_app_id_read++] = (char)byte;
+            break;
+
+        case APP_PARSER_STATE_ATTRIBUTE_ID:
+            if (byte != ANCS_APP_ATTRIBUTE_DISPLAY_NAME) {
+                return app_parser_fail(parser, ANCS_PROTOCOL_ERR_ATTRIBUTE);
+            }
+            parser->attribute_id = byte;
+            parser->attribute_length = 0U;
+            parser->attribute_read = 0U;
+            parser->length_bytes_read = 0U;
+            parser->state = APP_PARSER_STATE_ATTRIBUTE_LENGTH;
+            break;
+
+        case APP_PARSER_STATE_ATTRIBUTE_LENGTH:
+            parser->attribute_length |=
+                (uint16_t)((uint16_t)byte <<
+                           (8U * parser->length_bytes_read));
+            parser->length_bytes_read++;
+            if (parser->length_bytes_read == 2U) {
+                if (parser->attribute_length == 0U) {
+                    const ancs_parser_result_t result =
+                        finish_app_attribute(parser);
+                    if (result == ANCS_PARSER_COMPLETE && index + 1U < length) {
+                        return app_parser_fail(
+                            parser, ANCS_PROTOCOL_ERR_SEQUENCE);
+                    }
+                    return result;
+                }
+                parser->state = APP_PARSER_STATE_ATTRIBUTE_VALUE;
+            }
+            break;
+
+        case APP_PARSER_STATE_ATTRIBUTE_VALUE:
+            if ((size_t)parser->attribute_read < CONFIG_ANCS_APP_NAME_MAX) {
+                parser->notification->app_name[parser->attribute_read] =
+                    (char)byte;
+            }
+            parser->attribute_read++;
+            if (parser->attribute_read == parser->attribute_length) {
+                const ancs_parser_result_t result =
+                    finish_app_attribute(parser);
+                if (result == ANCS_PARSER_COMPLETE && index + 1U < length) {
+                    return app_parser_fail(parser, ANCS_PROTOCOL_ERR_SEQUENCE);
+                }
+                return result;
+            }
+            break;
+
+        default:
+            return app_parser_fail(parser, ANCS_PROTOCOL_ERR_SEQUENCE);
+        }
+    }
+
+    return parser->state == APP_PARSER_STATE_COMPLETE ? ANCS_PARSER_COMPLETE
+                                                       : ANCS_PARSER_MORE;
 }
 
 void ancs_request_queue_init(ancs_request_queue_t *queue)
