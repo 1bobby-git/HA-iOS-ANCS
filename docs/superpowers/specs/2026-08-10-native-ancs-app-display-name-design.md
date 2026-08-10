@@ -154,17 +154,16 @@ runtime and its app-name sensor need no payload-schema migration.
 
 The companion integration will:
 
-- Remove `published_at_ms` from `SENSOR_DESCRIPTIONS`.
-- Remove its translation entries from `strings.json`, English, and Korean
+- Remove `published_at_ms` and `received_at_ms` from `SENSOR_DESCRIPTIONS`.
+- Remove their translation entries from `strings.json`, English, and Korean
   translations.
 - Bump the config-entry version.
 - During migration, inspect only entities belonging to the current config entry
-  and remove the integration-owned sensor whose unique ID ends in
-  `:sensor:published_at_ms`.
+  and remove integration-owned sensors whose unique IDs end in
+  `:sensor:published_at_ms` or `:sensor:received_at_ms`.
 
 The migration must not remove MQTT entities, similarly named foreign entities,
-the `received_at_ms` sensor, raw notification attributes, event data, or stored
-notification fields.
+raw notification attributes, event data, or stored notification fields.
 
 ## Test Strategy
 
@@ -192,10 +191,11 @@ Client behavior will be factored so unit-testable state/cache decisions cover:
 
 Home Assistant tests will prove:
 
-- `published_at_ms` is no longer created.
-- `received_at_ms` and all other purpose-specific sensors remain.
-- Migration removes only the old companion `published_at_ms` registry entry.
-- Raw notification attributes still contain `published_at_ms` when provided.
+- Neither uptime marker is created as a companion sensor.
+- Migration removes both old companion uptime registry entries and leaves MQTT
+  entities untouched.
+- Raw notification attributes still contain `published_at_ms` and
+  `received_at_ms` when provided.
 
 ## Release and Verification
 

@@ -4,6 +4,12 @@
 
 **Goal:** Resolve localized iOS app names through native ANCS, retain safe firmware fallbacks, remove the Home Assistant `published_at_ms` sensor, and publish aligned firmware/HACS releases.
 
+> **Follow-up decision:** The user subsequently removed the companion
+> `received_at_ms` sensor as well. MQTT payload fields and MQTT-owned entities
+> remain untouched. This follow-up uses config-entry version `4` and companion
+> version `0.6.4`; any later step in this historical plan that says
+> `received_at_ms` remains or names companion `0.6.3` is superseded.
+
 **Architecture:** Add a fragmented Get App Attributes parser to `ancs_protocol`, a bounded session resolver component for app-name cache decisions, and a two-stage request state in `ancs_client`. Carry native names on `ancs_notification_t`, let the MQTT serializer apply the existing static map only when the native name is empty, and migrate only the deprecated companion sensor out of Home Assistant's entity registry.
 
 **Tech Stack:** ESP-IDF 6.0.2, C11, Unity, Home Assistant Python integration, pytest, MQTT JSON, GitHub Actions, HACS, ESP Web Tools.
