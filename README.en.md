@@ -60,7 +60,11 @@ HACS installs only the Home Assistant companion integration; it never flashes or
 
 ### HACS Installation
 
-Use the [iOS ANCS HACS My Link](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration), or install it manually:
+Use the button below to open the HACS custom repository flow in Home Assistant.
+
+[![Open your Home Assistant instance and show the HACS repository.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration)
+
+If the button is unavailable, install it manually:
 
 1. In Home Assistant, open `HACS` → `Integrations`.
 2. Open the `⋮` menu and choose `Custom repositories`.
