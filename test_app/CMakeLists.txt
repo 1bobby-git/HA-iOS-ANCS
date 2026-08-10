@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 set(MINIMAL_BUILD ON)
 set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/ancs_protocol"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/ancs_app_resolver"
     "${CMAKE_CURRENT_LIST_DIR}/../components/ancs_state"
     "${CMAKE_CURRENT_LIST_DIR}/../components/notification_sink"
     "${CMAKE_CURRENT_LIST_DIR}/../components/platform_identity"
