@@ -201,7 +201,7 @@ def test_hacs_metadata_matches_custom_integration_contract():
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.6.1"
+    assert manifest["version"] == "0.6.2"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -255,7 +255,8 @@ def test_readmes_document_registry_backed_hacs_device_setup():
         "호환 소스 기기가 하나면 자동으로 선택하고, 둘 이상이면 기기 이름 선택 목록을 표시합니다.",
         "`알림` 이벤트 엔티티와 상세 엔티티는 MQTT 장치와 분리된 별도 `iOS ANCS (...)` 장치에 등록됩니다.",
         "MQTT 장치를 `via_device`로 연결하지 않으며",
-        "retained `최근 알림` 상태를 새 알림으로 재생하지 않습니다.",
+        "MQTT 알림이 retained가 아니어도 Home Assistant 재시작 뒤 상세 센서가 복원됩니다.",
+        "저장된 세부정보를 새 이벤트로 재생하지 않습니다.",
         "엔티티 ID와 기록을 보존한 채 별도 iOS ANCS 장치로 이동합니다.",
     )
     english_phrases = (
@@ -263,7 +264,8 @@ def test_readmes_document_registry_backed_hacs_device_setup():
         "One compatible source device is selected automatically; multiple source devices are shown by name.",
         "The `Notification` event entity and detail entities are registered on a separate `iOS ANCS (...)` device",
         "not through a `via_device` relationship",
-        "does not replay the retained `Last notification` state as a new event",
+        "detail sensors survive a Home Assistant restart even when the source MQTT notification is not retained",
+        "never replays the saved details as a new event",
         "preserves its entity IDs and history while moving its companion entities",
     )
 

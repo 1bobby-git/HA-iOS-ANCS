@@ -59,6 +59,16 @@ class RuntimeStub:
         self.notification_listener_removed = False
         self.availability_listener_removed = False
 
+    def restore_notification(
+        self, notification: dict[str, Any] | None
+    ) -> bool:
+        """Restore a saved notification for setup-entry tests."""
+
+        if notification is None:
+            return False
+        self.latest_notification = deepcopy(notification)
+        return True
+
     @callback
     def async_add_notification_listener(
         self,

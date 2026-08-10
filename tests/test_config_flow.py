@@ -741,7 +741,7 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.1",
+        "version": "0.6.2",
     }
 
 
