@@ -53,6 +53,12 @@ class AncsRuntime(Protocol):
         """Return a defensive copy of the latest accepted notification."""
         raise NotImplementedError
 
+    def restore_notification(
+        self, notification: dict[str, Any] | None
+    ) -> bool:
+        """Restore a saved notification without replaying it as an event."""
+        raise NotImplementedError
+
     async def async_start(self) -> None:
         """Start the runtime."""
         raise NotImplementedError
@@ -125,6 +131,19 @@ class AncsMqttRuntime:
             if self._latest_notification is None
             else deepcopy(self._latest_notification)
         )
+
+    def restore_notification(
+        self, notification: dict[str, Any] | None
+    ) -> bool:
+        """Restore a saved notification without queuing an event replay."""
+
+        if notification is None:
+            return False
+        restored = parse_notification_data(deepcopy(notification), self._seen)
+        if restored is None:
+            return False
+        self._latest_notification = deepcopy(restored)
+        return True
 
     async def async_start(self) -> None:
         """Wait for MQTT and subscribe to notification and availability topics."""
@@ -295,6 +314,19 @@ class AncsSourceRuntime:
             if self._latest_notification is None
             else deepcopy(self._latest_notification)
         )
+
+    def restore_notification(
+        self, notification: dict[str, Any] | None
+    ) -> bool:
+        """Restore a saved notification without queuing an event replay."""
+
+        if notification is None:
+            return False
+        restored = parse_notification_data(deepcopy(notification), self._seen)
+        if restored is None:
+            return False
+        self._latest_notification = deepcopy(restored)
+        return True
 
     async def async_start(self) -> None:
         """Resolve the source entity, seed dedupe, and track state changes."""

@@ -2,21 +2,39 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 
 from .const import (
     CONFIG_ENTRY_VERSION,
     CONF_BASE_TOPIC,
     CONF_MQTT_DEVICE_IDENTIFIER,
     CONF_SOURCE_ENTITY_UNIQUE_ID,
+    DOMAIN,
 )
 from .device import async_ensure_integration_device, entry_title
 from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
+_STORAGE_VERSION = 1
+
+
+def _notification_store(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> Store[dict[str, Any]]:
+    """Return the per-entry last-notification store."""
+
+    return Store(
+        hass,
+        _STORAGE_VERSION,
+        f"{DOMAIN}.{entry.entry_id}.last_notification",
+        private=True,
+    )
 
 
 async def async_migrate_entry(
@@ -51,8 +69,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up iOS ANCS from a config entry."""
 
     async_ensure_integration_device(hass, entry)
+    store = _notification_store(hass, entry)
+    stored_notification = await store.async_load()
     runtime = _runtime_from_entry(hass, entry)
+
+    restored_notification = runtime.restore_notification(stored_notification)
+
+    def persist_notification(notification: dict[str, Any]) -> None:
+        """Persist accepted details without delaying entity updates."""
+
+        hass.async_create_task(store.async_save(dict(notification)))
+
+    runtime.async_add_notification_listener(
+        persist_notification,
+        replay_pending=False,
+    )
     await runtime.async_start()
+    if not restored_notification and (
+        current_notification := runtime.latest_notification
+    ):
+        await store.async_save(current_notification)
     entry.runtime_data = runtime
 
     try:

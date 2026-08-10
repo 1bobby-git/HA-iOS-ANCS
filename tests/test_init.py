@@ -7,6 +7,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 
 from custom_components.ha_ios_ancs import async_setup_entry
 from custom_components.ha_ios_ancs.const import (
@@ -100,6 +101,144 @@ def test_setup_entry_uses_source_runtime_for_device_data(
         entry,
         EXPECTED_PLATFORMS,
     )
+
+
+def stored_notification(**overrides: object) -> dict[str, object]:
+    """Return a complete notification suitable for persistence tests."""
+
+    payload: dict[str, object] = {
+        "relay_id": "saved-relay",
+        "complete": True,
+        "pre_existing": False,
+        "app_id": "com.example.chat",
+        "event": "added",
+        "title": "Saved title",
+        "message": "Saved message",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_setup_entry_restores_saved_notification_without_event_replay(
+    registry_hass: HomeAssistant, run
+) -> None:
+    """Restore details after an HA restart without emitting a stale event."""
+
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(registered.entity.entity_id, "unknown")
+    entry = make_source_entry()
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    restored = stored_notification()
+
+    with patch.object(
+        Store,
+        "async_load",
+        new=AsyncMock(return_value=restored),
+    ):
+        assert run(async_setup_entry(hass, entry)) is True
+
+    runtime = entry.runtime_data
+    assert runtime.latest_notification == restored
+    events: list[dict[str, object]] = []
+    runtime.async_add_notification_listener(events.append)
+    assert events == []
+    run(runtime.async_stop())
+
+
+def test_setup_entry_persists_new_complete_notification(
+    registry_hass: HomeAssistant, run
+) -> None:
+    """Persist an accepted notification so detail entities survive restart."""
+
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    hass.states.async_set(registered.entity.entity_id, "unknown")
+    entry = make_source_entry()
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    save = AsyncMock()
+
+    with (
+        patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
+        patch.object(Store, "async_save", new=save),
+    ):
+        assert run(async_setup_entry(hass, entry)) is True
+        payload = stored_notification(relay_id="new-relay", title="New title")
+        hass.states.async_set(
+            registered.entity.entity_id,
+            payload["relay_id"],
+            payload,
+        )
+        run(hass.async_block_till_done())
+
+    save.assert_awaited_once_with(payload)
+    run(entry.runtime_data.async_stop())
+
+
+def test_setup_entry_persists_current_source_snapshot_on_start(
+    registry_hass: HomeAssistant, run
+) -> None:
+    """Capture the current source state when persistence is first installed."""
+
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    payload = stored_notification(relay_id="current-relay", title="Current title")
+    hass.states.async_set(
+        registered.entity.entity_id,
+        payload["relay_id"],
+        payload,
+    )
+    entry = make_source_entry()
+    with patch.object(
+        hass.config_entries,
+        "async_setup",
+        new=AsyncMock(return_value=True),
+    ):
+        run(hass.config_entries.async_add(entry))
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    save = AsyncMock()
+
+    with (
+        patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
+        patch.object(Store, "async_save", new=save),
+    ):
+        assert run(async_setup_entry(hass, entry)) is True
+
+    save.assert_awaited_once_with(payload)
+    events: list[dict[str, object]] = []
+    entry.runtime_data.async_add_notification_listener(events.append)
+    assert events == []
+    run(entry.runtime_data.async_stop())
 
 
 def test_setup_entry_keeps_legacy_direct_mqtt_runtime(
