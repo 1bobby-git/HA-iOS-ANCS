@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 EXPECTED_TARGETS = (
     ("ESP32", "esp32"),
     ("ESP32-C2", "esp32c2"),
@@ -52,23 +52,29 @@ def release_builds() -> list[tuple[str, str, Path]]:
     return builds
 
 
-def test_v033_version_anchors_are_on_release_surfaces():
+def test_v034_version_anchors_are_on_release_surfaces():
     checks = {
-        "CMakeLists.txt": 'set(PROJECT_VER "0.3.3")',
-        "tools/build.ps1": "[string]$Version = '0.3.3'",
-        "tools/build.sh": 'version="${VERSION:-0.3.3}"',
-        "tools/build_matrix.ps1": "[string]$Version = '0.3.3'",
-        "docs/manifests/ios-ancs.json": '"version": "0.3.3"',
-        "docs/manifests/esp32-c6.json": '"version": "0.3.3"',
-        "README.en.md": "All v0.3.3 images shown in the installer",
-        "docs/index.html": '<dd id="hero-version">v0.3.3</dd>',
-        "docs/app.js": 'validation: "v0.3.3',
+        "CMakeLists.txt": 'set(PROJECT_VER "0.3.4")',
+        "tools/build.ps1": "[string]$Version = '0.3.4'",
+        "tools/build.sh": 'version="${VERSION:-0.3.4}"',
+        "tools/build_matrix.ps1": "[string]$Version = '0.3.4'",
+        "docs/manifests/ios-ancs.json": '"version": "0.3.4"',
+        "docs/manifests/esp32-c6.json": '"version": "0.3.4"',
+        "README.en.md": "All v0.3.4 images shown in the installer",
+        "docs/index.html": '<dd id="hero-version">v0.3.4</dd>',
+        "docs/app.js": 'validation: "v0.3.4',
     }
     for relative_path, anchor in checks.items():
         assert anchor in read_text(ROOT / relative_path), relative_path
 
 
-def test_main_manifest_has_exactly_seven_unique_v033_chip_builds():
+def test_installer_initial_hash_matches_default_esp32_image():
+    assert '<span id="build-hash">SHA256 F52165844888</span>' in read_text(
+        ROOT / "docs" / "index.html"
+    )
+
+
+def test_main_manifest_has_exactly_seven_unique_v034_chip_builds():
     manifest = load_manifest(MAIN_MANIFEST)
     builds = manifest["builds"]
 

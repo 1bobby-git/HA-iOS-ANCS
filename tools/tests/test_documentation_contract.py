@@ -201,7 +201,7 @@ def test_hacs_metadata_matches_custom_integration_contract():
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.6.2"
+    assert manifest["version"] == "0.6.3"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -282,7 +282,9 @@ def test_readmes_document_companion_details_mqtt_coexistence_and_privacy():
     korean_phrases = (
         "MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다.",
         "별도 iOS ANCS 장치에 알림 이벤트",
-        "목적별 센서 25개와 엄격한 바이너리 센서 11개",
+        "목적별 센서 24개와 엄격한 바이너리 센서 12개",
+        "iPhone이 ANCS로 제공한 현지화된 Display Name을 우선 사용",
+        "기존 정적 매핑과 원본 앱 ID 순서로 폴백",
         "진단용 `원본 알림` 센서",
         "센서 상태는 최대 255자",
         "전체 원본 JSON은 속성에 유지됩니다.",
@@ -291,7 +293,9 @@ def test_readmes_document_companion_details_mqtt_coexistence_and_privacy():
     english_phrases = (
         "keeps MQTT Discovery entities unchanged and enabled",
         "On the separate iOS ANCS device",
-        "25 purpose-specific sensors and 11 strict binary sensors",
+        "24 purpose-specific sensors and 12 strict binary sensors",
+        "prefers the localized Display Name supplied by the iPhone over ANCS",
+        "falls back to the existing static mapping and then the original app ID",
         "diagnostic `Raw notification` sensor",
         "sensor state is limited to 255 characters",
         "complete raw JSON remains in attributes",
