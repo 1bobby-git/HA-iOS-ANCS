@@ -133,12 +133,20 @@ def test_firmware_tree_contains_only_the_current_publishable_images():
 def test_public_docs_tree_excludes_internal_plans_and_superseded_vendor_bundle():
     tracked = set(subprocess_output("git", "ls-files", "docs").splitlines())
 
-    assert not any(path.startswith("docs/superpowers/") for path in tracked)
     assert not any(path.startswith("docs/plans/") for path in tracked)
     assert not any(
         path.startswith("docs/vendor/esp-web-tools-10.4.0/")
         for path in tracked
     )
+
+
+def test_pages_workflow_excludes_internal_plans_from_public_artifact():
+    workflow = read_text(ROOT / ".github" / "workflows" / "pages.yml")
+
+    assert "mkdir -p pages-site" in workflow
+    assert "rsync -a --delete --exclude 'superpowers/' docs/ pages-site/" in workflow
+    assert "path: pages-site" in workflow
+    assert "path: docs" not in workflow
 
 
 def test_public_tree_excludes_internal_design_and_hardware_validation_logs():
