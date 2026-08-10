@@ -36,21 +36,21 @@ The project bridges iOS notifications into local Home Assistant automations thro
 
 Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
-## Supported Boards And v0.3.3 Build Facts
+## Supported Boards And v0.3.4 Build Facts
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.3 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+The shared firmware uses a 4 MB minimum flash layout. All v0.3.4 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
-| Target | Typical module/board | Factory image | v0.3.3 status |
+| Target | Typical module/board | Factory image | v0.3.4 status |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,425,616 bytes | Build verified; limited board flash/boot/AP proof |
-| `esp32c2` | ESP32-C2 | 1,445,488 bytes | Build verified |
-| `esp32c3` | ESP32-C3 | 1,634,528 bytes | Build verified |
-| `esp32c5` | ESP32-C5 | 1,779,664 bytes | Build verified |
-| `esp32c6` | ESP32-C6 | 1,779,680 bytes | Build verified; older hardware evidence is historical |
-| `esp32c61` | ESP32-C61 | 1,722,800 bytes | Build verified |
-| `esp32s3` | ESP32-S3 | 1,407,600 bytes | Build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,427,376 bytes | Build verified; limited board flash/boot/AP proof |
+| `esp32c2` | ESP32-C2 | 1,447,504 bytes | Build verified |
+| `esp32c3` | ESP32-C3 | 1,636,560 bytes | Build verified |
+| `esp32c5` | ESP32-C5 | 1,781,696 bytes | Build verified |
+| `esp32c6` | ESP32-C6 | 1,781,712 bytes | Build verified; older hardware evidence is historical |
+| `esp32c61` | ESP32-C61 | 1,724,816 bytes | Build verified |
+| `esp32s3` | ESP32-S3 | 1,409,392 bytes | Build verified |
 
-The table describes the published v0.3.3 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
+The table describes the published v0.3.4 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
 ## Home Assistant And HACS
 
@@ -62,7 +62,7 @@ Adding the HACS integration does not ask for an MQTT base topic. It uses the `La
 
 The `Notification` event entity and detail entities are registered on a separate `iOS ANCS (...)` device, not on the MQTT device and not through a `via_device` relationship. The MQTT and iOS ANCS devices remain independent even when they represent the same physical relay. The integration privately saves the last complete notification so detail sensors survive a Home Assistant restart even when the source MQTT notification is not retained. The event entity still emits only newly received notifications and never replays the saved details as a new event. Reconfiguring a legacy manual-topic entry preserves its entity IDs and history while moving its companion entities to the separate iOS ANCS device.
 
-The companion integration keeps MQTT Discovery entities unchanged and enabled. On the separate iOS ANCS device, it adds the notification event, 25 purpose-specific sensors and 11 strict binary sensors, plus a diagnostic `Raw notification` sensor. Text shown as a sensor state is limited to 255 characters; long values remain in the `full_value` attribute and the complete raw JSON remains in attributes. Notification titles and messages can be recorded by Home Assistant unless those entities are excluded from Recorder.
+The companion integration keeps MQTT Discovery entities unchanged and enabled. On the separate iOS ANCS device, it adds the notification event, 24 purpose-specific sensors and 12 strict binary sensors, plus a diagnostic `Raw notification` sensor. Text shown as a sensor state is limited to 255 characters; long values remain in the `full_value` attribute and the complete raw JSON remains in attributes. Notification titles and messages can be recorded by Home Assistant unless those entities are excluded from Recorder.
 
 Example automation:
 
@@ -72,7 +72,7 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 
 Before enabling it, replace `sensor.replace_with_your_last_notification_entity` with your discovered last-notification sensor and `notify.replace_with_your_mobile_app_service` with your mobile app notify service. The example forwards only new `relay_id` state changes and filters `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, and availability-restore transitions.
 
-Notification JSON preserves the original `app_id` and adds a friendly `app_name`. Unknown bundle identifiers fall back to the original ID. Representative mappings are in [App ID Reference](docs/APP_ID_REFERENCE.md).
+Notification JSON preserves the original `app_id` and adds a friendly `app_name`. The firmware prefers the localized Display Name supplied by the iPhone over ANCS. An app's first notification can require one extra ANCS lookup; later notifications in the same connection session use a bounded cache. If lookup fails, the complete notification is still delivered and falls back to the existing static mapping and then the original app ID. Representative fallback mappings are in [App ID Reference](docs/APP_ID_REFERENCE.md).
 
 ## Troubleshooting
 
