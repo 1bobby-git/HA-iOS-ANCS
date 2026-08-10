@@ -22,7 +22,9 @@ esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notificatio
     *out_payload = NULL;
     *out_length = 0;
 
-    const char *app_name = mqtt_app_name_lookup(notification->app_id);
+    const char *app_name = notification->app_name[0] != '\0'
+                               ? notification->app_name
+                               : mqtt_app_name_lookup(notification->app_id);
     const size_t text_length = strlen(notification->app_id) +
                                strlen(app_name) +
                                strlen(notification->title) +
@@ -41,8 +43,16 @@ esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notificatio
         return ESP_ERR_NO_MEM;
     }
 
-    const int serial_result =
-        notification_sink_format_json(notification, device_name, payload, capacity);
+    ancs_notification_t enriched = *notification;
+    const size_t app_name_length = strlen(app_name);
+    if (app_name_length > CONFIG_ANCS_APP_NAME_MAX) {
+        free(payload);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    memcpy(enriched.app_name, app_name, app_name_length + 1U);
+
+    const int serial_result = notification_sink_format_json(
+        &enriched, device_name, payload, capacity);
     if (serial_result != 0) {
         free(payload);
         return ESP_ERR_INVALID_SIZE;
@@ -57,10 +67,9 @@ esp_err_t mqtt_payload_build_notification(const ancs_notification_t *notificatio
 
     const int written = snprintf(payload + length - 1U,
                                  capacity - length + 1U,
-                                 ",\"app_name\":\"%s\",\"relay_id\":\"%s\",\"source\":\""
+                                 ",\"relay_id\":\"%s\",\"source\":\""
                                  ANCS_SOURCE_ID
                                  "\",\"published_at_ms\":%" PRIu64 "}",
-                                 app_name,
                                  relay_id,
                                  uptime_ms);
     if (written < 0 || (size_t)written >= capacity - length + 1U) {

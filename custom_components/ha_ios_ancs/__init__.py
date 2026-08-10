@@ -45,6 +45,18 @@ async def async_migrate_entry(
     if entry.version > CONFIG_ENTRY_VERSION:
         return False
     if entry.version < CONFIG_ENTRY_VERSION:
+        entity_registry = er.async_get(hass)
+        for registry_entry in er.async_entries_for_config_entry(
+            entity_registry, entry.entry_id
+        ):
+            if (
+                registry_entry.domain == Platform.SENSOR
+                and registry_entry.platform == DOMAIN
+                and registry_entry.unique_id.endswith(
+                    ":sensor:published_at_ms"
+                )
+            ):
+                entity_registry.async_remove(registry_entry.entity_id)
         hass.config_entries.async_update_entry(
             entry,
             title=entry_title(entry),

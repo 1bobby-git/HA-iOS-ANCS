@@ -1,0 +1,8 @@
+menu "ANCS app name resolver"
+
+config ANCS_APP_CACHE_CAPACITY
+    int "Session app display name cache entries"
+    default 16
+    range 1 64
+
+endmenu

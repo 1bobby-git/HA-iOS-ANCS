@@ -68,6 +68,12 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[AncsBinarySensorEntityDescription, ...] = (
         device_class=_PROBLEM,
     ),
     _description(
+        "app_name_truncated",
+        ("truncated", "app_name"),
+        diagnostic=True,
+        device_class=_PROBLEM,
+    ),
+    _description(
         "title_truncated",
         ("truncated", "title"),
         diagnostic=True,

@@ -66,6 +66,7 @@ TEST_CASE("notification JSON reports flag and truncation fields", "[ancs][json]"
 {
     ancs_notification_t notification = sample_notification();
     memset(s_json_output, 0, sizeof(s_json_output));
+    notification.app_name_truncated = true;
     notification.message_truncated = true;
 
     TEST_ASSERT_EQUAL(0,
@@ -76,7 +77,7 @@ TEST_CASE("notification JSON reports flag and truncation fields", "[ancs][json]"
     TEST_ASSERT_NOT_NULL(strstr(s_json_output, "\"important\":true"));
     TEST_ASSERT_NOT_NULL(strstr(
         s_json_output,
-        "\"truncated\":{\"app_id\":false,\"title\":false,\"subtitle\":false,\"message\":true}"));
+        "\"truncated\":{\"app_id\":false,\"app_name\":true,\"title\":false,\"subtitle\":false,\"message\":true}"));
 }
 
 TEST_CASE("invalid UTF-8 is replaced without producing invalid JSON", "[ancs][json]")
