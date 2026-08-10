@@ -40,6 +40,7 @@ EXPECTED_BINARY_SENSOR_KEYS = {
     "positive_action_available",
     "negative_action_available",
     "app_id_truncated",
+    "app_name_truncated",
     "title_truncated",
     "subtitle_truncated",
     "message_truncated",
@@ -54,6 +55,7 @@ EXPECTED_FIELD_PATHS = {
     "positive_action_available": ("positive_action_available",),
     "negative_action_available": ("negative_action_available",),
     "app_id_truncated": ("truncated", "app_id"),
+    "app_name_truncated": ("truncated", "app_name"),
     "title_truncated": ("truncated", "title"),
     "subtitle_truncated": ("truncated", "subtitle"),
     "message_truncated": ("truncated", "message"),
@@ -138,6 +140,7 @@ def test_binary_descriptions_cover_boolean_contract() -> None:
         assert descriptions[key].non_null_presence is False
     for key in {
         "app_id_truncated",
+        "app_name_truncated",
         "title_truncated",
         "subtitle_truncated",
         "message_truncated",
@@ -156,6 +159,7 @@ def test_binary_states_are_strict_and_null_safe(run) -> None:
         "positive_action_available": True,
         "truncated": {
             "app_id": False,
+            "app_name": True,
             "title": True,
             "subtitle": False,
             "message": True,
@@ -174,6 +178,7 @@ def test_binary_states_are_strict_and_null_safe(run) -> None:
         "positive_action_available": True,
         "negative_action_available": None,
         "app_id_truncated": False,
+        "app_name_truncated": True,
         "title_truncated": True,
         "subtitle_truncated": False,
         "message_truncated": True,
@@ -199,6 +204,7 @@ def test_malformed_nested_values_remain_safe_and_explicit(run) -> None:
     states = {entity.entity_description.key: entity.is_on for entity in entities}
 
     assert states["app_id_truncated"] is None
+    assert states["app_name_truncated"] is None
     assert states["title_truncated"] is None
     assert states["subtitle_truncated"] is None
     assert states["message_truncated"] is None
