@@ -77,6 +77,27 @@ async def async_register_mqtt_ancs_source(
     return RegisteredMqttSource(mqtt_entry, device, entity)
 
 
+async def async_register_mqtt_ancs_status(
+    hass: HomeAssistant,
+    registered: RegisteredMqttSource,
+    *,
+    entity_unique_id: str | None = None,
+) -> er.RegistryEntry:
+    mqtt_device_identifier = next(
+        identifier_value
+        for identifier_domain, identifier_value in registered.device.identifiers
+        if identifier_domain == "mqtt"
+    )
+    return er.async_get(hass).async_get_or_create(
+        "binary_sensor",
+        "mqtt",
+        entity_unique_id or f"{mqtt_device_identifier}_device_status",
+        config_entry=registered.config_entry,
+        device_id=registered.device.id,
+        suggested_object_id=f"{mqtt_device_identifier}_device_status",
+    )
+
+
 async def async_setup_ancs_platform(
     hass: HomeAssistant,
     entry: ConfigEntry,
