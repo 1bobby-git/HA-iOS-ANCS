@@ -25,7 +25,11 @@ from custom_components.ha_ios_ancs import async_setup_entry, async_unload_entry
 from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN, HA_ECHO_APP_ID
 from custom_components.ha_ios_ancs.runtime import AncsMqttRuntime, AncsSourceRuntime
 
-from tests.helpers import RegisteredMqttSource, async_register_mqtt_ancs_source
+from tests.helpers import (
+    RegisteredMqttSource,
+    async_register_mqtt_ancs_source,
+    async_register_mqtt_ancs_status,
+)
 
 
 EMPTY_DISCOVERY_KEYS: MappingProxyType[str, tuple[DiscoveryKey, ...]] = MappingProxyType({})
@@ -88,6 +92,28 @@ async def async_make_source_runtime(
     return runtime, notifications, availability
 
 
+async def async_make_source_runtime_with_status(
+    hass: HomeAssistant,
+    registered: RegisteredMqttSource,
+) -> tuple[AncsSourceRuntime, list[bool | None], str]:
+    mqtt_device_identifier = next(
+        value
+        for domain, value in registered.device.identifiers
+        if domain == "mqtt"
+    )
+    status = await async_register_mqtt_ancs_status(hass, registered)
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        mqtt_device_identifier,
+    )
+    ble_updates: list[bool | None] = []
+    runtime.async_add_ble_connection_listener(ble_updates.append)
+    await runtime.async_start()
+    await hass.async_block_till_done()
+    return runtime, ble_updates, status.entity_id
+
+
 def mqtt_message(topic: str, payload: str | bytes) -> ReceiveMessage:
     return ReceiveMessage(
         topic=topic,
@@ -131,11 +157,15 @@ async def start_runtime_with_subscribe_patch(
 
 def test_runtime_subscribes_exact_topics_with_qos_one(hass: HomeAssistant, run) -> None:
     runtime, subscriptions, _ = run(start_runtime_with_subscribe_patch(hass))
+    ble_updates: list[bool | None] = []
+    runtime.async_add_ble_connection_listener(ble_updates.append)
 
     assert [(topic, qos) for topic, _, qos in subscriptions] == [
         ("ios_ancs/notification", 1),
         ("ios_ancs/availability", 1),
     ]
+    assert runtime.ble_connected is None
+    assert ble_updates == []
     run(runtime.async_stop())
 
 
@@ -789,6 +819,154 @@ def test_source_runtime_unknown_state_recovers_from_unavailable_without_dispatch
 
     assert notifications == [notification]
     run(runtime.async_stop())
+
+
+def test_source_runtime_seeds_initial_ble_connection_false(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    status = run(async_register_mqtt_ancs_status(hass, registered))
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": False})
+
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    ble_updates: list[bool | None] = []
+    runtime.async_add_ble_connection_listener(ble_updates.append)
+    run(runtime.async_start())
+
+    assert runtime.ble_connected is False
+    assert ble_updates == [False]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_tracks_ble_connection_transition_to_true(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    status = run(async_register_mqtt_ancs_status(hass, registered))
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": False})
+    runtime, ble_updates, status_entity_id = run(
+        async_make_source_runtime_with_status(hass, registered)
+    )
+    ble_updates.clear()
+
+    hass.states.async_set(status_entity_id, "on", {"ble_connected": True})
+    run(hass.async_block_till_done())
+
+    assert runtime.ble_connected is True
+    assert ble_updates == [True]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_treats_malformed_ble_connection_attribute_as_unknown(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    status = run(async_register_mqtt_ancs_status(hass, registered))
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": True})
+    runtime, ble_updates, status_entity_id = run(
+        async_make_source_runtime_with_status(hass, registered)
+    )
+    ble_updates.clear()
+
+    hass.states.async_set(status_entity_id, "on", {"ble_connected": "true"})
+    run(hass.async_block_till_done())
+
+    assert runtime.ble_connected is None
+    assert ble_updates == [None]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_treats_unavailable_ble_status_as_unknown(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    status = run(async_register_mqtt_ancs_status(hass, registered))
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": False})
+    runtime, ble_updates, status_entity_id = run(
+        async_make_source_runtime_with_status(hass, registered)
+    )
+    ble_updates.clear()
+
+    hass.states.async_set(
+        status_entity_id,
+        STATE_UNAVAILABLE,
+        {"ble_connected": True},
+    )
+    run(hass.async_block_till_done())
+
+    assert runtime.ble_connected is None
+    assert ble_updates == [None]
+    run(runtime.async_stop())
+
+
+def test_source_runtime_removes_ble_listener_and_resets_on_stop(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    status = run(async_register_mqtt_ancs_status(hass, registered))
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": False})
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    ble_updates: list[bool | None] = []
+    remove = runtime.async_add_ble_connection_listener(ble_updates.append)
+    run(runtime.async_start())
+    ble_updates.clear()
+
+    remove()
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": True})
+    run(hass.async_block_till_done())
+
+    assert runtime.ble_connected is True
+    assert ble_updates == []
+
+    run(runtime.async_stop())
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": False})
+    run(hass.async_block_till_done())
+
+    assert runtime.ble_connected is None
+    assert ble_updates == []
 
 
 @pytest.mark.parametrize(
