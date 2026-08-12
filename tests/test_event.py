@@ -51,13 +51,16 @@ class RuntimeStub:
         self.unique_id = unique_id
         self.device_entry = device_entry
         self.latest_notification = deepcopy(latest_notification)
+        self.ble_connected: bool | None = None
         self.async_start = AsyncMock()
         self.async_stop = AsyncMock()
         self._notification_listeners: list[Callable[[dict[str, Any]], None]] = []
         self._availability_listeners: list[Callable[[bool | None], None]] = []
+        self._ble_connection_listeners: list[Callable[[bool | None], None]] = []
         self.notification_replay_pending: bool | None = None
         self.notification_listener_removed = False
         self.availability_listener_removed = False
+        self.ble_connection_listener_removed = False
 
     def restore_notification(
         self, notification: dict[str, Any] | None
@@ -98,6 +101,20 @@ class RuntimeStub:
             self.availability_listener_removed = True
             if listener in self._availability_listeners:
                 self._availability_listeners.remove(listener)
+
+        return remove_listener
+
+    @callback
+    def async_add_ble_connection_listener(
+        self, listener: Callable[[bool | None], None]
+    ) -> CALLBACK_TYPE:
+        self._ble_connection_listeners.append(listener)
+
+        @callback
+        def remove_listener() -> None:
+            self.ble_connection_listener_removed = True
+            if listener in self._ble_connection_listeners:
+                self._ble_connection_listeners.remove(listener)
 
         return remove_listener
 
@@ -375,7 +392,7 @@ def test_all_companion_platforms_share_owned_device_and_unload_cleanly(
 
     registry = entity_registry.async_get(hass)
     assert len(sensor_ids) == 23
-    assert len(binary_sensor_ids) == 12
+    assert len(binary_sensor_ids) == 13
     assert len(event_ids) == 1
     companion_device_ids = {
         registry_entry.device_id
@@ -483,6 +500,7 @@ def test_all_companion_platforms_share_owned_device_and_unload_cleanly(
     assert set(remaining_states.values()) == {STATE_UNAVAILABLE}
     assert runtime._notification_listeners == []
     assert runtime._availability_listeners == []
+    assert runtime._ble_connection_listeners == []
     runtime.async_stop.assert_awaited_once()
     assert hass.states.get(registered.entity.entity_id) is not None
     assert {

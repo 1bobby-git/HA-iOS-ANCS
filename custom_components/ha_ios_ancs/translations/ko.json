@@ -84,7 +84,8 @@
       "title_truncated": {"name": "제목 잘림"},
       "subtitle_truncated": {"name": "부제목 잘림"},
       "message_truncated": {"name": "내용 잘림"},
-      "has_error": {"name": "오류 발생"}
+      "has_error": {"name": "오류 발생"},
+      "ble_connected": {"name": "BLE 연결"}
     },
     "event": {
       "notification": {

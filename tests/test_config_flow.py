@@ -865,6 +865,7 @@ def test_translations_contract() -> None:
             "subtitle_truncated",
             "message_truncated",
             "has_error",
+            "ble_connected",
         },
         "event": {"notification"},
     }
@@ -921,3 +922,6 @@ def test_translations_contract() -> None:
     assert ko["entity"]["event"]["notification"]["name"] == "알림"
     assert ko["entity"]["sensor"]["message"]["name"] == "알림 내용"
     assert ko["entity"]["binary_sensor"]["has_error"]["name"] == "오류 발생"
+    assert strings["entity"]["binary_sensor"]["ble_connected"]["name"] == "BLE connection"
+    assert en["entity"]["binary_sensor"]["ble_connected"]["name"] == "BLE connection"
+    assert ko["entity"]["binary_sensor"]["ble_connected"]["name"] == "BLE 연결"
