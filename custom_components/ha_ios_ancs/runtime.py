@@ -27,12 +27,13 @@ from .const import (
     NOTIFICATION_TOPIC_SUFFIX,
 )
 from .notification import RelayIdWindow, parse_notification, parse_notification_data
-from .source import async_resolve_ancs_source
+from .source import async_resolve_ancs_source, async_resolve_ancs_status_entity
 
 _QOS = 1
 
 type NotificationListener = Callable[[dict[str, Any]], None]
 type AvailabilityListener = Callable[[bool | None], None]
+type BleConnectionListener = Callable[[bool | None], None]
 
 
 class AncsRuntime(Protocol):
@@ -41,6 +42,11 @@ class AncsRuntime(Protocol):
     @property
     def available(self) -> bool | None:
         """Return current source availability."""
+        raise NotImplementedError
+
+    @property
+    def ble_connected(self) -> bool | None:
+        """Return current BLE connection state."""
         raise NotImplementedError
 
     @property
@@ -82,6 +88,12 @@ class AncsRuntime(Protocol):
         """Add an availability listener."""
         raise NotImplementedError
 
+    def async_add_ble_connection_listener(
+        self, listener: BleConnectionListener
+    ) -> CALLBACK_TYPE:
+        """Add a BLE connection listener."""
+        raise NotImplementedError
+
 
 def _get_mqtt_api() -> Any:
     from homeassistant.components import mqtt
@@ -105,9 +117,11 @@ class AncsMqttRuntime:
             maxlen=DEFAULT_RELAY_ID_WINDOW_SIZE
         )
         self._availability_listeners: list[AvailabilityListener] = []
+        self._ble_connection_listeners: list[BleConnectionListener] = []
         self._unsubscribes: list[CALLBACK_TYPE] = []
         self._start_lock = asyncio.Lock()
         self._available: bool | None = None
+        self._ble_connected: bool | None = None
         self._latest_notification: dict[str, Any] | None = None
 
     @property
@@ -115,6 +129,12 @@ class AncsMqttRuntime:
         """Return current device availability, or None when unknown."""
 
         return self._available
+
+    @property
+    def ble_connected(self) -> bool | None:
+        """Return current BLE connection state, or None when unknown."""
+
+        return self._ble_connected
 
     @property
     def unique_id(self) -> str:
@@ -193,6 +213,8 @@ class AncsMqttRuntime:
             self._notification_replay_listeners.clear()
             self._pending_notifications.clear()
             self._availability_listeners.clear()
+            self._ble_connection_listeners.clear()
+            self._ble_connected = None
             self._latest_notification = None
 
     @callback
@@ -231,6 +253,21 @@ class AncsMqttRuntime:
         def remove_listener() -> None:
             if listener in self._availability_listeners:
                 self._availability_listeners.remove(listener)
+
+        return remove_listener
+
+    @callback
+    def async_add_ble_connection_listener(
+        self, listener: BleConnectionListener
+    ) -> CALLBACK_TYPE:
+        """Add a BLE connection listener and return a removal callback."""
+
+        self._ble_connection_listeners.append(listener)
+
+        @callback
+        def remove_listener() -> None:
+            if listener in self._ble_connection_listeners:
+                self._ble_connection_listeners.remove(listener)
 
         return remove_listener
 
@@ -288,9 +325,12 @@ class AncsSourceRuntime:
             maxlen=DEFAULT_RELAY_ID_WINDOW_SIZE
         )
         self._availability_listeners: list[AvailabilityListener] = []
+        self._ble_connection_listeners: list[BleConnectionListener] = []
         self._unsubscribe: CALLBACK_TYPE | None = None
+        self._status_unsubscribe: CALLBACK_TYPE | None = None
         self._start_lock = asyncio.Lock()
         self._available: bool | None = None
+        self._ble_connected: bool | None = None
         self._latest_notification: dict[str, Any] | None = None
 
     @property
@@ -298,6 +338,12 @@ class AncsSourceRuntime:
         """Return whether the MQTT source entity is available."""
 
         return self._available
+
+    @property
+    def ble_connected(self) -> bool | None:
+        """Return current BLE connection state, or None when unknown."""
+
+        return self._ble_connected
 
     @property
     def unique_id(self) -> str:
@@ -365,6 +411,21 @@ class AncsSourceRuntime:
                 source.entity_id,
                 self._handle_source_state_change,
             )
+            status_entity_id = async_resolve_ancs_status_entity(
+                self._hass,
+                self._mqtt_device_identifier,
+            )
+            if status_entity_id is not None:
+                self._set_ble_connected(
+                    self._ble_connected_from_state(
+                        self._hass.states.get(status_entity_id)
+                    )
+                )
+                self._status_unsubscribe = async_track_state_change_event(
+                    self._hass,
+                    status_entity_id,
+                    self._handle_status_state_change,
+                )
 
     async def async_stop(self) -> None:
         """Remove the source listener and integration-owned callbacks."""
@@ -373,10 +434,15 @@ class AncsSourceRuntime:
             if self._unsubscribe is not None:
                 self._unsubscribe()
                 self._unsubscribe = None
+            if self._status_unsubscribe is not None:
+                self._status_unsubscribe()
+                self._status_unsubscribe = None
             self._notification_listeners.clear()
             self._notification_replay_listeners.clear()
             self._pending_notifications.clear()
             self._availability_listeners.clear()
+            self._ble_connection_listeners.clear()
+            self._ble_connected = None
             self._latest_notification = None
 
     @callback
@@ -415,6 +481,21 @@ class AncsSourceRuntime:
         def remove_listener() -> None:
             if listener in self._availability_listeners:
                 self._availability_listeners.remove(listener)
+
+        return remove_listener
+
+    @callback
+    def async_add_ble_connection_listener(
+        self, listener: BleConnectionListener
+    ) -> CALLBACK_TYPE:
+        """Add a BLE connection listener and return a removal callback."""
+
+        self._ble_connection_listeners.append(listener)
+
+        @callback
+        def remove_listener() -> None:
+            if listener in self._ble_connection_listeners:
+                self._ble_connection_listeners.remove(listener)
 
         return remove_listener
 
@@ -461,6 +542,16 @@ class AncsSourceRuntime:
             listener(deepcopy(notification))
 
     @callback
+    def _handle_status_state_change(
+        self, event: Event[EventStateChangedData]
+    ) -> None:
+        """Dispatch BLE connection state changes from MQTT status entity."""
+
+        self._set_ble_connected(
+            self._ble_connected_from_state(event.data["new_state"])
+        )
+
+    @callback
     def _set_available(self, available: bool) -> None:
         """Update availability and notify listeners only on a transition."""
 
@@ -469,3 +560,24 @@ class AncsSourceRuntime:
         self._available = available
         for listener in tuple(self._availability_listeners):
             listener(available)
+
+    @staticmethod
+    def _ble_connected_from_state(state: State | None) -> bool | None:
+        """Derive nullable BLE connection state from a status entity state."""
+
+        if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return None
+        ble_connected = state.attributes.get("ble_connected")
+        if isinstance(ble_connected, bool):
+            return ble_connected
+        return None
+
+    @callback
+    def _set_ble_connected(self, ble_connected: bool | None) -> None:
+        """Update BLE connection state and notify listeners on transitions."""
+
+        if self._ble_connected is ble_connected:
+            return
+        self._ble_connected = ble_connected
+        for listener in tuple(self._ble_connection_listeners):
+            listener(ble_connected)
