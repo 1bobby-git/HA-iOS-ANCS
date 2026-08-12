@@ -805,8 +805,22 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.5",
+        "version": "0.6.6",
     }
+
+
+def test_release_066_contract() -> None:
+    manifest = json.loads(
+        (ROOT / "custom_components/ha_ios_ancs/manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    readme_ko = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme_en = (ROOT / "README.en.md").read_text(encoding="utf-8")
+
+    assert manifest["version"] == "0.6.6"
+    assert "BLE 연결" in readme_ko
+    assert "BLE connection" in readme_en
 
 
 def test_translations_contract() -> None:
