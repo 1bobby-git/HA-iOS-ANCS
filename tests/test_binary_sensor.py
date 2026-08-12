@@ -8,7 +8,7 @@ from unittest.mock import patch
 from homeassistant.components import binary_sensor as binary_sensor_component
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, STATE_OFF, STATE_ON, STATE_UNKNOWN
 from homeassistant.helpers import device_registry, entity_registry
 
 from custom_components.ha_ios_ancs import binary_sensor as ancs_binary_sensor
@@ -28,6 +28,7 @@ from custom_components.ha_ios_ancs.runtime import AncsMqttRuntime, AncsSourceRun
 from tests.helpers import (
     EMPTY_DISCOVERY_KEYS,
     async_register_mqtt_ancs_source,
+    async_register_mqtt_ancs_status,
     async_setup_ancs_platform,
 )
 
@@ -45,6 +46,10 @@ EXPECTED_BINARY_SENSOR_KEYS = {
     "subtitle_truncated",
     "message_truncated",
     "has_error",
+    "ble_connected",
+}
+EXPECTED_NOTIFICATION_BINARY_SENSOR_KEYS = EXPECTED_BINARY_SENSOR_KEYS - {
+    "ble_connected"
 }
 
 EXPECTED_FIELD_PATHS = {
@@ -68,6 +73,7 @@ class RuntimeStub:
         self.available = True
         self.device_entry = None
         self.latest_notification = deepcopy(payload)
+        self.ble_connected: bool | None = None
 
 
 def entry_with_runtime(payload: dict[str, Any]) -> SimpleNamespace:
@@ -124,8 +130,10 @@ def mqtt_registry_snapshot(hass) -> set[tuple[str, object, str | None]]:
 def test_binary_descriptions_cover_boolean_contract() -> None:
     assert {
         description.key for description in BINARY_SENSOR_DESCRIPTIONS
-    } == EXPECTED_BINARY_SENSOR_KEYS
-    assert len(BINARY_SENSOR_DESCRIPTIONS) == len(EXPECTED_BINARY_SENSOR_KEYS)
+    } == EXPECTED_NOTIFICATION_BINARY_SENSOR_KEYS
+    assert len(BINARY_SENSOR_DESCRIPTIONS) == len(
+        EXPECTED_NOTIFICATION_BINARY_SENSOR_KEYS
+    )
     assert {
         description.key: description.path
         for description in BINARY_SENSOR_DESCRIPTIONS
@@ -136,7 +144,7 @@ def test_binary_descriptions_cover_boolean_contract() -> None:
         for description in BINARY_SENSOR_DESCRIPTIONS
     }
     assert descriptions["has_error"].non_null_presence is True
-    for key in EXPECTED_BINARY_SENSOR_KEYS - {"has_error"}:
+    for key in EXPECTED_NOTIFICATION_BINARY_SENSOR_KEYS - {"has_error"}:
         assert descriptions[key].non_null_presence is False
     for key in {
         "app_id_truncated",
@@ -183,6 +191,7 @@ def test_binary_states_are_strict_and_null_safe(run) -> None:
         "subtitle_truncated": False,
         "message_truncated": True,
         "has_error": False,
+        "ble_connected": None,
     }
 
     by_key = {entity.entity_description.key: entity for entity in entities}
@@ -190,7 +199,8 @@ def test_binary_states_are_strict_and_null_safe(run) -> None:
     with_error["error"] = {"code": -10, "name": "timeout"}
     with patch.object(AncsNotificationBinarySensor, "async_write_ha_state"):
         for entity in entities:
-            entity._handle_notification(with_error)
+            if isinstance(entity, AncsNotificationBinarySensor):
+                entity._handle_notification(with_error)
     assert by_key["has_error"].is_on is True
 
 
@@ -280,8 +290,81 @@ def test_source_binary_sensors_use_separate_device_without_mutating_mqtt(
 
     run(binary_sensor_component.async_unload_entry(hass, entry))
     run(runtime.async_stop())
+
+
+def test_source_ble_connection_binary_sensor_tracks_status_without_mutating_mqtt(
+    registry_hass, run
+) -> None:
+    hass = registry_hass
+    registered = run(
+        async_register_mqtt_ancs_source(
+            hass,
+            "ios_ancs_A1B2C3",
+            device_name="Kitchen Relay",
+        )
+    )
+    status = run(async_register_mqtt_ancs_status(hass, registered))
+    hass.states.async_set(registered.entity.entity_id, STATE_UNKNOWN)
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": False})
+    before = mqtt_registry_snapshot(hass)
+    entry = source_entry()
+    runtime = AncsSourceRuntime(
+        hass,
+        registered.entity.unique_id,
+        "ios_ancs_A1B2C3",
+    )
+    run(runtime.async_start())
+
+    _, entity_ids = run(
+        async_setup_ancs_platform(
+            hass,
+            entry,
+            runtime,
+            binary_sensor_component,
+            ancs_binary_sensor,
+            binary_sensor_component.DOMAIN,
+        )
+    )
+
+    registry = entity_registry.async_get(hass)
+    ble_entry = next(
+        item
+        for item in entity_registry.async_entries_for_config_entry(
+            registry, entry.entry_id
+        )
+        if item.unique_id == "ios_ancs_A1B2C3:binary_sensor:ble_connected"
+    )
+    assert ble_entry.entity_id in entity_ids
+    assert len(entity_ids) == len(EXPECTED_BINARY_SENSOR_KEYS)
+    ble_state = hass.states.get(ble_entry.entity_id)
+    assert ble_state is not None
+    assert ble_state.state == STATE_OFF
+
+    assert ble_entry.device_id is not None
+    assert ble_entry.device_id != registered.device.id
+    companion_device = device_registry.async_get(hass).async_get(
+        ble_entry.device_id
+    )
+    assert companion_device is not None
+    assert companion_device.identifiers == {(DOMAIN, entry.entry_id)}
+    assert companion_device.via_device_id is None
     assert mqtt_registry_snapshot(hass) == before
-    assert entity_registry.async_get(hass).async_get(registered.entity.entity_id) is not None
+
+    hass.states.async_set(status.entity_id, "on", {"ble_connected": True})
+    run(hass.async_block_till_done())
+
+    ble_state = hass.states.get(ble_entry.entity_id)
+    assert ble_state is not None
+    assert ble_state.state == STATE_ON
+    assert mqtt_registry_snapshot(hass) == before
+
+    run(binary_sensor_component.async_unload_entry(hass, entry))
+    run(runtime.async_stop())
+    assert mqtt_registry_snapshot(hass) == before
+    assert (
+        entity_registry.async_get(hass).async_get(registered.entity.entity_id)
+        is not None
+    )
 
 
 def test_legacy_binary_sensors_share_one_integration_device(

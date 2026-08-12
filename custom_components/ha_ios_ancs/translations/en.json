@@ -84,7 +84,8 @@
       "title_truncated": {"name": "Title truncated"},
       "subtitle_truncated": {"name": "Subtitle truncated"},
       "message_truncated": {"name": "Message truncated"},
-      "has_error": {"name": "Error present"}
+      "has_error": {"name": "Error present"},
+      "ble_connected": {"name": "BLE connection"}
     },
     "event": {
       "notification": {
