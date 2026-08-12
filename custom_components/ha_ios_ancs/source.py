@@ -115,3 +115,32 @@ def async_resolve_ancs_source(
         device_entry,
         mqtt_device_identifier,
     )
+
+
+@callback
+def async_resolve_ancs_status_entity(
+    hass: HomeAssistant,
+    mqtt_device_identifier: str,
+) -> str | None:
+    """Resolve the MQTT-discovered ANCS device status entity."""
+
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        Platform.BINARY_SENSOR,
+        MQTT_DOMAIN,
+        f"{mqtt_device_identifier}_device_status",
+    )
+    if entity_id is None:
+        return None
+
+    entity_entry = entity_registry.async_get(entity_id)
+    if entity_entry is None or entity_entry.device_id is None:
+        return None
+
+    device_entry = dr.async_get(hass).async_get(entity_entry.device_id)
+    if device_entry is None:
+        return None
+    if (MQTT_DOMAIN, mqtt_device_identifier) not in device_entry.identifiers:
+        return None
+
+    return entity_entry.entity_id
