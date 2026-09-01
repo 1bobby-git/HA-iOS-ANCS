@@ -275,4 +275,4 @@ replace(
 replace(
     "components/portal_http/portal_http.c",
     "static esp_err_t send_json(httpd_req_t *req, const char *json)\n"
-    "{\n",
+    "{\n"
