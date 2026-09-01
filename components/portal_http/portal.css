@@ -277,6 +277,37 @@ h3 {
   background: var(--color-danger);
 }
 
+.status-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.status-actions strong,
+.status-actions small {
+  display: block;
+}
+
+.status-actions strong {
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+}
+
+.status-actions small {
+  max-width: 560px;
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.status-actions .button {
+  min-width: 164px;
+}
+
 .setup-form {
   padding-bottom: 20px;
 }

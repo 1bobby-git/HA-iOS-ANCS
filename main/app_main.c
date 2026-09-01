@@ -27,7 +27,10 @@
 #define APP_EVENT_QUEUE_LENGTH 16
 #define APP_COORDINATOR_STACK 6144
 #define APP_COORDINATOR_PRIORITY 6
-#define APP_MQTT_RETRY_MS 5000
+#define APP_MQTT_RETRY_INITIAL_MS 5000U
+#define APP_MQTT_RETRY_SECOND_MS 15000U
+#define APP_MQTT_RETRY_THIRD_MS 30000U
+#define APP_MQTT_RETRY_MAX_MS 60000U
 #define APP_BOND_POLL_MS 1000
 #define APP_RESTART_DELAY_MS 750
 #define APP_CONFIG_HANDOFF_DELAY_MS 750
@@ -61,6 +64,8 @@ typedef struct {
     bool mqtt_started;
     mqtt_relay_device_info_t device_info;
     uint32_t active_sta_attempt_generation;
+    uint8_t mqtt_retry_attempt;
+    uint32_t mqtt_retry_delay_ms;
 } app_coordinator_state_t;
 
 typedef struct {
@@ -68,6 +73,8 @@ typedef struct {
     bool config_valid;
     bool mqtt_initialized;
     bool mqtt_started;
+    uint8_t mqtt_retry_attempt;
+    uint32_t mqtt_retry_delay_ms;
 } app_runtime_snapshot_t;
 
 static app_coordinator_state_t s_app;
@@ -222,6 +229,8 @@ static app_runtime_snapshot_t app_runtime_snapshot(void)
         .config_valid = s_app.config_valid,
         .mqtt_initialized = s_app.mqtt_initialized,
         .mqtt_started = s_app.mqtt_started,
+        .mqtt_retry_attempt = s_app.mqtt_retry_attempt,
+        .mqtt_retry_delay_ms = s_app.mqtt_retry_delay_ms,
     };
     app_state_unlock();
     return snapshot;
@@ -245,13 +254,31 @@ static esp_err_t portal_status(portal_http_system_status_t *out, void *context)
     const ancs_client_enrollment_status_t ble =
         ancs_client_get_enrollment_status();
     mqtt_relay_counters_t counters = {0};
+    mqtt_relay_connection_status_t mqtt = {0};
     mqtt_relay_get_counters(&counters);
+    mqtt_relay_get_connection_status(&mqtt);
 
     *out = (portal_http_system_status_t) {
-        .mqtt_connected = app.state.mqtt_connected,
+        .mqtt_connected = mqtt.connected,
+        .mqtt_connecting = mqtt.connecting,
+        .mqtt_retry_attempt = app.mqtt_retry_attempt,
+        .mqtt_retry_delay_ms = app.mqtt_retry_delay_ms,
+        .mqtt_error_type = mqtt.error_type,
+        .mqtt_last_esp_error = mqtt.last_esp_error,
+        .mqtt_last_tls_error = mqtt.last_tls_error,
+        .mqtt_last_socket_errno = mqtt.last_socket_errno,
+        .mqtt_connect_return_code = mqtt.connect_return_code,
+        .mqtt_last_error_at_ms = mqtt.last_error_at_ms,
         .ble_bonded = ble.has_bond,
         .ble_connected = ble.connected,
         .enroll_window_open = ble.enroll_active,
+        .ble_passkey = ble.enroll_active
+                           ? ancs_client_ble_passkey()
+                           : 0U,
+        .ble_pairing_repair_required =
+            ble.pairing_repair_required,
+        .ble_auth_failure_count = ble.auth_failure_count,
+        .ble_auth_error = ble.auth_error,
         .replace_pending = ble.replace_pending,
         .replace_failed = ble.last_replace_error != ESP_OK,
         .replace_error_code = ble.last_replace_error,
@@ -270,7 +297,9 @@ static esp_err_t portal_mqtt_test(void *context)
     if (!app.config_valid || !app.state.wifi_connected) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (app.state.mqtt_connected) {
+    mqtt_relay_connection_status_t mqtt = {0};
+    mqtt_relay_get_connection_status(&mqtt);
+    if (mqtt.connected || mqtt.connecting) {
         return ESP_OK;
     }
 
@@ -278,6 +307,22 @@ static esp_err_t portal_mqtt_test(void *context)
         .type = APP_EVENT_MQTT_RETRY,
     };
     return app_post(&message) ? ESP_OK : ESP_ERR_TIMEOUT;
+}
+
+static esp_err_t portal_test_notification(void *context)
+{
+    (void)context;
+    char device_name[PROVISION_MQTT_CLIENT_ID_MAX + 1] = {0};
+    app_state_lock();
+    const bool configured = s_app.config_valid;
+    (void)strlcpy(device_name,
+                  s_app.config.mqtt_client_id,
+                  sizeof(device_name));
+    app_state_unlock();
+    if (!configured || device_name[0] == '\0') {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return mqtt_relay_publish_test_notification(device_name);
 }
 
 static esp_err_t portal_reconnect(const provision_config_t *config, void *context)
@@ -336,6 +381,7 @@ static esp_err_t portal_reset_provisioning(void *context)
 static const portal_http_handlers_t s_portal_handlers = {
     .status = portal_status,
     .mqtt_test = portal_mqtt_test,
+    .test_notification = portal_test_notification,
     .reconnect = portal_reconnect,
     .ble_replace = portal_ble_replace,
     .restart = portal_restart,
@@ -397,11 +443,48 @@ static void stop_mqtt(void)
     }
 }
 
+static uint32_t mqtt_retry_delay_for_attempt(uint8_t attempt)
+{
+    if (attempt == 0U) {
+        return APP_MQTT_RETRY_INITIAL_MS;
+    }
+    if (attempt == 1U) {
+        return APP_MQTT_RETRY_SECOND_MS;
+    }
+    if (attempt == 2U) {
+        return APP_MQTT_RETRY_THIRD_MS;
+    }
+    return APP_MQTT_RETRY_MAX_MS;
+}
+
+static void reset_mqtt_retry_backoff(void)
+{
+    app_state_lock();
+    s_app.mqtt_retry_attempt = 0U;
+    s_app.mqtt_retry_delay_ms = 0U;
+    app_state_unlock();
+}
+
 static void schedule_mqtt_retry(void)
 {
-    if (s_mqtt_retry_timer != NULL) {
-        (void)xTimerReset(s_mqtt_retry_timer, 0);
+    if (s_mqtt_retry_timer == NULL ||
+        xTimerIsTimerActive(s_mqtt_retry_timer) != pdFALSE) {
+        return;
     }
+
+    app_state_lock();
+    const uint8_t attempt = s_app.mqtt_retry_attempt;
+    const uint32_t delay_ms =
+        mqtt_retry_delay_for_attempt(attempt);
+    if (s_app.mqtt_retry_attempt < 3U) {
+        ++s_app.mqtt_retry_attempt;
+    }
+    s_app.mqtt_retry_delay_ms = delay_ms;
+    app_state_unlock();
+
+    (void)xTimerChangePeriod(s_mqtt_retry_timer,
+                             pdMS_TO_TICKS(delay_ms),
+                             0);
 }
 
 static esp_err_t refresh_wifi_status(void)
@@ -434,6 +517,12 @@ static esp_err_t start_or_reconnect_mqtt(void)
     const app_runtime_snapshot_t app = app_runtime_snapshot();
     if (!app.config_valid || !app.state.wifi_connected) {
         return ESP_ERR_INVALID_STATE;
+    }
+
+    mqtt_relay_connection_status_t mqtt = {0};
+    mqtt_relay_get_connection_status(&mqtt);
+    if (mqtt.connected || mqtt.connecting) {
+        return ESP_OK;
     }
 
     esp_err_t error = ESP_OK;
@@ -558,6 +647,7 @@ static void handle_provisioning_event(provisioning_event_t event,
         if (s_mqtt_retry_timer != NULL) {
             (void)xTimerStop(s_mqtt_retry_timer, 0);
         }
+        reset_mqtt_retry_backoff();
         break;
 
     case PROVISION_EVENT_MQTT_FAILED:
@@ -628,6 +718,7 @@ static void handle_config_changed(provision_config_t *config)
     vTaskDelay(pdMS_TO_TICKS(APP_CONFIG_HANDOFF_DELAY_MS));
 
     stop_mqtt();
+    reset_mqtt_retry_backoff();
     (void)provisioning_runtime_stop_sta();
 
     app_state_lock();
@@ -656,6 +747,9 @@ static void handle_config_changed(provision_config_t *config)
         s_app.active_sta_attempt_generation = runtime.sta_attempt_generation;
         app_state_unlock();
     }
+
+    /* Keep the local portal open during the 10-minute verification window. */
+    handle_provisioning_event(PROVISION_EVENT_BOOT_HELD_3S, 0);
 }
 
 static void handle_reset_provisioning(void)
@@ -771,7 +865,7 @@ static esp_err_t initialize_coordinator(void)
                                     NULL,
                                     recovery_timer_callback);
     s_mqtt_retry_timer = xTimerCreate("mqtt_retry",
-                                      pdMS_TO_TICKS(APP_MQTT_RETRY_MS),
+                                      pdMS_TO_TICKS(APP_MQTT_RETRY_INITIAL_MS),
                                       pdFALSE,
                                       NULL,
                                       mqtt_retry_timer_callback);

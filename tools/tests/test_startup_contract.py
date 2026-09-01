@@ -73,6 +73,7 @@ def test_mqtt_is_started_only_after_wifi_ip():
     assert "start_or_reconnect_mqtt()" in wifi_case
     assert "!app.config_valid || !app.state.wifi_connected" in starter
     assert "mqtt_relay_start()" in starter
+    assert "mqtt.connected || mqtt.connecting" in starter
 
 
 def test_mqtt_enroll_request_runs_only_in_the_app_coordinator():
