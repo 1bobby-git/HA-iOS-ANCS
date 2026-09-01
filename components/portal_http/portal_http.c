@@ -475,7 +475,16 @@ static cJSON *build_status_response(void)
                    system.notifications_published) != ESP_OK ||
         add_number(system_json,
                    "notifications_dropped",
-                   system.notifications_dropped) != ESP_OK) {
+                   system.notifications_dropped) != ESP_OK ||
+        add_number(system_json,
+                   "notifications_dropped_offline",
+                   system.notifications_dropped_offline) != ESP_OK ||
+        add_number(system_json,
+                   "notifications_dropped_enqueue",
+                   system.notifications_dropped_enqueue) != ESP_OK ||
+        add_number(system_json,
+                   "notifications_dropped_policy",
+                   system.notifications_dropped_policy) != ESP_OK) {
         goto out_of_memory;
     }
 

@@ -36,11 +36,11 @@ The project bridges iOS notifications into local Home Assistant automations thro
 
 Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
-## Supported Boards And v0.3.5 Build Facts
+## Supported Boards And v0.3.6 Build Facts
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.5 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+The shared firmware uses a 4 MB minimum flash layout. All v0.3.6 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
-| Target | Typical module/board | Factory image | v0.3.5 status |
+| Target | Typical module/board | Factory image | v0.3.6 status |
 | --- | --- | ---: | --- |
 | `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,427,376 bytes | Build verified; limited board flash/boot/AP proof |
 | `esp32c2` | ESP32-C2 | 1,447,504 bytes | Build verified |
@@ -50,7 +50,7 @@ The shared firmware uses a 4 MB minimum flash layout. All v0.3.5 images shown in
 | `esp32c61` | ESP32-C61 | 1,724,816 bytes | Build verified |
 | `esp32s3` | ESP32-S3 | 1,409,392 bytes | Build verified |
 
-The table describes the published v0.3.5 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
+The table describes the published v0.3.6 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
 ## Home Assistant And HACS
 
