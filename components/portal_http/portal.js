@@ -102,6 +102,47 @@ function mqttErrorDetail(system, config) {
   return `${endpoint}${retry}`;
 }
 
+function relayDropBreakdown(system = {}) {
+  const detailKeys = [
+    'notifications_dropped_offline',
+    'notifications_dropped_enqueue',
+    'notifications_dropped_policy',
+  ];
+  const hasDetailedCounters = detailKeys.some((key) =>
+    Object.prototype.hasOwnProperty.call(system, key),
+  );
+  const offline = Number(system.notifications_dropped_offline || 0);
+  const enqueue = Number(system.notifications_dropped_enqueue || 0);
+  const policy = Number(system.notifications_dropped_policy || 0);
+  const calculatedTotal = offline + enqueue + policy;
+  const total = Number(system.notifications_dropped ?? calculatedTotal);
+  if (total <= 0) {
+    return { total: 0, offline, enqueue, policy, detail: null };
+  }
+  if (!hasDetailedCounters) {
+    return {
+      total,
+      offline,
+      enqueue,
+      policy,
+      detail: `부팅 후 제외 ${total}건 · 이전 펌웨어는 제외 원인을 구분하지 않습니다`,
+    };
+  }
+  const reasons = [];
+  if (offline > 0) reasons.push(`MQTT 미연결 ${offline}건`);
+  if (policy > 0) reasons.push(`정책 필터 ${policy}건`);
+  if (enqueue > 0) reasons.push(`내부 처리 실패 ${enqueue}건`);
+  const unclassified = Math.max(0, total - calculatedTotal);
+  if (unclassified > 0) reasons.push(`기타 ${unclassified}건`);
+  return {
+    total,
+    offline,
+    enqueue,
+    policy,
+    detail: `부팅 후 제외 ${total}건${reasons.length ? ` · ${reasons.join(' · ')}` : ''}`,
+  };
+}
+
 function hydrateForm(status, apName, deviceFamily) {
   if (formHydrated) return;
   const config = status.config || {};
@@ -192,17 +233,23 @@ function applyStatus(status) {
   }
 
   const published = Number(system.notifications_published || 0);
-  const dropped = Number(system.notifications_dropped || 0);
+  const dropStats = relayDropBreakdown(system);
   const relayReady = runtime.sta_has_ip && system.mqtt_connected && system.ble_connected;
+  const relayState = relayReady
+    ? 'ready'
+    : system.mqtt_connected || system.mqtt_connecting
+      ? 'pending'
+      : runtime.sta_has_ip
+        ? 'error'
+        : 'neutral';
   updateTile(
     'status-relay',
-    relayReady ? 'ready' : system.mqtt_connected ? 'pending' : 'neutral',
+    relayState,
     `${published}건 전송`,
-    dropped > 0
-      ? `연결 장애 중 ${dropped}건 제외`
-      : system.mqtt_connected
+    dropStats.detail
+      || (system.mqtt_connected
         ? '테스트 알림 또는 iPhone 알림을 기다리고 있습니다'
-        : 'MQTT 연결이 준비되면 Discovery가 자동 발행됩니다',
+        : 'MQTT 연결이 준비되면 Discovery가 자동 발행됩니다'),
   );
 
   const testButton = $('test-notification');
