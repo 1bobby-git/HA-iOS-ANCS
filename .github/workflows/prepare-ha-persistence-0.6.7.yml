@@ -32,6 +32,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           def replace(path: str, old: str, new: str, count: int = 1) -> None:
               target = Path(path)
@@ -55,32 +56,36 @@ jobs:
               "        )",
           )
 
-          replace(
-              "tests/test_init.py",
+          test_path = Path("tests/test_init.py")
+          test_source = test_path.read_text(encoding="utf-8")
+          test_source = test_source.replace(
               "from unittest.mock import AsyncMock, patch",
               "from unittest.mock import AsyncMock, MagicMock, patch",
+              1,
           )
-          replace(
-              "tests/test_init.py",
-              '''    save = AsyncMock()
+          replacement = '''def test_setup_entry_persists_new_complete_notification(
+              registry_hass: HomeAssistant, run
+          ) -> None:
+              """Coalesce accepted notifications so details survive restart efficiently."""
 
-              with (
-                  patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
-                  patch.object(Store, "async_save", new=save),
-              ):
-                  assert run(async_setup_entry(hass, entry)) is True
-                  payload = stored_notification(relay_id="new-relay", title="New title")
-                  hass.states.async_set(
-                      registered.entity.entity_id,
-                      payload["relay_id"],
-                      payload,
+              hass = registry_hass
+              registered = run(
+                  async_register_mqtt_ancs_source(
+                      hass,
+                      "ios_ancs_A1B2C3",
+                      device_name="Kitchen Relay",
                   )
-                  run(hass.async_block_till_done())
-
-              save.assert_awaited_once_with(payload)
-              run(entry.runtime_data.async_stop())
-              '''.replace("              ", ""),
-              '''    delay_save = MagicMock()
+              )
+              hass.states.async_set(registered.entity.entity_id, "unknown")
+              entry = make_source_entry()
+              with patch.object(
+                  hass.config_entries,
+                  "async_setup",
+                  new=AsyncMock(return_value=True),
+              ):
+                  run(hass.config_entries.async_add(entry))
+              hass.config_entries.async_forward_entry_setups = AsyncMock()
+              delay_save = MagicMock()
 
               with (
                   patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
@@ -100,8 +105,19 @@ jobs:
               assert delay == 2.0
               assert data_func() == payload
               run(entry.runtime_data.async_stop())
-              '''.replace("              ", ""),
+
+
+          def test_setup_entry_persists_current_source_snapshot_on_start('''.replace("          ", "")
+          test_source, substitutions = re.subn(
+              r"def test_setup_entry_persists_new_complete_notification\(.*?\n\ndef test_setup_entry_persists_current_source_snapshot_on_start\(",
+              replacement,
+              test_source,
+              count=1,
+              flags=re.S,
           )
+          if substitutions != 1:
+              raise SystemExit("unable to replace persistence regression test")
+          test_path.write_text(test_source, encoding="utf-8")
 
           Path("tools/tests/test_ha_persistence_contract.py").write_text(
               '''from pathlib import Path
