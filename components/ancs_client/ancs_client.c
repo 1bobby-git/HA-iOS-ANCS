@@ -1,4 +1,5 @@
 #include "ancs_client.h"
+#include "device_credentials.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -35,6 +36,8 @@
 #define CONTROL_REQUEST_MAX (CONFIG_ANCS_APP_ID_MAX + 3U)
 #define ADVERTISING_BACKOFF_MAX_MS 4000U
 #define DISCOVERY_BACKOFF_MAX_MS 5000U
+#define AUTH_FAILURE_REPAIR_THRESHOLD 3U
+#define AUTH_FAILURE_WINDOW_MS 120000LL
 
 static const char *const TAG = "ANCS_CLIENT";
 
@@ -120,6 +123,9 @@ typedef struct {
     uint32_t session_id;
     uint32_t generation;
     int auth_error;
+    uint8_t auth_failure_count;
+    int64_t last_auth_failure_ms;
+    bool pairing_repair_required;
 
     bool advertising;
     bool advertising_starting;
@@ -386,6 +392,34 @@ static void transition(ancs_client_signal_t signal)
     }
     ESP_LOGI(TAG, "state=%s", ancs_client_state_name(state));
     publish_state();
+}
+
+static void clear_auth_failure_guard_locked(void)
+{
+    s_client.auth_error = 0;
+    s_client.auth_failure_count = 0U;
+    s_client.last_auth_failure_ms = 0;
+    s_client.pairing_repair_required = false;
+}
+
+static bool record_auth_failure_locked(int64_t failure_at_ms,
+                                       bool missing_local_bond)
+{
+    if (s_client.last_auth_failure_ms <= 0 ||
+        failure_at_ms - s_client.last_auth_failure_ms >
+            AUTH_FAILURE_WINDOW_MS) {
+        s_client.auth_failure_count = 0U;
+    }
+    s_client.last_auth_failure_ms = failure_at_ms;
+    if (s_client.auth_failure_count < UINT8_MAX) {
+        ++s_client.auth_failure_count;
+    }
+    if (missing_local_bond &&
+        s_client.auth_failure_count >= AUTH_FAILURE_REPAIR_THRESHOLD) {
+        s_client.pairing_repair_required = true;
+        ble_enroll_close_window(&s_enroll);
+    }
+    return s_client.pairing_repair_required;
 }
 
 static bool uuid_equal(const esp_bt_uuid_t *uuid, const uint8_t expected[16])
@@ -1369,7 +1403,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
         if (parameter->ble_security.auth_cmpl.success) {
             taskENTER_CRITICAL(&s_shared_state_lock);
             s_client.bonded = true;
-            s_client.auth_error = 0;
+            clear_auth_failure_guard_locked();
             ble_enroll_note_bonded(
                 &s_enroll, parameter->ble_security.auth_cmpl.bd_addr);
             taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -1382,20 +1416,35 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
                      parameter->ble_security.auth_cmpl.addr_type);
             maybe_start_discovery();
         } else {
+            const int64_t failure_at_ms = now_ms();
+            const bool missing_local_bond = current_bond_count() <= 0;
             taskENTER_CRITICAL(&s_shared_state_lock);
             s_client.auth_error =
                 parameter->ble_security.auth_cmpl.fail_reason;
             const int auth_error = s_client.auth_error;
+            const bool repair_required =
+                record_auth_failure_locked(failure_at_ms,
+                                           missing_local_bond);
+            const uint8_t failure_count =
+                s_client.auth_failure_count;
             taskEXIT_CRITICAL(&s_shared_state_lock);
             ESP_LOGE(TAG,
-                     "authentication failed reason=0x%x",
-                     auth_error);
+                     "authentication failed reason=0x%x count=%u",
+                     auth_error,
+                     (unsigned int)failure_count);
             reset_connection_session();
             set_state(ANCS_STATE_RECOVERING);
             publish_state();
             (void)esp_ble_gap_disconnect(
                 parameter->ble_security.auth_cmpl.bd_addr);
-            schedule_advertising_retry();
+            if (repair_required) {
+                (void)esp_timer_stop(s_client.enroll_timer);
+                stop_advertising();
+                ESP_LOGE(TAG,
+                         "pairing repair required; remove the stale iOS Bluetooth entry and start Replace enrollment");
+            } else {
+                schedule_advertising_retry();
+            }
         }
         break;
 
@@ -1914,7 +1963,10 @@ static esp_err_t configure_security(void)
     uint8_t response_keys = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
     uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_ENABLE;
     uint8_t oob_support = ESP_BLE_OOB_DISABLE;
-    uint32_t static_passkey = 123456U;
+    uint32_t static_passkey = device_credentials_ble_passkey();
+    if (static_passkey < 100000U || static_passkey > 999999U) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     esp_err_t error = esp_ble_gap_set_security_param(
         ESP_BLE_SM_SET_STATIC_PASSKEY,
@@ -2048,6 +2100,13 @@ esp_err_t ancs_client_init(void)
     if (error != ESP_OK) {
         ESP_LOGE(TAG,
                  "NVS initialization failed; bond data was not erased: %s",
+                 esp_err_to_name(error));
+        goto init_failed;
+    }
+    error = device_credentials_init();
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "device credentials initialization failed: %s",
                  esp_err_to_name(error));
         goto init_failed;
     }
@@ -2210,6 +2269,14 @@ esp_err_t ancs_client_register_boot_held_callback(
 
 esp_err_t ancs_client_request_enroll(void)
 {
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool repair_required = s_client.pairing_repair_required;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (repair_required) {
+        ESP_LOGW(TAG,
+                 "enrollment blocked until Replace enrollment clears stale pairing data");
+        return ESP_ERR_INVALID_STATE;
+    }
     if (current_bond_count() > 0 || ancs_client_has_bond()) {
         (void)esp_timer_stop(s_client.enroll_timer);
         taskENTER_CRITICAL(&s_shared_state_lock);
@@ -2249,6 +2316,9 @@ esp_err_t ancs_client_replace_enrollment(bool confirmed)
         taskEXIT_CRITICAL(&s_shared_state_lock);
         return ESP_ERR_INVALID_STATE;
     }
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    clear_auth_failure_guard_locked();
+    taskEXIT_CRITICAL(&s_shared_state_lock);
     const int bond_count = esp_ble_get_bond_device_num();
     esp_bd_addr_t connected_peer = {0};
     bool connected = false;
@@ -2291,6 +2361,11 @@ esp_err_t ancs_client_replace_enrollment(bool confirmed)
     return ESP_OK;
 }
 
+uint32_t ancs_client_ble_passkey(void)
+{
+    return device_credentials_ble_passkey();
+}
+
 ancs_client_enrollment_status_t ancs_client_get_enrollment_status(void)
 {
     const int64_t now = now_ms();
@@ -2301,6 +2376,9 @@ ancs_client_enrollment_status_t ancs_client_get_enrollment_status(void)
         .replace_pending = s_client.replace_pending,
         .has_bond = bond_count > 0 || ble_enroll_has_bond(&s_enroll),
         .connected = s_client.connected,
+        .pairing_repair_required = s_client.pairing_repair_required,
+        .auth_failure_count = s_client.auth_failure_count,
+        .auth_error = s_client.auth_error,
         .bond_count = bond_count,
         .last_replace_error = s_client.last_replace_error,
     };

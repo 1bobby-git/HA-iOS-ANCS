@@ -33,6 +33,7 @@ static portal_http_handlers_t s_handlers;
 static esp_err_t send_json(httpd_req_t *req, const char *json)
 {
     httpd_resp_set_type(req, PORTAL_HTTP_JSON_TYPE);
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     return httpd_resp_sendstr(req, json);
 }
 
@@ -40,6 +41,7 @@ static esp_err_t send_error_json(httpd_req_t *req, const char *status, const cha
 {
     httpd_resp_set_status(req, status);
     httpd_resp_set_type(req, PORTAL_HTTP_JSON_TYPE);
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     char body[128];
     int written = snprintf(body, sizeof(body), "{\"ok\":false,\"error\":\"%s\"}", error);
     return httpd_resp_sendstr(req,
@@ -445,9 +447,26 @@ static cJSON *build_status_response(void)
                    runtime.last_wifi_disconnect_rssi) != ESP_OK ||
         add_string(runtime_json, "ap_ssid", runtime.ap_ssid) != ESP_OK ||
         add_bool(system_json, "mqtt_connected", system.mqtt_connected) != ESP_OK ||
+        add_bool(system_json, "mqtt_connecting", system.mqtt_connecting) != ESP_OK ||
+        add_number(system_json, "mqtt_retry_attempt", system.mqtt_retry_attempt) != ESP_OK ||
+        add_number(system_json, "mqtt_retry_delay_ms", system.mqtt_retry_delay_ms) != ESP_OK ||
+        add_number(system_json, "mqtt_error_type", system.mqtt_error_type) != ESP_OK ||
+        add_number(system_json, "mqtt_last_esp_error", system.mqtt_last_esp_error) != ESP_OK ||
+        add_number(system_json, "mqtt_last_tls_error", system.mqtt_last_tls_error) != ESP_OK ||
+        add_number(system_json, "mqtt_last_socket_errno", system.mqtt_last_socket_errno) != ESP_OK ||
+        add_number(system_json, "mqtt_connect_return_code", system.mqtt_connect_return_code) != ESP_OK ||
+        add_number(system_json, "mqtt_last_error_at_ms", system.mqtt_last_error_at_ms) != ESP_OK ||
         add_bool(system_json, "ble_bonded", system.ble_bonded) != ESP_OK ||
         add_bool(system_json, "ble_connected", system.ble_connected) != ESP_OK ||
         add_bool(system_json, "enroll_window_open", system.enroll_window_open) != ESP_OK ||
+        add_number(system_json, "ble_passkey", system.ble_passkey) != ESP_OK ||
+        add_bool(system_json,
+                 "ble_pairing_repair_required",
+                 system.ble_pairing_repair_required) != ESP_OK ||
+        add_number(system_json,
+                   "ble_auth_failure_count",
+                   system.ble_auth_failure_count) != ESP_OK ||
+        add_number(system_json, "ble_auth_error", system.ble_auth_error) != ESP_OK ||
         add_bool(system_json, "replace_pending", system.replace_pending) != ESP_OK ||
         add_bool(system_json, "replace_failed", system.replace_failed) != ESP_OK ||
         add_number(system_json, "replace_error_code", system.replace_error_code) != ESP_OK ||
@@ -640,6 +659,44 @@ static esp_err_t handle_mqtt_test_post(httpd_req_t *req)
                                     "mqtt test failed");
 }
 
+static esp_err_t handle_test_notification_post(httpd_req_t *req)
+{
+    esp_err_t guard_err = require_ap_local_request(req);
+    if (guard_err != ESP_OK) {
+        return send_ap_guard_error(req, guard_err);
+    }
+    if (s_handlers.test_notification == NULL) {
+        return send_error_json(req,
+                               "503 Service Unavailable",
+                               "test notification unavailable");
+    }
+    cJSON *json = NULL;
+    esp_err_t err = read_json_body(req, &json);
+    if (err != ESP_OK) {
+        return send_error_json(req, "400 Bad Request", "invalid JSON");
+    }
+    cJSON_Delete(json);
+
+    err = s_handlers.test_notification(s_handlers.context);
+    if (err == ESP_ERR_INVALID_STATE) {
+        return send_error_json(req,
+                               "409 Conflict",
+                               "mqtt broker is not connected");
+    }
+    return err == ESP_OK
+               ? send_json(req,
+                           "{\"ok\":true,\"queued\":true}")
+               : send_error_json(req,
+                                 "500 Internal Server Error",
+                                 "test notification failed");
+}
+
+static esp_err_t handle_favicon_get(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "204 No Content");
+    return httpd_resp_send(req, NULL, 0);
+}
+
 static esp_err_t handle_ble_replace_post(httpd_req_t *req)
 {
     esp_err_t guard_err = require_ap_local_request(req);
@@ -738,10 +795,12 @@ static esp_err_t register_all_routes(httpd_handle_t server)
     ESP_RETURN_ON_ERROR(register_uri(server, "/", HTTP_GET, handle_index_get), TAG, "index");
     ESP_RETURN_ON_ERROR(register_uri(server, "/portal.css", HTTP_GET, handle_css_get), TAG, "css");
     ESP_RETURN_ON_ERROR(register_uri(server, "/portal.js", HTTP_GET, handle_js_get), TAG, "js");
+    ESP_RETURN_ON_ERROR(register_uri(server, "/favicon.ico", HTTP_GET, handle_favicon_get), TAG, "favicon");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/status", HTTP_GET, handle_status_get), TAG, "status");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/wifi/scan", HTTP_GET, handle_wifi_scan_get), TAG, "scan");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/config", HTTP_POST, handle_config_post), TAG, "config");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/mqtt/test", HTTP_POST, handle_mqtt_test_post), TAG, "mqtt test");
+    ESP_RETURN_ON_ERROR(register_uri(server, "/api/notification/test", HTTP_POST, handle_test_notification_post), TAG, "notification test");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/ble/replace", HTTP_POST, handle_ble_replace_post), TAG, "ble replace");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/restart", HTTP_POST, handle_restart_post), TAG, "restart");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/reset", HTTP_POST, handle_reset_post), TAG, "reset");
@@ -766,7 +825,11 @@ esp_err_t portal_http_init(const portal_http_handlers_t *handlers)
     }
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 20;
+    config.max_uri_handlers = 24;
+    config.max_open_sockets = 7;
+    config.lru_purge_enable = true;
+    config.recv_wait_timeout = 5;
+    config.send_wait_timeout = 5;
     config.uri_match_fn = httpd_uri_match_wildcard;
 
     httpd_handle_t server = NULL;

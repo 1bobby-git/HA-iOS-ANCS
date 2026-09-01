@@ -17,7 +17,7 @@ This device uses explicit BLE enrollment. It does not advertise for a new iPhone
 1. Hold BOOT for 3 seconds or press Home Assistant **iPhone 등록 시작**.
 2. Pair within the 120-second enrollment window.
 3. On iPhone, open **Settings > Bluetooth** and select the `IOS-ANCS-*` device.
-4. Enter PIN `123456`.
+4. Enter PIN `설정 포털에 등록 시간 동안 표시되는 장치별 6자리 코드`.
 5. Allow notification sharing when iOS asks.
 6. Generate a visible notification and confirm Home Assistant updates `최근 알림` and `앱 이름`.
 

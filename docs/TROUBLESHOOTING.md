@@ -52,7 +52,7 @@ The setup AP should remain available while Wi-Fi or MQTT is unhealthy so setting
 
 - Open the 120-second enrollment window with BOOT for 3 seconds or Home Assistant **iPhone 등록 시작**.
 - Pair from iOS **Settings > Bluetooth**.
-- Enter PIN `123456`.
+- Enter PIN `설정 포털에 등록 시간 동안 표시되는 장치별 6자리 코드`.
 - Allow notification sharing when prompted.
 
 If pairing information already exists, enrollment requests reconnect to the stored iPhone only. Use confirmed Replace enrollment only when intentionally deleting the current iPhone pairing information.
@@ -80,3 +80,10 @@ Use `--expect-offline-drop` only when the capture includes offline and reconnect
 - Reject transitions where the previous state was `unavailable`.
 - Ignore `unknown`, `unavailable`, incomplete payloads, and `pre_existing=true`.
 - Do not use REST commands, webhooks, or HTTP actions for relay delivery.
+
+
+## MQTT 브로커 연결 대기에서 멈춤
+
+설정 포털은 2초마다 연결 상태를 갱신합니다. `연결 실패`가 표시되면 브로커 주소·포트·TLS 모드와 함께 TCP 시간 초과, 포트 거부, 인증 거부 또는 ESP32 네트워크 경로 오류가 표시됩니다. PC에서 포트가 열리더라도 ESP32가 연결된 서브넷의 NAT loopback·VLAN·게스트 네트워크 정책은 별도로 확인해야 합니다.
+
+MQTT가 연결되면 Home Assistant Discovery가 실제 iPhone 알림보다 먼저 발행됩니다. **테스트 알림 보내기**로 BLE 연결 없이도 MQTT 센서 등록과 상태 갱신을 검증할 수 있습니다.

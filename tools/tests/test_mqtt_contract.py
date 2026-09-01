@@ -193,9 +193,9 @@ def test_runtime_state_and_notifications_never_block_on_socket_writes():
     discovery = source.split("static bool mqtt_relay_publish_discovery_once", 1)[1].split(
         "static void mqtt_relay_publish_retained_status", 1
     )[0]
-    assert "#define MQTT_RELAY_DISCOVERY_SETTLE_MS 4000U" in source
+    assert "MQTT_RELAY_DISCOVERY_SETTLE_MS" not in source
     assert "mqtt_relay_wait_outbox_empty" in discovery
-    assert "MQTT_RELAY_DISCOVERY_SETTLE_MS" in discovery
+    assert "vTaskDelay" not in discovery
 
 
 def test_connected_event_defers_retained_discovery_to_the_worker():
