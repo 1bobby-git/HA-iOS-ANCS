@@ -24,12 +24,10 @@ jobs:
 
           path = Path(".github/workflows/prepare-firmware-0.3.5-onboarding.yml")
           text = path.read_text(encoding="utf-8")
-          old = r'''              r'(<span id=\\"build-hash\\">SHA256 )[A-F0-9]{12}(</span>)',
-'''
-          new = r'''              r'(<span id="build-hash">SHA256 )[A-F0-9]{12}(</span>)',
-'''
+          old = r'id=\\"build-hash\\"'
+          new = 'id="build-hash"'
           if text.count(old) != 1:
-              raise SystemExit("unexpected release hash regex")
+              raise SystemExit(f"unexpected release hash regex count: {text.count(old)}")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
       - name: Commit workflow correction
         run: |
