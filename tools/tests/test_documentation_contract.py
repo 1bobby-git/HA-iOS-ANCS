@@ -204,7 +204,7 @@ def test_hacs_metadata_matches_custom_integration_contract():
     assert manifest["issue_tracker"] == f"{CANONICAL_REPO_URL}/issues"
     assert manifest["iot_class"] == "local_push"
     assert manifest["integration_type"] == "device"
-    assert manifest["version"] == "0.6.6"
+    assert manifest["version"] == "0.6.7"
 
 
 def test_integration_brand_icon_is_square_png_with_recommended_size():
@@ -369,7 +369,7 @@ def test_validation_workflow_runs_hacs_and_hassfest_without_ignored_checks():
         assert "workflow_dispatch" in triggers
         assert parsed.get("permissions") == {}
         jobs = parsed["jobs"]
-        assert len(jobs) == 2
+        assert len(jobs) == 3
 
     assert "uses: hacs/action@main" in workflow
     assert "category: integration" in workflow

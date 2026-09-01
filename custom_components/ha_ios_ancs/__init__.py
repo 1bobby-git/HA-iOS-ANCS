@@ -22,6 +22,7 @@ from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
 _STORAGE_VERSION = 1
+_STORAGE_SAVE_DELAY_SECONDS = 2.0
 
 
 def _notification_store(
@@ -93,7 +94,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     def persist_notification(notification: dict[str, Any]) -> None:
         """Persist accepted details without delaying entity updates."""
 
-        hass.async_create_task(store.async_save(dict(notification)))
+        snapshot = dict(notification)
+        store.async_delay_save(
+            lambda: snapshot,
+            _STORAGE_SAVE_DELAY_SECONDS,
+        )
 
     runtime.async_add_notification_listener(
         persist_notification,
