@@ -63,6 +63,17 @@ typedef struct {
     uint64_t uptime_seconds;
 } mqtt_relay_runtime_status_t;
 
+typedef struct {
+    bool connected;
+    bool connecting;
+    int error_type;
+    esp_err_t last_esp_error;
+    int last_tls_error;
+    int last_socket_errno;
+    int connect_return_code;
+    uint64_t last_error_at_ms;
+} mqtt_relay_connection_status_t;
+
 typedef enum {
     MQTT_RELAY_EVENT_CONNECTED = 0,
     MQTT_RELAY_EVENT_DISCONNECTED,
@@ -202,11 +213,13 @@ esp_err_t mqtt_relay_register_event_callback(mqtt_relay_event_callback_t callbac
 esp_err_t mqtt_relay_update_wifi_status(const mqtt_relay_wifi_status_t *status);
 esp_err_t mqtt_relay_update_ble_status(bool connected, bool bonded);
 esp_err_t mqtt_relay_refresh_state(void);
+esp_err_t mqtt_relay_publish_test_notification(const char *device_name);
 void mqtt_relay_set_wifi_connected(bool connected);
 void mqtt_relay_observe_notification(const ancs_notification_t *notification,
                                      const char *device_name,
                                      void *context);
 void mqtt_relay_get_counters(mqtt_relay_counters_t *out);
+void mqtt_relay_get_connection_status(mqtt_relay_connection_status_t *out);
 
 #ifdef __cplusplus
 }

@@ -152,7 +152,7 @@ def test_task6_wifi_runtime_source_contracts():
     assert "WIFI_MODE_NULL" in runtime
     assert "WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N" in runtime
     assert "ap_config->ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP" in runtime
-    assert "ap_config->ap.pmf_cfg.capable = false" in runtime
+    assert "ap_config->ap.pmf_cfg.capable = true" in runtime
     assert "esp_wifi_set_protocol(\n            WIFI_IF_STA," in runtime
     assert "esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW20)" in runtime
     assert "esp_wifi_set_ps(WIFI_PS_NONE)" in runtime
@@ -189,7 +189,7 @@ def test_task6_wifi_runtime_source_contracts():
     portal = read("components/portal_http/portal_http.c")
     assert '"last_wifi_disconnect_reason"' in portal
     assert '"last_wifi_disconnect_rssi"' in portal
-    assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" in runtime
+    assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in runtime
     assert "esp_wifi_scan_get_ap_records" in runtime
     assert "192.168.4.1" in runtime
     assert "ESP_NETIF_CAPTIVEPORTAL_URI" in runtime
@@ -390,9 +390,8 @@ def test_task6_ap_security_is_configured_before_wifi_start():
 
     assert "configure_ap_profile_before_wifi_start()" in ready
     assert "esp_wifi_start()" not in ready
-    assert profile.index("esp_wifi_set_config(WIFI_IF_AP") < profile.index(
-        "esp_wifi_disable_pmf_config(WIFI_IF_AP)"
-    )
+    assert "esp_wifi_set_config(WIFI_IF_AP" in profile
+    assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in profile
     assert "esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20)" in profile
 
 
@@ -552,6 +551,7 @@ def test_task7_embedded_portal_assets_and_controls():
         'id="mqtt-password"',
         'id="mqtt-tls"',
         'id="mqtt-ca"',
+        'id="test-notification"',
         'id="replace-confirmation"',
         'id="replace-enrollment"',
         'id="restart"',
@@ -559,7 +559,7 @@ def test_task7_embedded_portal_assets_and_controls():
         'id="reset-provisioning"',
     ]:
         assert control in html
-    assert "fetch('/api/status')" in js
+    assert "fetch('/api/status'" in js
     assert "fetch('/api/wifi/scan')" in js
     assert "'/api/config'" in js
     assert "const confirmation = $('replace-confirmation').value" in js
@@ -616,7 +616,7 @@ def test_portal_explains_ble_silence_and_network_handoff():
 
     assert "미등록 · 광고 꺼짐" in js
     assert "등록된 iPhone만 자동으로 다시 연결" in js
-    assert "설정 AP가 잠시 종료됩니다" in js
+    assert "설정 포털은 테스트를 위해 10분간 유지" in js
     assert "연결에 실패하면 설정 AP가 자동으로 다시 나타납니다" in js
     assert "등록 전에는 Bluetooth 등록 신호를 보내지 않습니다" in html
 
@@ -692,6 +692,8 @@ def test_task7_http_routes_and_captive_probes():
         '"/api/wifi/scan"',
         '"/api/config"',
         '"/api/mqtt/test"',
+        '"/api/notification/test"',
+        '"/favicon.ico"',
         '"/api/ble/replace"',
         '"/api/restart"',
         '"/api/reset"',
@@ -707,6 +709,7 @@ def test_task7_http_routes_and_captive_probes():
     assert "HTTPD_404_NOT_FOUND" in source
     assert "portal_http_handlers_t" in header
     assert "mqtt_test" in header
+    assert "test_notification" in header
     assert "reconnect" in header
     assert "ble_replace" in header
 

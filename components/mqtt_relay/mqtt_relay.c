@@ -23,7 +23,6 @@
 #define MQTT_RELAY_EARLY_PUBACK_CAPACITY 4U
 #define MQTT_RELAY_DISCOVERY_DRAIN_TIMEOUT_MS 30000U
 #define MQTT_RELAY_DISCOVERY_DRAIN_POLL_MS 10U
-#define MQTT_RELAY_DISCOVERY_SETTLE_MS 4000U
 
 static const char MQTT_RELAY_ENROLL_PAYLOAD[] = "ENROLL";
 static const char MQTT_RELAY_RESTART_PAYLOAD[] = "RESTART";
@@ -51,6 +50,14 @@ typedef struct {
     size_t retained_early_ack_count;
     bool wifi_connected;
     bool mqtt_connected;
+    bool mqtt_connecting;
+    int mqtt_error_type;
+    esp_err_t mqtt_last_esp_error;
+    int mqtt_last_tls_error;
+    int mqtt_last_socket_errno;
+    int mqtt_connect_return_code;
+    uint64_t mqtt_last_error_at_ms;
+    uint32_t test_sequence;
     bool ble_connected;
     bool ble_bonded;
     mqtt_relay_event_callback_t event_callback;
@@ -106,6 +113,44 @@ static void mqtt_relay_lock(void);
 static void mqtt_relay_unlock(void);
 static void mqtt_relay_lifecycle_lock(void);
 static void mqtt_relay_lifecycle_unlock(void);
+
+static void mqtt_relay_clear_error_locked(void)
+{
+    s_ctx.mqtt_error_type = MQTT_ERROR_TYPE_NONE;
+    s_ctx.mqtt_last_esp_error = ESP_OK;
+    s_ctx.mqtt_last_tls_error = 0;
+    s_ctx.mqtt_last_socket_errno = 0;
+    s_ctx.mqtt_connect_return_code = MQTT_CONNECTION_ACCEPTED;
+    s_ctx.mqtt_last_error_at_ms = 0U;
+}
+
+static void mqtt_relay_note_local_error_locked(esp_err_t error)
+{
+    s_ctx.mqtt_error_type = -1;
+    s_ctx.mqtt_last_esp_error = error;
+    s_ctx.mqtt_last_tls_error = 0;
+    s_ctx.mqtt_last_socket_errno = 0;
+    s_ctx.mqtt_connect_return_code = MQTT_CONNECTION_ACCEPTED;
+    s_ctx.mqtt_last_error_at_ms =
+        (uint64_t)(esp_timer_get_time() / 1000);
+}
+
+static void mqtt_relay_capture_error_locked(
+    const esp_mqtt_error_codes_t *error)
+{
+    if (error == NULL) {
+        mqtt_relay_note_local_error_locked(ESP_FAIL);
+        return;
+    }
+    s_ctx.mqtt_error_type = (int)error->error_type;
+    s_ctx.mqtt_last_esp_error = error->esp_tls_last_esp_err;
+    s_ctx.mqtt_last_tls_error = error->esp_tls_stack_err;
+    s_ctx.mqtt_last_socket_errno = error->esp_transport_sock_errno;
+    s_ctx.mqtt_connect_return_code =
+        (int)error->connect_return_code;
+    s_ctx.mqtt_last_error_at_ms =
+        (uint64_t)(esp_timer_get_time() / 1000);
+}
 
 static void mqtt_relay_emit_event(mqtt_relay_event_t event)
 {
@@ -1513,13 +1558,7 @@ static bool mqtt_relay_publish_discovery_once(const char *topic,
     if (result < 0) {
         return false;
     }
-    if (!mqtt_relay_wait_outbox_empty()) {
-        return false;
-    }
-    if (s_publish_for_test == NULL) {
-        vTaskDelay(pdMS_TO_TICKS(MQTT_RELAY_DISCOVERY_SETTLE_MS));
-    }
-    return true;
+    return mqtt_relay_wait_outbox_empty();
 }
 
 static esp_err_t mqtt_relay_publish_state_snapshot(void)
@@ -1630,18 +1669,6 @@ static void mqtt_relay_publish_retained_status(void)
         goto cleanup;
     }
 
-    for (size_t field_index = 0;
-         field_index < mqtt_relay_legacy_discovery_count();
-         ++field_index) {
-        if (mqtt_relay_build_legacy_discovery_topic(discovery_config,
-                                                    field_index,
-                                                    discovery_topic,
-                                                    sizeof(discovery_topic)) != ESP_OK ||
-            !mqtt_relay_publish_discovery_once(discovery_topic, "")) {
-            goto cleanup;
-        }
-    }
-
     if (mqtt_relay_build_discovery_payload(discovery_config,
                                            &device_info,
                                            notification_topic,
@@ -1711,6 +1738,22 @@ static void mqtt_relay_publish_retained_status(void)
     mqtt_relay_lock();
     s_ctx.discovery_attempted_this_boot = true;
     mqtt_relay_unlock();
+
+    /*
+     * Current discovery entities are available before legacy cleanup starts.
+     * Cleanup is best effort and must never block first-time registration.
+     */
+    for (size_t field_index = 0;
+         field_index < mqtt_relay_legacy_discovery_count();
+         ++field_index) {
+        if (mqtt_relay_build_legacy_discovery_topic(discovery_config,
+                                                    field_index,
+                                                    discovery_topic,
+                                                    sizeof(discovery_topic)) != ESP_OK ||
+            !mqtt_relay_publish_discovery_once(discovery_topic, "")) {
+            break;
+        }
+    }
 cleanup:
     free(discovery);
     free(discovery_config);
@@ -1851,6 +1894,7 @@ static esp_err_t mqtt_relay_ensure_worker(void)
 static void mqtt_relay_handle_disconnect_locked(void)
 {
     s_ctx.mqtt_connected = false;
+    s_ctx.mqtt_connecting = false;
     s_ctx.retained_refresh_pending = false;
     mqtt_relay_clear_retained_wait_locked();
     mqtt_relay_free_queue_locked();
@@ -1864,6 +1908,7 @@ static void mqtt_relay_terminal_reconfigure_failure_cleanup(void)
     s_ctx.accepting_observers = false;
     s_ctx.publish_allowed = false;
     s_ctx.mqtt_connected = false;
+    s_ctx.mqtt_connecting = false;
     mqtt_relay_free_queue_locked();
     mqtt_relay_free_pending_locked();
     mqtt_relay_unlock();
@@ -1896,6 +1941,7 @@ static bool mqtt_relay_event_is_current(esp_mqtt_event_handle_t event,
         return false;
     }
     switch (event_id) {
+    case MQTT_EVENT_BEFORE_CONNECT:
     case MQTT_EVENT_CONNECTED:
     case MQTT_EVENT_DATA:
         return accepting && publish_allowed;
@@ -1922,11 +1968,20 @@ static void mqtt_relay_event_handler(void *handler_args,
         return;
     }
 
+    if (event_id == MQTT_EVENT_BEFORE_CONNECT) {
+        mqtt_relay_lock();
+        s_ctx.mqtt_connecting = true;
+        mqtt_relay_unlock();
+        return;
+    }
+
     if (event_id == MQTT_EVENT_CONNECTED) {
         char enroll_command_topic[MQTT_RELAY_TOPIC_MAX];
         char restart_command_topic[MQTT_RELAY_TOPIC_MAX];
         mqtt_relay_lock();
         s_ctx.mqtt_connected = true;
+        s_ctx.mqtt_connecting = false;
+        mqtt_relay_clear_error_locked();
         s_ctx.retained_refresh_pending = true;
         (void)strlcpy(enroll_command_topic,
                       s_ctx.enroll_command_topic,
@@ -2015,6 +2070,8 @@ static void mqtt_relay_event_handler(void *handler_args,
         emit_disconnected = true;
         break;
     case MQTT_EVENT_ERROR:
+        mqtt_relay_capture_error_locked(
+            event != NULL ? event->error_handle : NULL);
         mqtt_relay_handle_disconnect_locked();
         emit_failed = true;
         break;
@@ -2141,8 +2198,16 @@ static esp_err_t mqtt_relay_start_unlocked(void)
     }
     mqtt_relay_lock();
     s_ctx.publish_allowed = true;
+    s_ctx.mqtt_connecting = true;
     mqtt_relay_unlock();
-    return esp_mqtt_client_start(s_ctx.client);
+    err = esp_mqtt_client_start(s_ctx.client);
+    if (err != ESP_OK) {
+        mqtt_relay_lock();
+        s_ctx.mqtt_connecting = false;
+        mqtt_relay_note_local_error_locked(err);
+        mqtt_relay_unlock();
+    }
+    return err;
 }
 
 esp_err_t mqtt_relay_start(void)
@@ -2167,8 +2232,15 @@ esp_err_t mqtt_relay_reconnect(void)
     }
     mqtt_relay_lock();
     s_ctx.publish_allowed = true;
+    s_ctx.mqtt_connecting = true;
     mqtt_relay_unlock();
     err = esp_mqtt_client_reconnect(s_ctx.client);
+    if (err != ESP_OK) {
+        mqtt_relay_lock();
+        s_ctx.mqtt_connecting = false;
+        mqtt_relay_note_local_error_locked(err);
+        mqtt_relay_unlock();
+    }
     mqtt_relay_lifecycle_unlock();
     return err;
 }
@@ -2370,6 +2442,8 @@ esp_err_t mqtt_relay_reconfigure(const provision_config_t *config)
                   sizeof(s_ctx.restart_discovery_topic));
     s_ctx.config = *config;
     s_ctx.discovery_attempted_this_boot = false;
+    s_ctx.mqtt_connecting = false;
+    mqtt_relay_clear_error_locked();
     mqtt_relay_unlock();
 
     memset(&mqtt_config, 0, sizeof(mqtt_config));
@@ -2562,6 +2636,65 @@ void mqtt_relay_observe_notification(const ancs_notification_t *notification,
     mqtt_relay_notify_worker();
 }
 
+
+esp_err_t mqtt_relay_publish_test_notification(const char *device_name)
+{
+    if (device_name == NULL || device_name[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    mqtt_relay_lock();
+    const bool connected =
+        s_ctx.accepting_observers && s_ctx.wifi_connected &&
+        s_ctx.mqtt_connected;
+    const uint32_t sequence = ++s_ctx.test_sequence;
+    mqtt_relay_unlock();
+    if (!connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    ancs_notification_t notification = {0};
+    notification.session_id = 0U;
+    notification.uid =
+        (uint32_t)((uint64_t)esp_timer_get_time() ^ sequence);
+    notification.event_id = 0U;
+    notification.category_id = 0U;
+    notification.category_count = 1U;
+    (void)strlcpy(notification.app_id,
+                  "local.ios_ancs.test",
+                  sizeof(notification.app_id));
+    (void)strlcpy(notification.app_name,
+                  "iOS ANCS 테스트",
+                  sizeof(notification.app_name));
+    (void)strlcpy(notification.title,
+                  "테스트 알림",
+                  sizeof(notification.title));
+    (void)strlcpy(
+        notification.message,
+        "ESP32 → MQTT → Home Assistant 전달 경로가 정상입니다.",
+        sizeof(notification.message));
+    (void)snprintf(notification.message_size_raw,
+                   sizeof(notification.message_size_raw),
+                   "%u",
+                   (unsigned int)strlen(notification.message));
+    notification.complete = true;
+    notification.received_at_ms = esp_timer_get_time() / 1000;
+
+    mqtt_relay_counters_t before = {0};
+    mqtt_relay_counters_t after = {0};
+    mqtt_relay_get_counters(&before);
+    mqtt_relay_observe_notification(&notification, device_name, NULL);
+    mqtt_relay_get_counters(&after);
+
+    if (after.accepted > before.accepted) {
+        return ESP_OK;
+    }
+    if (after.dropped_offline > before.dropped_offline) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ESP_FAIL;
+}
+
 void mqtt_relay_get_counters(mqtt_relay_counters_t *out)
 {
     if (out == NULL) {
@@ -2569,6 +2702,25 @@ void mqtt_relay_get_counters(mqtt_relay_counters_t *out)
     }
     mqtt_relay_lock();
     *out = s_ctx.counters;
+    mqtt_relay_unlock();
+}
+
+void mqtt_relay_get_connection_status(mqtt_relay_connection_status_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    mqtt_relay_lock();
+    *out = (mqtt_relay_connection_status_t) {
+        .connected = s_ctx.mqtt_connected,
+        .connecting = s_ctx.mqtt_connecting,
+        .error_type = s_ctx.mqtt_error_type,
+        .last_esp_error = s_ctx.mqtt_last_esp_error,
+        .last_tls_error = s_ctx.mqtt_last_tls_error,
+        .last_socket_errno = s_ctx.mqtt_last_socket_errno,
+        .connect_return_code = s_ctx.mqtt_connect_return_code,
+        .last_error_at_ms = s_ctx.mqtt_last_error_at_ms,
+    };
     mqtt_relay_unlock();
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "ancs_state.h"
 #include "esp_err.h"
@@ -10,6 +11,9 @@ typedef struct {
     bool replace_pending;
     bool has_bond;
     bool connected;
+    bool pairing_repair_required;
+    uint8_t auth_failure_count;
+    int auth_error;
     int bond_count;
     esp_err_t last_replace_error;
 } ancs_client_enrollment_status_t;
@@ -24,6 +28,7 @@ esp_err_t ancs_client_register_boot_held_callback(
     void *context);
 esp_err_t ancs_client_request_enroll(void);
 esp_err_t ancs_client_replace_enrollment(bool confirmed);
+uint32_t ancs_client_ble_passkey(void);
 ancs_client_enrollment_status_t ancs_client_get_enrollment_status(void);
 esp_err_t ancs_client_start_advertising(void);
 esp_err_t ancs_client_stop_advertising(void);

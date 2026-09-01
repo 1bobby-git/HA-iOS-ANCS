@@ -17,7 +17,7 @@
 #include "lwip/inet.h"
 
 #define PROVISIONING_AP_CHANNEL 6
-#define PROVISIONING_AP_MAX_CLIENTS 4
+#define PROVISIONING_AP_MAX_CLIENTS 1
 #define PROVISIONING_DHCPS_DNS_OFFER 0x02
 #define PROVISIONING_EVENT_QUEUE_LEN 8
 
@@ -260,7 +260,7 @@ static void fill_ap_config(wifi_config_t *ap_config)
     ap_config->ap.max_connection = PROVISIONING_AP_MAX_CLIENTS;
     ap_config->ap.authmode = WIFI_AUTH_WPA2_PSK;
     ap_config->ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
-    ap_config->ap.pmf_cfg.capable = false;
+    ap_config->ap.pmf_cfg.capable = true;
     ap_config->ap.pmf_cfg.required = false;
 }
 
@@ -285,9 +285,6 @@ static esp_err_t configure_ap_profile_before_wifi_start(void)
     ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap_config),
                         TAG,
                         "set AP config");
-    ESP_RETURN_ON_ERROR(esp_wifi_disable_pmf_config(WIFI_IF_AP),
-                        TAG,
-                        "disable AP PMF");
     return esp_wifi_set_mode(WIFI_MODE_NULL);
 }
 

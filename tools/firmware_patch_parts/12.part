@@ -1,5 +1,0 @@
-# Keep generated Markdown files at one terminal newline so git diff --check
-# remains deterministic across repeated preparation runs.
-for markdown_path in (ROOT / "CHANGELOG.md",):
-    markdown_text = markdown_path.read_text(encoding="utf-8")
-    markdown_path.write_text(markdown_text.rstrip() + "\n", encoding="utf-8")
