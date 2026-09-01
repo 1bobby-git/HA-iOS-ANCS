@@ -1,0 +1,53 @@
+# Keep the setup portal available after saving so the user can run the new
+# MQTT and notification verification actions. Normal boots with valid
+# configuration still keep the setup AP closed.
+replace(
+    "main/app_main.c",
+    '''    if (provisioning_runtime_get_status(&runtime) == ESP_OK) {
+        app_state_lock();
+        s_app.active_sta_attempt_generation = runtime.sta_attempt_generation;
+        app_state_unlock();
+    }
+}
+
+static void handle_reset_provisioning(void)
+''',
+    '''    if (provisioning_runtime_get_status(&runtime) == ESP_OK) {
+        app_state_lock();
+        s_app.active_sta_attempt_generation = runtime.sta_attempt_generation;
+        app_state_unlock();
+    }
+
+    /* Keep the local portal open during the 10-minute verification window. */
+    handle_provisioning_event(PROVISION_EVENT_BOOT_HELD_3S, 0);
+}
+
+static void handle_reset_provisioning(void)
+''',
+)
+
+contract_path = "tools/tests/test_onboarding_recovery_contract.py"
+contract = read(contract_path)
+contract += '''
+
+
+def test_config_save_keeps_portal_open_for_verification_only():
+    source = read("main/app_main.c")
+    handler = source.split("static void handle_config_changed", 1)[1].split(
+        "static void handle_reset_provisioning", 1
+    )[0]
+    app_main = source.split("void app_main(void)", 1)[1]
+
+    assert "PROVISION_EVENT_BOOT_HELD_3S" in handler
+    assert "10-minute verification window" in handler
+    assert "PROVISION_EVENT_BOOT_HELD_3S" not in app_main
+'''
+write(contract_path, contract)
+
+readme = read("README.md")
+readme = readme.replace(
+    "브로커 연결 실패 시 TCP 시간 초과·포트 거부·인증 거부와 재시도 간격을 표시합니다.",
+    "브로커 연결 실패 시 TCP 시간 초과·포트 거부·인증 거부와 재시도 간격을 표시합니다. 설정 저장 후에는 테스트를 마칠 수 있도록 설정 포털을 10분간 유지합니다.",
+    1,
+)
+write("README.md", readme)
