@@ -1,0 +1,134 @@
+name: Prepare iOS ANCS Home Assistant persistence
+
+on:
+  push:
+    branches:
+      - improve/ha-persistence-0.6.7
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-ios-ancs-ha-persistence
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out persistence branch
+        uses: actions/checkout@v4
+        with:
+          ref: improve/ha-persistence-0.6.7
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Apply delayed persistence and regression coverage
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, count: int = 1) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"expected text not found in {path}: {old!r}")
+              target.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          replace(
+              "custom_components/ha_ios_ancs/__init__.py",
+              "_STORAGE_VERSION = 1\n",
+              "_STORAGE_VERSION = 1\n_STORAGE_SAVE_DELAY_SECONDS = 2.0\n",
+          )
+          replace(
+              "custom_components/ha_ios_ancs/__init__.py",
+              "        hass.async_create_task(store.async_save(dict(notification)))",
+              "        snapshot = dict(notification)\n"
+              "        store.async_delay_save(\n"
+              "            lambda: snapshot,\n"
+              "            _STORAGE_SAVE_DELAY_SECONDS,\n"
+              "        )",
+          )
+
+          replace(
+              "tests/test_init.py",
+              "from unittest.mock import AsyncMock, patch",
+              "from unittest.mock import AsyncMock, MagicMock, patch",
+          )
+          replace(
+              "tests/test_init.py",
+              '''    save = AsyncMock()
+
+              with (
+                  patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
+                  patch.object(Store, "async_save", new=save),
+              ):
+                  assert run(async_setup_entry(hass, entry)) is True
+                  payload = stored_notification(relay_id="new-relay", title="New title")
+                  hass.states.async_set(
+                      registered.entity.entity_id,
+                      payload["relay_id"],
+                      payload,
+                  )
+                  run(hass.async_block_till_done())
+
+              save.assert_awaited_once_with(payload)
+              run(entry.runtime_data.async_stop())
+              '''.replace("              ", ""),
+              '''    delay_save = MagicMock()
+
+              with (
+                  patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
+                  patch.object(Store, "async_delay_save", new=delay_save),
+              ):
+                  assert run(async_setup_entry(hass, entry)) is True
+                  payload = stored_notification(relay_id="new-relay", title="New title")
+                  hass.states.async_set(
+                      registered.entity.entity_id,
+                      payload["relay_id"],
+                      payload,
+                  )
+                  run(hass.async_block_till_done())
+
+              delay_save.assert_called_once()
+              data_func, delay = delay_save.call_args.args
+              assert delay == 2.0
+              assert data_func() == payload
+              run(entry.runtime_data.async_stop())
+              '''.replace("              ", ""),
+          )
+
+          Path("tools/tests/test_ha_persistence_contract.py").write_text(
+              '''from pathlib import Path
+
+              ROOT = Path(__file__).resolve().parents[2]
+              SOURCE = ROOT / "custom_components" / "ha_ios_ancs" / "__init__.py"
+
+
+              def test_notification_persistence_is_coalesced_and_private():
+                  source = SOURCE.read_text(encoding="utf-8")
+                  assert "private=True" in source
+                  assert "_STORAGE_SAVE_DELAY_SECONDS = 2.0" in source
+                  assert "store.async_delay_save(" in source
+                  assert "lambda: snapshot" in source
+                  assert "hass.async_create_task(store.async_save(dict(notification)))" not in source
+              '''.replace("              ", ""),
+              encoding="utf-8",
+          )
+      - name: Run source and Home Assistant tests
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements_test.txt
+          python -m compileall -q custom_components/ha_ios_ancs
+          python -m pytest -q tools/tests tests
+      - name: Commit tested persistence changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/ha_ios_ancs/__init__.py tests/test_init.py tools/tests/test_ha_persistence_contract.py
+          git commit -m "Coalesce Home Assistant notification persistence"
+          git push origin HEAD:improve/ha-persistence-0.6.7
