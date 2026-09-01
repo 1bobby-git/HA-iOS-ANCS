@@ -142,6 +142,20 @@ jobs:
           )
           documentation_path.write_text(documentation_source, encoding="utf-8")
 
+          config_flow_test_path = Path("tests/test_config_flow.py")
+          config_flow_test_source = config_flow_test_path.read_text(encoding="utf-8")
+          config_flow_test_source = config_flow_test_source.replace(
+              '"version": "0.6.6",',
+              '"version": "0.6.7",',
+              1,
+          )
+          config_flow_test_source = config_flow_test_source.replace(
+              'assert manifest["version"] == "0.6.6"',
+              'assert manifest["version"] == "0.6.7"',
+              1,
+          )
+          config_flow_test_path.write_text(config_flow_test_source, encoding="utf-8")
+
           contract_source = (
               "from pathlib import Path\n\n"
               "ROOT = Path(__file__).resolve().parents[2]\n"
@@ -167,6 +181,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/ha_ios_ancs/__init__.py custom_components/ha_ios_ancs/manifest.json tests/test_init.py tools/tests/test_documentation_contract.py tools/tests/test_ha_persistence_contract.py
+          git add custom_components/ha_ios_ancs/__init__.py custom_components/ha_ios_ancs/manifest.json tests/test_init.py tests/test_config_flow.py tools/tests/test_documentation_contract.py tools/tests/test_ha_persistence_contract.py
           git commit -m "Release Home Assistant integration 0.6.7"
           git push origin HEAD:improve/ha-persistence-0.6.7
