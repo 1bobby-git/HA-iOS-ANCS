@@ -1,0 +1,46 @@
+# Align existing contracts with the intentional 0.3.5 behavior changes.
+replace(
+    "tools/tests/test_portal_contract.py",
+    '''    assert profile.index("esp_wifi_set_config(WIFI_IF_AP") < profile.index(
+        "esp_wifi_disable_pmf_config(WIFI_IF_AP)"
+    )
+''',
+    '''    assert "esp_wifi_set_config(WIFI_IF_AP" in profile
+    assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in profile
+''',
+)
+replace(
+    "tools/tests/test_portal_contract.py",
+    '''    assert "fetch('/api/status')" in js
+''',
+    '''    assert "fetch('/api/status'" in js
+''',
+)
+replace(
+    "components/portal_http/portal.js",
+    '''    setMessage('설정을 저장하고 연결을 시작했습니다. 실패하면 이 페이지에 구체적인 원인이 표시됩니다.', 'success');
+''',
+    '''    setMessage('설정을 저장하고 연결을 시작했습니다. 설정 포털은 테스트를 위해 10분간 유지되며, 실패하면 구체적인 원인이 표시됩니다.', 'success');
+''',
+)
+replace(
+    "tools/tests/test_portal_contract.py",
+    '''    assert "설정 AP가 잠시 종료됩니다" in js
+''',
+    '''    assert "설정 포털은 테스트를 위해 10분간 유지" in js
+''',
+)
+
+contract_path = "tools/tests/test_onboarding_recovery_contract.py"
+contract = read(contract_path)
+contract += '''
+
+
+def test_existing_portal_contracts_match_new_verification_window():
+    script = read("components/portal_http/portal.js")
+    provisioning = read("components/provisioning/provisioning_runtime.c")
+
+    assert "설정 포털은 테스트를 위해 10분간 유지" in script
+    assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in provisioning
+'''
+write(contract_path, contract)
