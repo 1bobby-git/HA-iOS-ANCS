@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -161,14 +161,14 @@ def test_setup_entry_restores_saved_notification_without_event_replay(
 def test_setup_entry_persists_new_complete_notification(
     registry_hass: HomeAssistant, run
 ) -> None:
-    """Persist an accepted notification so detail entities survive restart."""
+    """Coalesce accepted notifications so details survive restart efficiently."""
 
     hass = registry_hass
     registered = run(
         async_register_mqtt_ancs_source(
-            hass,
-            "ios_ancs_A1B2C3",
-            device_name="Kitchen Relay",
+  hass,
+  "ios_ancs_A1B2C3",
+  device_name="Kitchen Relay",
         )
     )
     hass.states.async_set(registered.entity.entity_id, "unknown")
@@ -180,22 +180,29 @@ def test_setup_entry_persists_new_complete_notification(
     ):
         run(hass.config_entries.async_add(entry))
     hass.config_entries.async_forward_entry_setups = AsyncMock()
-    save = AsyncMock()
+    delay_save = MagicMock()
 
     with (
         patch.object(Store, "async_load", new=AsyncMock(return_value=None)),
-        patch.object(Store, "async_save", new=save),
+        patch.object(Store, "async_delay_save", new=delay_save),
     ):
         assert run(async_setup_entry(hass, entry)) is True
         payload = stored_notification(relay_id="new-relay", title="New title")
         hass.states.async_set(
-            registered.entity.entity_id,
-            payload["relay_id"],
-            payload,
+  registered.entity.entity_id,
+  payload["relay_id"],
+  payload,
         )
         run(hass.async_block_till_done())
 
-    save.assert_awaited_once_with(payload)
+    notification_calls = [
+        item for item in delay_save.call_args_list
+        if len(item.args) >= 2 and item.args[1] == 2.0
+    ]
+    assert len(notification_calls) == 1
+    data_func, delay = notification_calls[0].args
+    assert delay == 2.0
+    assert data_func() == payload
     run(entry.runtime_data.async_stop())
 
 
