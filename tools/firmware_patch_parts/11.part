@@ -44,3 +44,16 @@ def test_existing_portal_contracts_match_new_verification_window():
     assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in provisioning
 '''
 write(contract_path, contract)
+
+# Preserve the no-cache response policy while matching the established portal
+# request contract and make the recovery path explicit to users.
+replace(
+    "components/portal_http/portal.js",
+    "fetch('/api/wifi/scan', { cache: 'no-store' })",
+    "fetch('/api/wifi/scan')",
+)
+replace(
+    "components/portal_http/portal.js",
+    "설정을 저장하고 연결을 시작했습니다. 설정 포털은 테스트를 위해 10분간 유지되며, 실패하면 구체적인 원인이 표시됩니다.",
+    "설정을 저장하고 연결을 시작했습니다. 설정 포털은 테스트를 위해 10분간 유지됩니다. 연결에 실패하면 설정 AP가 자동으로 다시 나타납니다. 구체적인 원인이 이 페이지에 표시됩니다.",
+)
