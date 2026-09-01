@@ -1,0 +1,179 @@
+name: Assemble firmware 0.3.5
+
+on:
+  push:
+    branches:
+      - fix/firmware-0.3.5-onboarding
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: assemble-ios-ancs-firmware-0.3.5
+  cancel-in-progress: true
+
+jobs:
+  assemble:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out firmware branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/firmware-0.3.5-onboarding
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply tested firmware improvements
+        run: |
+          set -euo pipefail
+          cat tools/firmware_patch_parts/*.part > /tmp/prepare-firmware.py
+          python /tmp/prepare-firmware.py
+          python -m py_compile /tmp/prepare-firmware.py
+      - name: Download validated factory images
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 33493513751
+          pattern: firmware-*
+          path: release-artifacts
+          merge-multiple: true
+      - name: Publish installer files and fingerprints
+        shell: python
+        run: |
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import re
+          import shutil
+          from pathlib import Path
+
+          root = Path.cwd()
+          version = "0.3.5"
+          targets = (
+              "esp32",
+              "esp32c2",
+              "esp32c3",
+              "esp32c5",
+              "esp32c6",
+              "esp32c61",
+              "esp32s3",
+          )
+          artifacts = root / "release-artifacts"
+          firmware_root = root / "docs" / "firmware"
+          shutil.rmtree(firmware_root, ignore_errors=True)
+          digests: dict[str, str] = {}
+
+          for target in targets:
+              filename = f"ios-ancs-{target}-v{version}.factory.bin"
+              source = artifacts / filename
+              if not source.is_file():
+                  raise SystemExit(f"missing factory image: {source}")
+              destination_dir = firmware_root / target
+              destination_dir.mkdir(parents=True, exist_ok=True)
+              destination = destination_dir / filename
+              shutil.copy2(source, destination)
+              digests[target] = hashlib.sha256(destination.read_bytes()).hexdigest()
+
+          app_js_path = root / "docs" / "app.js"
+          app_js = app_js_path.read_text(encoding="utf-8")
+          for target in targets:
+              pattern = rf'({target}: \{{.*?hash: "SHA256 )[A-F0-9]{{12}}(")'
+              app_js, count = re.subn(
+                  pattern,
+                  rf"\g<1>{digests[target][:12].upper()}\g<2>",
+                  app_js,
+                  count=1,
+                  flags=re.S,
+              )
+              if count != 1:
+                  raise SystemExit(f"unable to update installer hash for {target}")
+          app_js_path.write_text(app_js, encoding="utf-8")
+
+          def update_hash(path: Path, digest: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              updated, count = re.subn(
+                  r'(<span id="build-hash">SHA256 )[A-F0-9]{12}(</span>)',
+                  rf"\g<1>{digest[:12].upper()}\g<2>",
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"unable to update build hash in {path}")
+              path.write_text(updated, encoding="utf-8")
+
+          update_hash(root / "docs" / "index.html", digests["esp32"])
+          update_hash(
+              root / "tools" / "tests" / "test_release_integrity.py",
+              digests["esp32"],
+          )
+
+          for fingerprint in (root / "docs").glob(
+              "release-fingerprints-v*.sha256"
+          ):
+              fingerprint.unlink()
+          (root / f"docs/release-fingerprints-v{version}.sha256").write_text(
+              "\n".join(
+                  f"{digests[target]}  docs/firmware/{target}/ios-ancs-{target}-v{version}.factory.bin"
+                  for target in targets
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+
+          for manifest_path in (
+              root / "docs" / "manifests" / "ios-ancs.json",
+              root / "docs" / "manifests" / "esp32-c6.json",
+          ):
+              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+              if manifest.get("version") != version:
+                  raise SystemExit(
+                      f"unexpected installer version in {manifest_path}"
+                  )
+              for build in manifest.get("builds", []):
+                  for part in build.get("parts", []):
+                      if f"v{version}.factory.bin" not in part["path"]:
+                          raise SystemExit(f"stale firmware path: {part['path']}")
+
+          ha_manifest = json.loads(
+              (root / "custom_components" / "ha_ios_ancs" / "manifest.json")
+              .read_text(encoding="utf-8")
+          )
+          if ha_manifest.get("version") != "0.6.7":
+              raise SystemExit(
+                  "Home Assistant integration version must remain 0.6.7"
+              )
+      - name: Remove temporary build inputs and stage release tree
+        run: |
+          rm -rf \
+            release-artifacts \
+            tools/firmware_patch_parts \
+            tools/build_firmware_release.py
+          git add -A
+          git diff --cached --check
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements_test.txt
+      - name: Run complete source and Home Assistant tests
+        run: |
+          python -m compileall -q custom_components/ha_ios_ancs
+          python -m pytest -q tools/tests tests
+      - name: Validate HACS integration
+        uses: hacs/action@main
+        with:
+          category: integration
+      - name: Run Hassfest
+        uses: home-assistant/actions/hassfest@master
+      - name: Commit firmware 0.3.5 release tree
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Release firmware 0.3.5 onboarding and recovery fixes"
+          git push origin HEAD:fix/firmware-0.3.5-onboarding
