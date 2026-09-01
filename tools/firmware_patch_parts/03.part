@@ -1,0 +1,278 @@
+    "    bool mqtt_started;\n"
+    "} app_runtime_snapshot_t;\n",
+    "    bool mqtt_initialized;\n"
+    "    bool mqtt_started;\n"
+    "    uint8_t mqtt_retry_attempt;\n"
+    "    uint32_t mqtt_retry_delay_ms;\n"
+    "} app_runtime_snapshot_t;\n",
+)
+replace(
+    "main/app_main.c",
+    "        .mqtt_initialized = s_app.mqtt_initialized,\n"
+    "        .mqtt_started = s_app.mqtt_started,\n",
+    "        .mqtt_initialized = s_app.mqtt_initialized,\n"
+    "        .mqtt_started = s_app.mqtt_started,\n"
+    "        .mqtt_retry_attempt = s_app.mqtt_retry_attempt,\n"
+    "        .mqtt_retry_delay_ms = s_app.mqtt_retry_delay_ms,\n",
+)
+
+replace(
+    "main/app_main.c",
+    '''    mqtt_relay_counters_t counters = {0};
+    mqtt_relay_get_counters(&counters);
+
+    *out = (portal_http_system_status_t) {
+        .mqtt_connected = app.state.mqtt_connected,
+        .ble_bonded = ble.has_bond,
+        .ble_connected = ble.connected,
+        .enroll_window_open = ble.enroll_active,
+        .replace_pending = ble.replace_pending,
+        .replace_failed = ble.last_replace_error != ESP_OK,
+        .replace_error_code = ble.last_replace_error,
+        .notifications_published = counters.published_ack,
+        .notifications_dropped = counters.dropped_offline +
+                                 counters.dropped_enqueue +
+                                 counters.dropped_policy,
+    };
+''',
+    '''    mqtt_relay_counters_t counters = {0};
+    mqtt_relay_connection_status_t mqtt = {0};
+    mqtt_relay_get_counters(&counters);
+    mqtt_relay_get_connection_status(&mqtt);
+
+    *out = (portal_http_system_status_t) {
+        .mqtt_connected = mqtt.connected,
+        .mqtt_connecting = mqtt.connecting,
+        .mqtt_retry_attempt = app.mqtt_retry_attempt,
+        .mqtt_retry_delay_ms = app.mqtt_retry_delay_ms,
+        .mqtt_error_type = mqtt.error_type,
+        .mqtt_last_esp_error = mqtt.last_esp_error,
+        .mqtt_last_tls_error = mqtt.last_tls_error,
+        .mqtt_last_socket_errno = mqtt.last_socket_errno,
+        .mqtt_connect_return_code = mqtt.connect_return_code,
+        .mqtt_last_error_at_ms = mqtt.last_error_at_ms,
+        .ble_bonded = ble.has_bond,
+        .ble_connected = ble.connected,
+        .enroll_window_open = ble.enroll_active,
+        .ble_passkey = ble.enroll_active
+                           ? ancs_client_ble_passkey()
+                           : 0U,
+        .ble_pairing_repair_required =
+            ble.pairing_repair_required,
+        .ble_auth_failure_count = ble.auth_failure_count,
+        .ble_auth_error = ble.auth_error,
+        .replace_pending = ble.replace_pending,
+        .replace_failed = ble.last_replace_error != ESP_OK,
+        .replace_error_code = ble.last_replace_error,
+        .notifications_published = counters.published_ack,
+        .notifications_dropped = counters.dropped_offline +
+                                 counters.dropped_enqueue +
+                                 counters.dropped_policy,
+    };
+''',
+)
+replace(
+    "main/app_main.c",
+    '''    if (app.state.mqtt_connected) {
+        return ESP_OK;
+    }
+
+    const app_event_msg_t message = {
+''',
+    '''    mqtt_relay_connection_status_t mqtt = {0};
+    mqtt_relay_get_connection_status(&mqtt);
+    if (mqtt.connected || mqtt.connecting) {
+        return ESP_OK;
+    }
+
+    const app_event_msg_t message = {
+''',
+)
+replace(
+    "main/app_main.c",
+    "static esp_err_t portal_reconnect(const provision_config_t *config, void *context)\n",
+    '''static esp_err_t portal_test_notification(void *context)
+{
+    (void)context;
+    char device_name[PROVISION_MQTT_CLIENT_ID_MAX + 1] = {0};
+    app_state_lock();
+    const bool configured = s_app.config_valid;
+    (void)strlcpy(device_name,
+                  s_app.config.mqtt_client_id,
+                  sizeof(device_name));
+    app_state_unlock();
+    if (!configured || device_name[0] == '\0') {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return mqtt_relay_publish_test_notification(device_name);
+}
+
+static esp_err_t portal_reconnect(const provision_config_t *config, void *context)
+''',
+)
+replace(
+    "main/app_main.c",
+    "    .status = portal_status,\n"
+    "    .mqtt_test = portal_mqtt_test,\n",
+    "    .status = portal_status,\n"
+    "    .mqtt_test = portal_mqtt_test,\n"
+    "    .test_notification = portal_test_notification,\n",
+)
+
+replace(
+    "main/app_main.c",
+    '''static void schedule_mqtt_retry(void)
+{
+    if (s_mqtt_retry_timer != NULL) {
+        (void)xTimerReset(s_mqtt_retry_timer, 0);
+    }
+}
+''',
+    '''static uint32_t mqtt_retry_delay_for_attempt(uint8_t attempt)
+{
+    if (attempt == 0U) {
+        return APP_MQTT_RETRY_INITIAL_MS;
+    }
+    if (attempt == 1U) {
+        return APP_MQTT_RETRY_SECOND_MS;
+    }
+    if (attempt == 2U) {
+        return APP_MQTT_RETRY_THIRD_MS;
+    }
+    return APP_MQTT_RETRY_MAX_MS;
+}
+
+static void reset_mqtt_retry_backoff(void)
+{
+    app_state_lock();
+    s_app.mqtt_retry_attempt = 0U;
+    s_app.mqtt_retry_delay_ms = 0U;
+    app_state_unlock();
+}
+
+static void schedule_mqtt_retry(void)
+{
+    if (s_mqtt_retry_timer == NULL) {
+        return;
+    }
+
+    app_state_lock();
+    const uint8_t attempt = s_app.mqtt_retry_attempt;
+    const uint32_t delay_ms =
+        mqtt_retry_delay_for_attempt(attempt);
+    if (s_app.mqtt_retry_attempt < 3U) {
+        ++s_app.mqtt_retry_attempt;
+    }
+    s_app.mqtt_retry_delay_ms = delay_ms;
+    app_state_unlock();
+
+    (void)xTimerChangePeriod(s_mqtt_retry_timer,
+                             pdMS_TO_TICKS(delay_ms),
+                             0);
+}
+''',
+)
+replace(
+    "main/app_main.c",
+    '''    const app_runtime_snapshot_t app = app_runtime_snapshot();
+    if (!app.config_valid || !app.state.wifi_connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t error = ESP_OK;
+''',
+    '''    const app_runtime_snapshot_t app = app_runtime_snapshot();
+    if (!app.config_valid || !app.state.wifi_connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    mqtt_relay_connection_status_t mqtt = {0};
+    mqtt_relay_get_connection_status(&mqtt);
+    if (mqtt.connected || mqtt.connecting) {
+        return ESP_OK;
+    }
+
+    esp_err_t error = ESP_OK;
+''',
+)
+replace(
+    "main/app_main.c",
+    "    case PROVISION_EVENT_MQTT_CONNECTED:\n"
+    "        if (s_mqtt_retry_timer != NULL) {\n"
+    "            (void)xTimerStop(s_mqtt_retry_timer, 0);\n"
+    "        }\n"
+    "        break;\n",
+    "    case PROVISION_EVENT_MQTT_CONNECTED:\n"
+    "        if (s_mqtt_retry_timer != NULL) {\n"
+    "            (void)xTimerStop(s_mqtt_retry_timer, 0);\n"
+    "        }\n"
+    "        reset_mqtt_retry_backoff();\n"
+    "        break;\n",
+)
+replace(
+    "main/app_main.c",
+    "    stop_mqtt();\n"
+    "    (void)provisioning_runtime_stop_sta();\n\n"
+    "    app_state_lock();\n"
+    "    s_app.config = *config;\n",
+    "    stop_mqtt();\n"
+    "    reset_mqtt_retry_backoff();\n"
+    "    (void)provisioning_runtime_stop_sta();\n\n"
+    "    app_state_lock();\n"
+    "    s_app.config = *config;\n",
+)
+replace(
+    "main/app_main.c",
+    '    s_mqtt_retry_timer = xTimerCreate("mqtt_retry",\n'
+    "                                      pdMS_TO_TICKS(APP_MQTT_RETRY_MS),\n",
+    '    s_mqtt_retry_timer = xTimerCreate("mqtt_retry",\n'
+    "                                      pdMS_TO_TICKS(APP_MQTT_RETRY_INITIAL_MS),\n",
+)
+
+# ---------------------------------------------------------------------------
+# Portal status, diagnostics, test notification and socket recovery
+# ---------------------------------------------------------------------------
+replace(
+    "components/portal_http/include/portal_http.h",
+    '''typedef struct {
+    bool mqtt_connected;
+    bool ble_bonded;
+''',
+    '''typedef struct {
+    bool mqtt_connected;
+    bool mqtt_connecting;
+    uint8_t mqtt_retry_attempt;
+    uint32_t mqtt_retry_delay_ms;
+    int mqtt_error_type;
+    int mqtt_last_esp_error;
+    int mqtt_last_tls_error;
+    int mqtt_last_socket_errno;
+    int mqtt_connect_return_code;
+    uint64_t mqtt_last_error_at_ms;
+    bool ble_bonded;
+''',
+)
+replace(
+    "components/portal_http/include/portal_http.h",
+    "    bool enroll_window_open;\n"
+    "    bool replace_pending;\n",
+    "    bool enroll_window_open;\n"
+    "    uint32_t ble_passkey;\n"
+    "    bool ble_pairing_repair_required;\n"
+    "    uint8_t ble_auth_failure_count;\n"
+    "    int ble_auth_error;\n"
+    "    bool replace_pending;\n",
+)
+replace(
+    "components/portal_http/include/portal_http.h",
+    "    esp_err_t (*mqtt_test)(void *context);\n"
+    "    esp_err_t (*reconnect)(const provision_config_t *config, void *context);\n",
+    "    esp_err_t (*mqtt_test)(void *context);\n"
+    "    esp_err_t (*test_notification)(void *context);\n"
+    "    esp_err_t (*reconnect)(const provision_config_t *config, void *context);\n",
+)
+
+replace(
+    "components/portal_http/portal_http.c",
+    "static esp_err_t send_json(httpd_req_t *req, const char *json)\n"
+    "{\n",
