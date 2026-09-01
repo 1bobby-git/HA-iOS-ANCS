@@ -55,6 +55,11 @@ jobs:
               "            _STORAGE_SAVE_DELAY_SECONDS,\n"
               "        )",
           )
+          replace(
+              "custom_components/ha_ios_ancs/manifest.json",
+              '"version": "0.6.6"',
+              '"version": "0.6.7"',
+          )
 
           test_path = Path("tests/test_init.py")
           test_source = test_path.read_text(encoding="utf-8")
@@ -100,8 +105,12 @@ jobs:
                   )
                   run(hass.async_block_till_done())
 
-              delay_save.assert_called_once()
-              data_func, delay = delay_save.call_args.args
+              notification_calls = [
+                  item for item in delay_save.call_args_list
+                  if len(item.args) >= 2 and item.args[1] == 2.0
+              ]
+              assert len(notification_calls) == 1
+              data_func, delay = notification_calls[0].args
               assert delay == 2.0
               assert data_func() == payload
               run(entry.runtime_data.async_stop())
@@ -118,6 +127,20 @@ jobs:
           if substitutions != 1:
               raise SystemExit("unable to replace persistence regression test")
           test_path.write_text(test_source, encoding="utf-8")
+
+          documentation_path = Path("tools/tests/test_documentation_contract.py")
+          documentation_source = documentation_path.read_text(encoding="utf-8")
+          documentation_source = documentation_source.replace(
+              'assert manifest["version"] == "0.6.6"',
+              'assert manifest["version"] == "0.6.7"',
+              1,
+          )
+          documentation_source = documentation_source.replace(
+              "assert len(jobs) == 2",
+              "assert len(jobs) == 3",
+              1,
+          )
+          documentation_path.write_text(documentation_source, encoding="utf-8")
 
           contract_source = (
               "from pathlib import Path\n\n"
@@ -144,6 +167,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/ha_ios_ancs/__init__.py tests/test_init.py tools/tests/test_ha_persistence_contract.py
-          git commit -m "Coalesce Home Assistant notification persistence"
+          git add custom_components/ha_ios_ancs/__init__.py custom_components/ha_ios_ancs/manifest.json tests/test_init.py tools/tests/test_documentation_contract.py tools/tests/test_ha_persistence_contract.py
+          git commit -m "Release Home Assistant integration 0.6.7"
           git push origin HEAD:improve/ha-persistence-0.6.7
