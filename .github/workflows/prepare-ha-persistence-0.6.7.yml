@@ -119,21 +119,20 @@ jobs:
               raise SystemExit("unable to replace persistence regression test")
           test_path.write_text(test_source, encoding="utf-8")
 
+          contract_source = (
+              "from pathlib import Path\n\n"
+              "ROOT = Path(__file__).resolve().parents[2]\n"
+              "SOURCE = ROOT / \"custom_components\" / \"ha_ios_ancs\" / \"__init__.py\"\n\n\n"
+              "def test_notification_persistence_is_coalesced_and_private():\n"
+              "    source = SOURCE.read_text(encoding=\"utf-8\")\n"
+              "    assert \"private=True\" in source\n"
+              "    assert \"_STORAGE_SAVE_DELAY_SECONDS = 2.0\" in source\n"
+              "    assert \"store.async_delay_save(\" in source\n"
+              "    assert \"lambda: snapshot\" in source\n"
+              "    assert \"hass.async_create_task(store.async_save(dict(notification)))\" not in source\n"
+          )
           Path("tools/tests/test_ha_persistence_contract.py").write_text(
-              '''from pathlib import Path
-
-              ROOT = Path(__file__).resolve().parents[2]
-              SOURCE = ROOT / "custom_components" / "ha_ios_ancs" / "__init__.py"
-
-
-              def test_notification_persistence_is_coalesced_and_private():
-                  source = SOURCE.read_text(encoding="utf-8")
-                  assert "private=True" in source
-                  assert "_STORAGE_SAVE_DELAY_SECONDS = 2.0" in source
-                  assert "store.async_delay_save(" in source
-                  assert "lambda: snapshot" in source
-                  assert "hass.async_create_task(store.async_save(dict(notification)))" not in source
-              '''.replace("              ", ""),
+              contract_source,
               encoding="utf-8",
           )
       - name: Run source and Home Assistant tests
