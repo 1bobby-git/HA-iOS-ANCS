@@ -38,6 +38,9 @@ typedef struct {
     int replace_error_code;
     uint32_t notifications_published;
     uint32_t notifications_dropped;
+    uint32_t notifications_dropped_offline;
+    uint32_t notifications_dropped_enqueue;
+    uint32_t notifications_dropped_policy;
 } portal_http_system_status_t;
 
 typedef struct {

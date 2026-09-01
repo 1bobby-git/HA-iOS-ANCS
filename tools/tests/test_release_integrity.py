@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "0.3.5"
+VERSION = "0.3.6"
 EXPECTED_TARGETS = (
     ("ESP32", "esp32"),
     ("ESP32-C2", "esp32c2"),
@@ -54,22 +54,22 @@ def release_builds() -> list[tuple[str, str, Path]]:
 
 def test_v034_version_anchors_are_on_release_surfaces():
     checks = {
-        "CMakeLists.txt": 'set(PROJECT_VER "0.3.5")',
-        "tools/build.ps1": "[string]$Version = '0.3.5'",
-        "tools/build.sh": 'version="${VERSION:-0.3.5}"',
-        "tools/build_matrix.ps1": "[string]$Version = '0.3.5'",
-        "docs/manifests/ios-ancs.json": '"version": "0.3.5"',
-        "docs/manifests/esp32-c6.json": '"version": "0.3.5"',
-        "README.en.md": "All v0.3.5 images shown in the installer",
-        "docs/index.html": '<dd id="hero-version">v0.3.5</dd>',
-        "docs/app.js": 'validation: "v0.3.5',
+        "CMakeLists.txt": 'set(PROJECT_VER "0.3.6")',
+        "tools/build.ps1": "[string]$Version = '0.3.6'",
+        "tools/build.sh": 'version="${VERSION:-0.3.6}"',
+        "tools/build_matrix.ps1": "[string]$Version = '0.3.6'",
+        "docs/manifests/ios-ancs.json": '"version": "0.3.6"',
+        "docs/manifests/esp32-c6.json": '"version": "0.3.6"',
+        "README.en.md": "All v0.3.6 images shown in the installer",
+        "docs/index.html": '<dd id="hero-version">v0.3.6</dd>',
+        "docs/app.js": 'validation: "v0.3.6',
     }
     for relative_path, anchor in checks.items():
         assert anchor in read_text(ROOT / relative_path), relative_path
 
 
 def test_installer_initial_hash_matches_default_esp32_image():
-    assert '<span id="build-hash">SHA256 0FA391F1BAFE</span>' in read_text(
+    assert '<span id="build-hash">SHA256 04567151B78D</span>' in read_text(
         ROOT / "docs" / "index.html"
     )
 

@@ -286,6 +286,9 @@ static esp_err_t portal_status(portal_http_system_status_t *out, void *context)
         .notifications_dropped = counters.dropped_offline +
                                  counters.dropped_enqueue +
                                  counters.dropped_policy,
+        .notifications_dropped_offline = counters.dropped_offline,
+        .notifications_dropped_enqueue = counters.dropped_enqueue,
+        .notifications_dropped_policy = counters.dropped_policy,
     };
     return ESP_OK;
 }

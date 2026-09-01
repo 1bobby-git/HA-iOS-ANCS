@@ -805,7 +805,7 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.7",
+        "version": "0.6.8",
     }
 
 
@@ -816,7 +816,7 @@ def test_release_066_contract() -> None:
         )
     )
 
-    assert manifest["version"] == "0.6.7"
+    assert manifest["version"] == "0.6.8"
 
 
 def test_translations_contract() -> None:
