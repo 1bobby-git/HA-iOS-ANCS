@@ -1,0 +1,52 @@
+name: One-time README branding
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/readme-branding-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Add integration logo and star badge
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("README.md")
+          text = path.read_text(encoding="utf-8-sig")
+          marker = "<!-- project-branding:start -->"
+          header = '''<!-- project-branding:start -->
+          <p align="center">
+            <img src="custom_components/ha_ios_ancs/brand/icon@2x.png" alt="iOS ANCS 로고" width="128">
+          </p>
+          <p align="center">
+            <a href="https://github.com/1bobby-git/HA-iOS-ANCS/stargazers">
+              <img src="https://img.shields.io/github/stars/1bobby-git/HA-iOS-ANCS?style=flat-square&logo=github&label=Stars" alt="GitHub Stars">
+            </a>
+          </p>
+          <!-- project-branding:end -->
+
+          '''
+
+          if marker not in text:
+              path.write_text(header + text, encoding="utf-8")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: add integration logo and star badge"
+            git push
+          fi
