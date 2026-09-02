@@ -247,12 +247,12 @@ function applyStatus(status) {
       'pending',
       '등록 대기',
       blePasskey
-        ? `${bluetoothName} · 등록 코드 ${blePasskey}`
+        ? `${bluetoothName} · 고정 PIN ${blePasskey}`
         : `${bluetoothName}을 iPhone Bluetooth 설정에서 선택하세요`,
     );
     $('ble-guidance').textContent = blePasskey
-      ? `등록 신호를 보내고 있습니다. iPhone Bluetooth 설정에서 ${bluetoothName}을 선택하고 장치별 코드 ${blePasskey}를 입력하세요.`
-      : `등록 신호를 보내고 있습니다. iPhone Bluetooth 설정에서 ${bluetoothName}을 선택하고 설정 포털에 표시된 6자리 코드를 입력하세요.`;
+      ? `등록 신호를 보내고 있습니다. iPhone Bluetooth 설정에서 ${bluetoothName}을 선택하고 고정 PIN ${blePasskey}를 입력하세요.`
+      : `등록 신호를 보내고 있습니다. iPhone Bluetooth 설정에서 ${bluetoothName}을 선택하고 고정 PIN 123456을 입력하세요.`;
   } else if (system.ble_bonded) {
     updateTile('status-ble', 'pending', '등록됨 · 연결 대기', '등록된 iPhone을 찾고 있습니다');
     $('ble-guidance').textContent = '등록된 iPhone만 자동으로 다시 연결됩니다. 이 페이지의 버튼으로 재연결 신호를 다시 보낼 수 있습니다.';
@@ -451,7 +451,7 @@ $('start-enrollment').addEventListener('click', () => runButton('start-enrollmen
     : null;
   setMessage(
     code
-      ? `iPhone 등록을 시작했습니다. 이 페이지에 표시된 등록 코드 ${code}를 iPhone Bluetooth 등록 창에 입력하세요.`
+      ? `iPhone 등록을 시작했습니다. 이 페이지에 표시된 고정 PIN ${code}를 iPhone Bluetooth 등록 창에 입력하세요.`
       : 'iPhone 등록 신호를 시작했습니다. 상태 카드가 갱신될 때까지 현재 페이지를 유지하세요.',
     'success',
   );

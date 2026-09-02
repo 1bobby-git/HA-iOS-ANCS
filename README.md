@@ -35,7 +35,7 @@ iPhone → BLE ANCS → ESP32 → Wi-Fi/MQTT → Home Assistant
 3. 보드가 만드는 `IOS-ANCS-SETUP-XXXXXX` Wi-Fi에 `ancs-xxxxxx` 비밀번호로 접속합니다.
 4. `http://192.168.4.1` 포털에서 Wi-Fi와 MQTT 설정만 저장합니다. 이 포털은 Home Assistant나 iPhone 알림 설정을 저장하지 않습니다.
 5. `http://192.168.4.1` 설정 포털을 떠나지 않고 **iPhone 기기 등록** 버튼을 눌러 120초 등록 창을 엽니다. Home Assistant의 **iPhone 등록 시작** 버튼과 BOOT 3초 누르기도 같은 등록 창을 엽니다.
-6. 설정 포털에 표시되는 장치별 6자리 등록 코드를 확인한 뒤 iOS Bluetooth 설정에서 장치를 선택하고 코드를 입력합니다. 알림 공유를 허용하고 Home Assistant에서 `최근 알림`과 `앱 이름` 센서가 갱신되는지 확인합니다.
+6. 설정 포털에 표시되는 고정 PIN `123456`를 확인한 뒤 iOS Bluetooth 설정에서 장치를 선택하고 코드를 입력합니다. 알림 공유를 허용하고 Home Assistant에서 `최근 알림`과 `앱 이름` 센서가 갱신되는지 확인합니다.
 
 `XXXXXX`는 보드의 기본 Wi-Fi MAC 주소의 마지막 6자리 16진수입니다. SSID에는 대문자를 사용하고, 비밀번호에는 같은 값을 소문자로 사용합니다. 일반 형식은 `ancs-<lowercase_suffix>`이며 예시는 모델 번호가 아닙니다. 인프라 Wi-Fi 비밀번호는 case-sensitive 값으로 그대로 저장됩니다.
 
@@ -47,13 +47,13 @@ BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저�
 
 ## iPhone 등록
 
-설정 포털의 **iPhone 기기 등록** 버튼, Home Assistant의 **iPhone 등록 시작** 버튼 또는 BOOT 버튼 3초 누르기로 120초 등록 창을 엽니다. 설정 포털에 표시되는 장치별 6자리 코드를 iOS Bluetooth 설정에 입력하고 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
+설정 포털의 **iPhone 기기 등록** 버튼, Home Assistant의 **iPhone 등록 시작** 버튼 또는 BOOT 버튼 3초 누르기로 120초 등록 창을 엽니다. 설정 포털에 표시되는 고정 PIN `123456`를 iOS Bluetooth 설정에 입력하고 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
 
-## 지원 보드와 v0.3.7 빌드 사실
+## 지원 보드와 v0.3.8 빌드 사실
 
 공통 펌웨어는 최소 4 MB 플래시 레이아웃을 사용합니다. ESP32-S2는 BLE가 없고, ESP32-H2는 Wi-Fi가 없으며, ESP32-P4는 내장 Wi-Fi/BLE 라디오가 없어 제외됩니다.
 
-| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.7 상태 |
+| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.8 상태 |
 | --- | --- | ---: | --- |
 | `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,440,912 bytes | 빌드 검증, 제한적 실보드 플래시/부팅/AP 검증 |
 | `esp32c2` | ESP32-C2 | 1,461,792 bytes | 빌드 검증 |
@@ -63,7 +63,7 @@ BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저�
 | `esp32c61` | ESP32-C61 | 1,739,072 bytes | 빌드 검증 |
 | `esp32s3` | ESP32-S3 | 1,422,960 bytes | 빌드 검증 |
 
-표의 상태는 공개된 v0.3.7 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
+표의 상태는 공개된 v0.3.8 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
 
 ## Home Assistant와 HACS
 
@@ -97,6 +97,7 @@ MQTT Discovery의 compact model은 `최근 알림`, `알림 제목`, `알림 내
 
 ```text
 homeassistant/automation_ios_ancs_c6_relay.yaml
+homeassistant/automation_ios_ancs_parking_arrival_tts.yaml
 ```
 
 사용 전에 `sensor.replace_with_your_last_notification_entity`를 본인 Home Assistant의 last-notification sensor로, `notify.replace_with_your_mobile_app_service`를 본인 mobile app notify 서비스로 바꾸세요. 예제는 새 `relay_id` 상태 변화만 전달하고, `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, availability 복구 전환은 전달하지 않습니다.
@@ -110,7 +111,7 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 - `http://192.168.4.1`이 열리지 않으면 setup AP에 실제로 연결되어 있는지 확인하고 VPN/모바일 데이터 라우팅을 잠시 끕니다.
 - MQTT가 연결되지 않으면 host, port, TLS CA, username/password, ACL, 중복 Client ID를 확인합니다.
 - iPhone에 장치가 보이지 않으면 `iPhone 등록 시작` 또는 BOOT 3초로 120초 등록 창을 다시 엽니다.
-- PIN 요청에는 `설정 포털에 등록 시간 동안 표시되는 장치별 6자리 코드`을 입력하고, iOS 알림 공유 요청을 허용합니다.
+- PIN 요청에는 `설정 포털에 등록 시간 동안 표시되는 고정 PIN `123456``을 입력하고, iOS 알림 공유 요청을 허용합니다.
 - Home Assistant 엔티티가 없으면 MQTT integration, Discovery 활성화, retained config, `<base>/state`를 확인합니다.
 
 더 자세한 절차는 [iOS Pairing Guide](docs/IOS_PAIRING.md)와 [Troubleshooting](docs/TROUBLESHOOTING.md)를 참고하세요.
@@ -121,7 +122,7 @@ homeassistant/automation_ios_ancs_c6_relay.yaml
 - Wi-Fi password, MQTT password, TLS CA 본문은 상태 API, Discovery, retained state, 보고서에 평문으로 노출하지 않습니다.
 - 빈 secret 입력은 저장된 기존 값을 보존합니다.
 - iOS 알림 제목, 본문, 앱 이름, 앱 ID는 MQTT 브로커와 Home Assistant에 게시될 수 있으므로 broker 접근 권한을 제한하세요.
-- PIN `설정 포털에 등록 시간 동안 표시되는 장치별 6자리 코드`은 로컬 등록 창에서만 사용하고, 기기를 양도하기 전에는 전체 erase와 새 등록을 수행하세요.
+- 고정 PIN `123456`은 로컬 등록 창에서만 사용하고, 기기를 양도하기 전에는 전체 erase와 새 등록을 수행하세요.
 
 ## 개발자 참고
 
@@ -140,3 +141,8 @@ python -m pytest tests -q
 ```
 
 `COMx`와 `/dev/ttyACM0`는 일반 예시입니다. 실제 보드, target, serial port에 맞게 바꾸세요. MQTT relay 검증은 `python tools/verify_mqtt_relay.py ...`, serial ANCS capture는 `python tools/verify_capture.py --port COMx ...`를 사용합니다.
+
+
+### 차량 입차 TTS 자동화 조건
+
+`automation_ios_ancs_parking_arrival_tts.yaml`은 `app_id`와 `app_name`이 사용자가 지정한 아파트 앱과 **모두 정확히 일치**하고, 새 알림 본문에 한국 차량번호와 `차량이 입차` 문구가 있을 때만 실행됩니다. 예제의 `target_app_id`, `target_app_name`, 이벤트 엔티티, TTS 엔티티와 스피커 엔티티를 실제 값으로 바꾸세요.
