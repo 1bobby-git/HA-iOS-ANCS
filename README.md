@@ -1,3 +1,14 @@
+<!-- project-branding:start -->
+<p align="center">
+  <img src="custom_components/ha_ios_ancs/brand/icon@2x.png" alt="iOS ANCS 로고" width="128">
+</p>
+<p align="center">
+  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/stargazers">
+    <img src="https://img.shields.io/github/stars/1bobby-git/HA-iOS-ANCS?style=flat-square&logo=github&label=Stars" alt="GitHub Stars">
+  </a>
+</p>
+<!-- project-branding:end -->
+
 # Home Assistant iOS ANCS
 
 [English](README.en.md) | [GitHub](https://github.com/1bobby-git/HA-iOS-ANCS) | [브라우저 설치 페이지](https://1bobby-git.github.io/HA-iOS-ANCS/)
