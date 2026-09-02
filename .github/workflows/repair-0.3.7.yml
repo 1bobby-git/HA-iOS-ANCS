@@ -64,25 +64,36 @@ jobs:
           ref: fix/enroll-wifi-stability-0.3.7
           fetch-depth: 0
 
-      - name: Trust workspace and install release test dependency
+      - name: Trust workspace
         shell: bash
-        run: |
-          source /opt/esp/idf/export.sh
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          python -m pip install --disable-pip-version-check pytest
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Build and package all supported firmware targets
         shell: bash
         run: |
-          set -o pipefail
-          source /opt/esp/idf/export.sh
-          python .github/scripts/build_release_037.py 2>&1 | tee build-release.log
+          rm -f build-release.log
+          set +e
+          bash --noprofile --norc -c '
+            set -euxo pipefail
+            source /opt/esp/idf/export.sh
+            command -v python
+            python --version
+            command -v idf.py
+            idf.py --version
+            python -m pip install --disable-pip-version-check pytest
+            python .github/scripts/build_release_037.py
+          ' >build-release.log 2>&1
+          status=$?
+          cat build-release.log
+          exit "$status"
 
       - name: Preserve firmware-build diagnostic
         if: failure()
         shell: bash
         run: |
+          cp build-release.log /tmp/build-release.log
           git reset --hard HEAD
+          cp /tmp/build-release.log build-release.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f build-release.log
