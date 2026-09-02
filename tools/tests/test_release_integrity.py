@@ -69,7 +69,9 @@ def test_v034_version_anchors_are_on_release_surfaces():
 
 
 def test_installer_initial_hash_matches_default_esp32_image():
-    assert '<span id="build-hash">SHA256 04567151B78D</span>' in read_text(
+    default_build = next(build for build in release_builds() if build[0] == "ESP32")
+    expected_prefix = binary_digest(default_build[2])[:12].upper()
+    assert f'<span id="build-hash">SHA256 {expected_prefix}</span>' in read_text(
         ROOT / "docs" / "index.html"
     )
 
