@@ -98,6 +98,7 @@ MQTT Discovery의 compact model은 `최근 알림`, `알림 제목`, `알림 내
 ```text
 homeassistant/automation_ios_ancs_c6_relay.yaml
 homeassistant/automation_ios_ancs_parking_arrival_tts.yaml
+homeassistant/automation_ios_ancs_baemin_delivery_tts.yaml
 ```
 
 사용 전에 `sensor.replace_with_your_last_notification_entity`를 본인 Home Assistant의 last-notification sensor로, `notify.replace_with_your_mobile_app_service`를 본인 mobile app notify 서비스로 바꾸세요. 예제는 새 `relay_id` 상태 변화만 전달하고, `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, availability 복구 전환은 전달하지 않습니다.
@@ -146,3 +147,7 @@ python -m pytest tests -q
 ### 차량 입차 TTS 자동화 조건
 
 `automation_ios_ancs_parking_arrival_tts.yaml`은 `app_id`와 `app_name`이 사용자가 지정한 아파트 앱과 **모두 정확히 일치**하고, 새 알림 본문에 한국 차량번호와 `차량이 입차` 문구가 있을 때만 실행됩니다. 예제의 `target_app_id`, `target_app_name`, 이벤트 엔티티, TTS 엔티티와 스피커 엔티티를 실제 값으로 바꾸세요.
+
+### 배달의민족 도착·배달완료 TTS 조건
+
+`automation_ios_ancs_baemin_delivery_tts.yaml`은 iOS 앱 ID `com.jawebs.baedal`과 앱 이름 `배달의민족`이 모두 정확히 일치하는 완전한 신규 알림만 처리합니다. 제목이 `곧 도착합니다!`이면 라이더 도착 준비 안내를, `문앞으로 배달이 완료되었습니다.`이면 문앞 보관 및 빠른 수령 안내를 방송하며 쿠폰·광고 알림은 무시합니다. 이벤트 엔티티, TTS 엔티티와 스피커 엔티티를 실제 Home Assistant 값으로 교체하세요.
