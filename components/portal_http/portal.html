@@ -205,7 +205,15 @@
       <div class="ble-copy">
         <p class="section-kicker">Bluetooth</p>
         <h2 id="ble-title">iPhone 연결</h2>
-        <p id="ble-guidance">Home Assistant의 iPhone 등록 시작 버튼을 누르거나 BOOT 버튼을 3초 동안 누르세요. 등록 전에는 Bluetooth 등록 신호를 보내지 않습니다.</p>
+        <p id="ble-guidance">아래 버튼으로 등록을 시작하세요. 이 설정 페이지는 열린 상태로 유지되며, 등록 전에는 Bluetooth 등록 신호를 보내지 않습니다.</p>
+      </div>
+      <div class="ble-enroll-actions">
+        <div id="ble-enroll-code" class="ble-enroll-code" role="status" aria-live="polite" hidden>
+          <span>iPhone 등록 코드</span>
+          <strong id="ble-enroll-code-value">------</strong>
+          <small>iPhone의 Bluetooth 등록 창에 입력하세요.</small>
+        </div>
+        <button class="button button-primary" id="start-enrollment" type="button" aria-describedby="ble-guidance">iPhone 기기 등록</button>
       </div>
     </section>
 

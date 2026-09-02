@@ -44,7 +44,7 @@ INSTALLER_FACTS = (
     "ancs-xxxxxx",
     "http://192.168.4.1",
     "iPhone 등록 시작",
-    "123456",
+    "장치별 6자리 코드",
 )
 LEGACY_INSTALLER_COPY = (
     "ANCS Flash Station",
@@ -174,6 +174,7 @@ def test_installer_exposes_generic_setup_pairing_and_home_assistant_facts():
 
     for fact in INSTALLER_FACTS:
         assert fact in index, fact
+    assert "123456" not in index
 
 
 def test_readmes_and_installer_link_app_id_reference():

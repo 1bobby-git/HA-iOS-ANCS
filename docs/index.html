@@ -30,7 +30,7 @@
         <span>Home Assistant iOS ANCS Installer</span>
       </a>
       <nav class="header-links" aria-label="주요 링크">
-        <span class="release-chip"><i></i> v0.3.6</span>
+        <span class="release-chip"><i></i> v0.3.7</span>
         <a href="https://github.com/1bobby-git/HA-iOS-ANCS">GitHub</a>
         <a href="https://1bobby-git.github.io/HA-iOS-ANCS/">Pages</a>
         <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=1bobby-git&repository=HA-iOS-ANCS&category=integration">HACS My</a>
@@ -76,7 +76,7 @@
           <dl class="instrument-stats">
             <div>
               <dt>BUILD</dt>
-              <dd id="hero-version">v0.3.6</dd>
+              <dd id="hero-version">v0.3.7</dd>
             </div>
             <div>
               <dt>FLASH</dt>
@@ -151,7 +151,7 @@
               </div>
               <div>
                 <dt>VALIDATION</dt>
-                <dd id="target-validation">v0.3.6 build verified</dd>
+                <dd id="target-validation">v0.3.7 build verified</dd>
               </div>
               <div>
                 <dt>IMAGE</dt>
@@ -169,7 +169,7 @@
               <span class="verified-badge" id="selected-status">BUILD VERIFIED</span>
             </div>
             <p id="selected-description">
-              ESP32/WROOM-32 계열용 v0.3.6 ANCS-to-MQTT factory build입니다.
+              ESP32/WROOM-32 계열용 v0.3.7 ANCS-to-MQTT factory build입니다.
             </p>
 
             <div class="action-warning" role="note">
@@ -209,8 +209,8 @@
             </esp-web-install-button>
 
             <div class="build-proof">
-              <span id="build-version">v0.3.6 · ESP-IDF 6.0.2</span>
-              <span id="build-hash">SHA256 04567151B78D</span>
+              <span id="build-version">v0.3.7 · ESP-IDF 6.0.2</span>
+              <span id="build-hash">SHA256 D022CFF91F02</span>
             </div>
           </div>
         </div>
@@ -230,8 +230,8 @@
           <p class="eyebrow">SETUP STEPS</p>
           <h2 id="steps-title">설치 후 연결 절차</h2>
           <p>
-            플래시, 설정 AP, Wi-Fi/MQTT 저장, Home Assistant Discovery, iPhone
-            페어링, 알림 확인 순서로 진행합니다.
+            플래시, 설정 AP, Wi-Fi/MQTT 저장, 설정 포털 내 iPhone 등록,
+            Home Assistant Discovery, 알림 확인 순서로 진행합니다.
           </p>
           <aside class="compatibility-note">
             <span aria-hidden="true">!</span>
@@ -270,8 +270,8 @@
             <h3 id="provision-title">Wi-Fi와 MQTT 저장</h3>
             <p>
               브라우저에서 <code>http://192.168.4.1</code>을 열고 Wi-Fi와 MQTT
-              broker 정보를 저장합니다. 이 포털은 Home Assistant 설정을 저장하지
-              않고 ESP32의 네트워크 및 MQTT 접속 정보만 저장합니다.
+              broker 정보를 저장합니다. 같은 페이지의 <strong>iPhone 기기 등록</strong>
+              버튼으로 페이지를 떠나지 않고 등록 창을 열 수 있습니다.
             </p>
           </section>
 
@@ -290,10 +290,10 @@
             <p class="flow-index">05 / PAIR</p>
             <h3 id="pair-title">iPhone 페어링</h3>
             <p>
-              BOOT을 3초 누르거나 Home Assistant의 <strong>iPhone 등록 시작</strong>
-              버튼을 눌러 120초 등록 창을 엽니다. iOS Bluetooth 목록에서
-              <code>IOS-ANCS-...</code> 장치를 선택하고 PIN <code>123456</code>을
-              입력한 뒤 알림 공유를 허용합니다.
+              설정 포털의 <strong>iPhone 기기 등록</strong>, Home Assistant의
+              <strong>iPhone 등록 시작</strong> 또는 BOOT 3초 누르기로 120초 등록 창을
+              엽니다. 포털에 표시되는 장치별 6자리 코드를 iOS Bluetooth에 입력하고
+              알림 공유를 허용합니다.
             </p>
           </section>
 

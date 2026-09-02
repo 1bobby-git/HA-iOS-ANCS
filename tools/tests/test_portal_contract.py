@@ -178,9 +178,10 @@ def test_task6_wifi_runtime_source_contracts():
     )[1].split("IP_EVENT_STA_GOT_IP", 1)[0]
     assert "xTimerReset(s_wifi_timeout_timer, 0)" not in disconnected_case
     had_ip_block = disconnected_case.split("if (had_ip)", 1)[1].split("unlock_state()", 1)[0]
-    assert "s_sta_connecting = false" in had_ip_block
-    assert "reconnect = false" in had_ip_block
-    assert "s_sta_started = false" in had_ip_block
+    assert "s_sta_connecting = true" in had_ip_block
+    assert "reconnect = true" in had_ip_block
+    assert "start_reconnect_timeout = true" in had_ip_block
+    assert "s_sta_started = false" not in had_ip_block
     reconnect_block = disconnected_case.split("else if (s_sta_started && s_sta_connecting)", 1)[1]
     assert "s_sta_connecting = true" in reconnect_block
     assert "reconnect = true" in reconnect_block
@@ -375,7 +376,8 @@ def test_task6_wifi_timeout_binds_origin_attempt_generation():
     assert "xTimerStop(s_wifi_timeout_timer" not in runtime
     assert "TimerHandle_t s_wifi_timeout_timer" not in runtime
     assert "const uint32_t attempt_generation = s_active_sta_attempt_generation" in disconnected_case
-    assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, attempt_generation)" in disconnected_case
+    assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, attempt_generation)" not in disconnected_case
+    assert "schedule_wifi_timeout(attempt_generation)" in disconnected_case
     assert "out->sta_attempt_generation = s_active_sta_attempt_generation" in runtime
 
 
@@ -424,7 +426,7 @@ def test_task6_scan_rejects_while_sta_connecting():
     assert "esp_wifi_clear_ap_list" in runtime
     assert "threshold.authmode = WIFI_AUTH_OPEN" in runtime
     assert "schedule_wifi_timeout(attempt_generation)" in runtime
-    assert runtime.count("schedule_wifi_timeout(attempt_generation)") == 1
+    assert runtime.count("schedule_wifi_timeout(attempt_generation)") == 2
     scan = runtime.split("esp_err_t provisioning_runtime_scan", 1)[1].split(
         "esp_err_t provisioning_runtime_notify_mqtt_failed", 1
     )[0]
@@ -552,6 +554,7 @@ def test_task7_embedded_portal_assets_and_controls():
         'id="mqtt-tls"',
         'id="mqtt-ca"',
         'id="test-notification"',
+        'id="start-enrollment"',
         'id="replace-confirmation"',
         'id="replace-enrollment"',
         'id="restart"',
@@ -568,20 +571,20 @@ def test_task7_embedded_portal_assets_and_controls():
     assert "JSON.stringify({ confirmation: 'RESET PROVISIONING' })" not in js
 
 
-def test_portal_moves_ordinary_enrollment_to_home_assistant():
+def test_portal_can_start_ordinary_enrollment_without_leaving_settings():
     html = read("components/portal_http/portal.html")
     script = read("components/portal_http/portal.js")
     source = read("components/portal_http/portal_http.c")
     header = read("components/portal_http/include/portal_http.h")
 
-    assert 'id="enroll"' not in html
-    assert "$('enroll').addEventListener" not in script
-    assert '"/api/ble/enroll"' not in source
-    assert "ble_enroll" not in header
+    assert 'id="start-enrollment"' in html
+    assert "$('start-enrollment').addEventListener" in script
+    assert "'/api/ble/enroll'" in script
+    assert '"/api/ble/enroll"' in source
+    assert "ble_enroll" in header
     assert 'id="replace-enrollment"' in html
     assert '"/api/ble/replace"' in source
-    assert "Home Assistant" in html
-    assert "BOOT" in html
+    assert "이 설정 페이지는 열린 상태로 유지" in html
 
 
 def test_portal_exposes_a_compact_korean_guided_setup():
@@ -711,6 +714,7 @@ def test_task7_http_routes_and_captive_probes():
     assert "mqtt_test" in header
     assert "test_notification" in header
     assert "reconnect" in header
+    assert "ble_enroll" in header
     assert "ble_replace" in header
 
 
@@ -725,6 +729,7 @@ def test_task7_mutating_handlers_are_ap_local_and_bounded():
     for handler in [
         "handle_config_post",
         "handle_empty_action_post",
+        "handle_ble_enroll_post",
         "handle_ble_replace_post",
         "handle_reset_post",
     ]:
@@ -782,7 +787,7 @@ def test_task7_secret_redaction_and_confirmations():
     assert "replace_failed" in source
     assert "replace_error_code" in source
     assert "replace_requested" in source
-    assert "enroll_started" not in source
+    assert "enroll_started" in source
     assert "reconnect unavailable" in source
     assert 'saved\\":true' in source
     assert 'reconnect\\":false' in source
