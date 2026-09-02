@@ -60,3 +60,35 @@ def test_ios_ancs_c6_relay_has_required_safe_notification_contract():
     )
     for fragment in forbidden_fragments:
         assert fragment not in automation.lower()
+
+
+def test_parking_arrival_tts_requires_exact_target_app():
+    automation_path = (
+        Path(__file__).resolve().parents[2]
+        / "homeassistant"
+        / "automation_ios_ancs_parking_arrival_tts.yaml"
+    )
+    automation = automation_path.read_text(encoding="utf-8")
+
+    required_fragments = (
+        "trigger: event.received",
+        "event.replace_with_your_ios_ancs_notification_event",
+        "target_app_id: \"com.replace_with_your_apartment_app\"",
+        "target_app_name: \"교체할 아파트 앱 이름\"",
+        "notification_app_id == target_app_id",
+        "notification_app_name == target_app_name",
+        "notification.get('event') == 'added'",
+        "notification.get('complete', false)",
+        "notification.get('pre_existing', true)",
+        "regex_findall",
+        "차량이\\s*입차",
+        "action: tts.speak",
+        "tts.replace_with_your_korean_tts",
+        "media_player.replace_with_your_speaker",
+        "{{ parking_announcement | trim }}",
+    )
+    for fragment in required_fragments:
+        assert fragment in automation
+
+    assert " or notification_app_name == target_app_name" not in automation
+    assert " or notification_app_id == target_app_id" not in automation

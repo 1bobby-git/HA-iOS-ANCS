@@ -8,7 +8,7 @@ This device uses explicit BLE enrollment. It does not advertise for a new iPhone
 2. Join `IOS-ANCS-SETUP-XXXXXX` with password `ancs-xxxxxx`.
 3. Open `http://192.168.4.1`.
 4. Save Wi-Fi and MQTT settings. The portal stores only Wi-Fi and MQTT configuration.
-5. Keep the setup portal open. It now provides an **iPhone 기기 등록** button and shows the device-specific six-digit code while enrollment is open. Home Assistant MQTT Discovery also creates an **iPhone 등록 시작** button after MQTT connects.
+5. Keep the setup portal open. It now provides an **iPhone 기기 등록** button and shows the fixed PIN `123456` while enrollment is open. Home Assistant MQTT Discovery also creates an **iPhone 등록 시작** button after MQTT connects.
 
 `XXXXXX` is the last six hexadecimal digits of the base Wi-Fi MAC address. Use uppercase in the SSID and lowercase in the password. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number. Infrastructure Wi-Fi passwords are case-sensitive and stored exactly as entered.
 
@@ -17,7 +17,7 @@ This device uses explicit BLE enrollment. It does not advertise for a new iPhone
 1. Press setup-portal **iPhone 기기 등록**, press Home Assistant **iPhone 등록 시작**, or hold BOOT for 3 seconds.
 2. Pair within the 120-second enrollment window without leaving the setup portal.
 3. On iPhone, open **Settings > Bluetooth** and select the `IOS-ANCS-*` device.
-4. Enter the device-specific six-digit code shown in the setup portal.
+4. Enter the fixed PIN `123456` shown in the setup portal.
 5. Allow notification sharing when iOS asks.
 6. Generate a visible notification and confirm Home Assistant updates `최근 알림` and `앱 이름`.
 

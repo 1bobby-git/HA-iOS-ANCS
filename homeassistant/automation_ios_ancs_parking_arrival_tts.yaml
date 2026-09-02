@@ -1,0 +1,69 @@
+alias: 아파트 차량 입차 알림을 스피커로 안내
+id: ios_ancs_apartment_parking_arrival_tts
+description: >-
+  지정한 아파트 앱의 새 iOS ANCS 알림에서 차량번호와 입차 문구를 추출해
+  "123가 4567 차량이 입차" 형식으로 스피커에 안내합니다.
+
+triggers:
+  - trigger: event.received
+    target:
+      entity_id: event.replace_with_your_ios_ancs_notification_event
+    options:
+      event_type:
+        - notification
+
+variables:
+  # 개발자 도구 > 상태에서 실제 아파트 앱의 앱 ID와 앱 이름을 확인해 교체하세요.
+  # 두 값이 모두 정확히 일치해야 자동화가 실행됩니다.
+  target_app_id: "com.replace_with_your_apartment_app"
+  target_app_name: "교체할 아파트 앱 이름"
+
+  notification: "{{ trigger.to_state.attributes }}"
+  notification_app_id: "{{ notification.get('app_id') or '' }}"
+  notification_app_name: "{{ notification.get('app_name') or '' }}"
+  truncated: "{{ notification.get('truncated') or {} }}"
+  raw_text: >-
+    {{ (notification.get('title') or '') ~ ' ' ~
+       (notification.get('subtitle') or '') ~ ' ' ~
+       (notification.get('message') or '') }}
+  parking_announcement: >-
+    {% set matches = raw_text
+       | regex_findall(
+           '([0-9]{2,3})\s*([가-힣])\s*([0-9]{4})\s*차량이\s*입차'
+         )
+    %}
+    {% if matches | count > 0 -%}
+      {{ matches[0][0] }}{{ matches[0][1] }} {{ matches[0][2] }} 차량이 입차
+    {%- else -%}
+      {{ '' }}
+    {%- endif %}
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ notification_app_id == target_app_id
+         and notification_app_name == target_app_name }}
+  - condition: template
+    value_template: >-
+      {{ notification.get('event') == 'added'
+         and (notification.get('complete', false) | bool(false))
+         and not (notification.get('pre_existing', true) | bool(true))
+         and not (truncated.get('app_id', false) | bool(false))
+         and not (truncated.get('app_name', false) | bool(false))
+         and not (truncated.get('title', false) | bool(false))
+         and not (truncated.get('subtitle', false) | bool(false))
+         and not (truncated.get('message', false) | bool(false))
+         and notification.get('error') is none }}
+  - condition: template
+    value_template: "{{ parking_announcement | trim != '' }}"
+
+actions:
+  - action: tts.speak
+    target:
+      entity_id: tts.replace_with_your_korean_tts
+    data:
+      media_player_entity_id: media_player.replace_with_your_speaker
+      message: "{{ parking_announcement | trim }}"
+
+mode: queued
+max: 10

@@ -30,17 +30,17 @@ The project bridges iOS notifications into local Home Assistant automations thro
 3. Join the board's `IOS-ANCS-SETUP-XXXXXX` Wi-Fi using password `ancs-xxxxxx`.
 4. Open `http://192.168.4.1` and save Wi-Fi and MQTT settings only. The portal does not store Home Assistant or iPhone notification settings.
 5. Without leaving `http://192.168.4.1`, press **iPhone 기기 등록** in the setup portal to open the 120-second enrollment window. The Home Assistant **iPhone 등록 시작** button and holding BOOT for 3 seconds remain available alternatives.
-6. Read the device-specific six-digit enrollment code shown in the setup portal, select the device in iOS Bluetooth settings, enter the code, and allow notification sharing. Verify that `최근 알림` and `앱 이름` update in Home Assistant.
+6. Read the fixed PIN `123456` shown in the setup portal, select the device in iOS Bluetooth settings, enter the code, and allow notification sharing. Verify that `최근 알림` and `앱 이름` update in Home Assistant.
 
 `XXXXXX` is the last six hexadecimal digits of the base Wi-Fi MAC address. The SSID uses uppercase hex and the password uses the same suffix in lowercase. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number.
 
 Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
-## Supported Boards And v0.3.7 Build Facts
+## Supported Boards And v0.3.8 Build Facts
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.7 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+The shared firmware uses a 4 MB minimum flash layout. All v0.3.8 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
 
-| Target | Typical module/board | Factory image | v0.3.7 status |
+| Target | Typical module/board | Factory image | v0.3.8 status |
 | --- | --- | ---: | --- |
 | `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,440,912 bytes | Build verified; limited board flash/boot/AP proof |
 | `esp32c2` | ESP32-C2 | 1,461,792 bytes | Build verified |
@@ -50,7 +50,7 @@ The shared firmware uses a 4 MB minimum flash layout. All v0.3.7 images shown in
 | `esp32c61` | ESP32-C61 | 1,739,072 bytes | Build verified |
 | `esp32s3` | ESP32-S3 | 1,422,960 bytes | Build verified |
 
-The table describes the published v0.3.7 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
+The table describes the published v0.3.8 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
 ## Home Assistant And HACS
 
@@ -78,10 +78,11 @@ The `Notification` event entity and detail entities are registered on a separate
 
 The companion integration keeps MQTT Discovery entities unchanged and enabled. On the separate iOS ANCS device (`iOS ANCS (...)`), it adds the notification event, 23 purpose-specific sensors and 12 strict binary sensors, plus a diagnostic `Raw notification` sensor. The separate device also exposes a diagnostic BLE connection binary sensor. Its state is derived through the existing MQTT Discovery device-status entity in Home Assistant; MQTT devices and entities remain separate, enabled, and unmodified. This HACS update does not require an ESP32 firmware reflash. Text shown as a sensor state is limited to 255 characters; long values remain in the `full_value` attribute and the complete raw JSON remains in attributes. Notification titles and messages can be recorded by Home Assistant unless those entities are excluded from Recorder.
 
-Example automation:
+Example automations:
 
 ```text
 homeassistant/automation_ios_ancs_c6_relay.yaml
+homeassistant/automation_ios_ancs_parking_arrival_tts.yaml
 ```
 
 Before enabling it, replace `sensor.replace_with_your_last_notification_entity` with your discovered last-notification sensor and `notify.replace_with_your_mobile_app_service` with your mobile app notify service. The example forwards only new `relay_id` state changes and filters `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, and availability-restore transitions.
@@ -95,7 +96,7 @@ Notification JSON preserves the original `app_id` and adds a friendly `app_name`
 - If `http://192.168.4.1` does not open, confirm you are connected to the setup AP and temporarily disable VPN or mobile-data routing.
 - If MQTT does not connect, check host, port, TLS CA, username/password, broker ACLs, and duplicate Client IDs.
 - If the iPhone does not see the device, reopen the 120-second enrollment window with setup-portal **iPhone 기기 등록**, Home Assistant **iPhone 등록 시작**, or BOOT for 3 seconds.
-- If iOS asks for a PIN, enter the device-specific six-digit code shown in the setup portal while enrollment is open and allow notification sharing.
+- If iOS asks for a PIN, enter the fixed PIN `123456` shown in the setup portal while enrollment is open and allow notification sharing.
 - If Home Assistant entities are missing, check the MQTT integration, Discovery, retained configs, and `<base>/state`.
 
 See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLESHOOTING.md) for more detail.
@@ -106,7 +107,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
 - Empty secret fields preserve already stored values.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
-- Pairing uses the device-specific six-digit code shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.
+- Pairing uses the fixed PIN `123456` shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.
 
 ## Developer Reference
 
@@ -125,3 +126,8 @@ python -m pytest tests -q
 ```
 
 `COMx` and `/dev/ttyACM0` are generic examples. Replace the target and serial port with the connected board's actual values. Use `python tools/verify_mqtt_relay.py ...` for MQTT relay captures and `python tools/verify_capture.py --port COMx ...` for serial ANCS captures.
+
+
+### Parking-arrival TTS conditions
+
+`automation_ios_ancs_parking_arrival_tts.yaml` runs only when both `app_id` and `app_name` exactly match the configured apartment app and a new notification contains a Korean vehicle plate plus the `차량이 입차` phrase. Replace the target app, event, TTS, and media-player entity IDs before enabling it.
