@@ -6,8 +6,6 @@ on:
       - fix/enroll-wifi-stability-0.3.7
     paths:
       - .github/workflows/repair-0.3.7.yml
-      - .github/scripts/repair_037.py
-      - .github/scripts/repair_037_hotfix.py
       - .github/scripts/build_release_037.py
   workflow_dispatch:
 
@@ -19,10 +17,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  repair-source:
+  source-validation:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repair branch
+      - name: Check out repaired source
         uses: actions/checkout@v4
         with:
           ref: fix/enroll-wifi-stability-0.3.7
@@ -39,22 +37,6 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Apply source repair
-        run: |
-          set -o pipefail
-          python .github/scripts/repair_037_hotfix.py
-          python .github/scripts/repair_037.py 2>&1 | tee repair-source.log
-
-      - name: Preserve source-patch diagnostic
-        if: failure()
-        run: |
-          git reset --hard HEAD
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f repair-source.log
-          git commit -m "chore: preserve repair failure diagnostic" || true
-          git push origin HEAD:fix/enroll-wifi-stability-0.3.7
-
       - name: Install source test dependencies
         run: python -m pip install --disable-pip-version-check -r requirements_test.txt
 
@@ -70,18 +52,8 @@ jobs:
             tools/tests/test_mqtt_contract.py \
             tests
 
-      - name: Commit repaired source
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm -f repair-source.log
-          git add -A
-          git diff --cached --check
-          git commit -m "fix: restore iPhone enrollment and Wi-Fi stability"
-          git push origin HEAD:fix/enroll-wifi-stability-0.3.7
-
   build-firmware:
-    needs: repair-source
+    needs: source-validation
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:v6.0.2
@@ -93,14 +65,20 @@ jobs:
           fetch-depth: 0
 
       - name: Trust workspace and install release test dependency
+        shell: bash
         run: |
+          source /opt/esp/idf/export.sh
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python -m pip install --disable-pip-version-check pytest
 
       - name: Build and package all supported firmware targets
-        run: python .github/scripts/build_release_037.py
+        shell: bash
+        run: |
+          source /opt/esp/idf/export.sh
+          python .github/scripts/build_release_037.py
 
       - name: Commit release binaries and metadata
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
