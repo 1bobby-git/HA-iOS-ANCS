@@ -39,6 +39,7 @@ jobs:
       - name: Apply source repair
         run: |
           set -o pipefail
+          python .github/scripts/repair_037_hotfix.py
           python .github/scripts/repair_037.py 2>&1 | tee repair-source.log
 
       - name: Preserve source-patch diagnostic
