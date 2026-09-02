@@ -17,7 +17,11 @@
 #include "lwip/inet.h"
 
 #define PROVISIONING_AP_CHANNEL 6
-#define PROVISIONING_AP_MAX_CLIENTS 1
+#define PROVISIONING_AP_MAX_CLIENTS 2
+#define PROVISIONING_STA_FAILURE_RETRY_COUNT 5
+#define PROVISIONING_STA_MIN_RSSI -90
+#define PROVISIONING_WIFI_MODE_RETRY_COUNT 6
+#define PROVISIONING_WIFI_MODE_RETRY_DELAY_MS 100
 #define PROVISIONING_DHCPS_DNS_OFFER 0x02
 #define PROVISIONING_EVENT_QUEUE_LEN 8
 
@@ -336,6 +340,7 @@ static void wifi_event_handler(void *arg,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         const wifi_event_sta_disconnected_t *disconnected = event_data;
         bool reconnect = false;
+        bool start_reconnect_timeout = false;
         lock_state();
         const bool had_ip = s_sta_has_ip;
         const uint32_t attempt_generation = s_active_sta_attempt_generation;
@@ -348,10 +353,11 @@ static void wifi_event_handler(void *arg,
             s_last_wifi_disconnect_rssi = 0;
         }
         if (had_ip) {
-            s_sta_started = false;
-            s_sta_connecting = false;
-            s_active_sta_attempt_generation = 0;
-            reconnect = false;
+            if (s_sta_started) {
+                s_sta_connecting = true;
+                reconnect = true;
+                start_reconnect_timeout = true;
+            }
         } else if (s_sta_started && s_sta_connecting) {
             s_sta_connecting = true;
             reconnect = true;
@@ -360,9 +366,8 @@ static void wifi_event_handler(void *arg,
         ESP_LOGW(TAG, "STA disconnected reason=%u rssi=%d",
                  (unsigned)s_last_wifi_disconnect_reason,
                  (int)s_last_wifi_disconnect_rssi);
-        if (had_ip) {
-            (void)apply_wifi_mode();
-            dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, attempt_generation);
+        if (start_reconnect_timeout) {
+            schedule_wifi_timeout(attempt_generation);
         }
         if (reconnect) {
             if (lock_wifi_operation() != ESP_OK) {
@@ -374,7 +379,13 @@ static void wifi_event_handler(void *arg,
                 s_active_sta_attempt_generation == attempt_generation;
             unlock_state();
             if (reconnect_still_valid) {
-                (void)esp_wifi_connect();
+                const esp_err_t reconnect_error = esp_wifi_connect();
+                if (reconnect_error != ESP_OK &&
+                    reconnect_error != ESP_ERR_WIFI_CONN) {
+                    ESP_LOGW(TAG,
+                             "STA reconnect start failed: %s",
+                             esp_err_to_name(reconnect_error));
+                }
             }
             unlock_wifi_operation();
         }
@@ -608,9 +619,26 @@ static wifi_mode_t select_wifi_mode_from_flags(void)
     return mode;
 }
 
+static esp_err_t set_wifi_mode_with_retry(wifi_mode_t mode)
+{
+    esp_err_t err = ESP_OK;
+    for (uint8_t attempt = 0;
+         attempt < PROVISIONING_WIFI_MODE_RETRY_COUNT;
+         ++attempt) {
+        err = esp_wifi_set_mode(mode);
+        if (err != ESP_ERR_WIFI_STOP_STATE) {
+            return err;
+        }
+        if (attempt + 1U < PROVISIONING_WIFI_MODE_RETRY_COUNT) {
+            vTaskDelay(pdMS_TO_TICKS(PROVISIONING_WIFI_MODE_RETRY_DELAY_MS));
+        }
+    }
+    return err;
+}
+
 static esp_err_t apply_wifi_mode_unlocked(void)
 {
-    return esp_wifi_set_mode(select_wifi_mode_from_flags());
+    return set_wifi_mode_with_retry(select_wifi_mode_from_flags());
 }
 
 static esp_err_t apply_wifi_mode(void)
@@ -743,7 +771,10 @@ esp_err_t provisioning_runtime_start_sta(const provision_config_t *config)
     strlcpy((char *)sta_config.sta.ssid, config->wifi_ssid, sizeof(sta_config.sta.ssid));
     strlcpy((char *)sta_config.sta.password, config->wifi_password, sizeof(sta_config.sta.password));
     sta_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    sta_config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    sta_config.sta.threshold.rssi = PROVISIONING_STA_MIN_RSSI;
     sta_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+    sta_config.sta.failure_retry_cnt = PROVISIONING_STA_FAILURE_RETRY_COUNT;
     sta_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
 
     lock_state();

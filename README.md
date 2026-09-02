@@ -13,7 +13,7 @@ iPhone → BLE ANCS → ESP32 → Wi-Fi/MQTT → Home Assistant
 
 ### 설정 포털 자체 진단
 
-펌웨어 0.3.6부터 MQTT 연결 직후 Home Assistant Discovery가 먼저 발행되므로 실제 iPhone 알림이 없어도 기기가 등록됩니다. 설정 포털의 **테스트 알림 보내기**는 ESP32 → MQTT → Home Assistant 전체 경로를 확인하며, 브로커 연결 실패 시 TCP 시간 초과·포트 거부·인증 거부와 재시도 간격을 표시합니다. 설정 저장 후에는 테스트를 마칠 수 있도록 설정 포털을 10분간 유지합니다.
+펌웨어 0.3.7부터 MQTT 연결 직후 Home Assistant Discovery가 먼저 발행되므로 실제 iPhone 알림이 없어도 기기가 등록됩니다. 설정 포털의 **테스트 알림 보내기**는 ESP32 → MQTT → Home Assistant 전체 경로를 확인하며, 브로커 연결 실패 시 TCP 시간 초과·포트 거부·인증 거부와 재시도 간격을 표시합니다. 설정 저장 후에는 테스트를 마칠 수 있도록 설정 포털을 10분간 유지합니다.
 
 ## 개발 배경
 
@@ -34,8 +34,8 @@ iPhone → BLE ANCS → ESP32 → Wi-Fi/MQTT → Home Assistant
 2. 보드 모델을 선택한 뒤 ESP Web Tools로 factory 이미지를 플래시합니다.
 3. 보드가 만드는 `IOS-ANCS-SETUP-XXXXXX` Wi-Fi에 `ancs-xxxxxx` 비밀번호로 접속합니다.
 4. `http://192.168.4.1` 포털에서 Wi-Fi와 MQTT 설정만 저장합니다. 이 포털은 Home Assistant나 iPhone 알림 설정을 저장하지 않습니다.
-5. Home Assistant에서 MQTT Discovery로 장치가 보이면 **iPhone 등록 시작** 버튼을 눌러 120초 등록 창을 엽니다.
-6. iOS Bluetooth 설정에서 장치를 선택하고 PIN `설정 포털에 등록 시간 동안 표시되는 장치별 6자리 코드`을 입력한 뒤 알림 공유를 허용합니다. Home Assistant에서 `최근 알림`과 `앱 이름` 센서가 갱신되는지 확인합니다.
+5. `http://192.168.4.1` 설정 포털을 떠나지 않고 **iPhone 기기 등록** 버튼을 눌러 120초 등록 창을 엽니다. Home Assistant의 **iPhone 등록 시작** 버튼과 BOOT 3초 누르기도 같은 등록 창을 엽니다.
+6. 설정 포털에 표시되는 장치별 6자리 등록 코드를 확인한 뒤 iOS Bluetooth 설정에서 장치를 선택하고 코드를 입력합니다. 알림 공유를 허용하고 Home Assistant에서 `최근 알림`과 `앱 이름` 센서가 갱신되는지 확인합니다.
 
 `XXXXXX`는 보드의 기본 Wi-Fi MAC 주소의 마지막 6자리 16진수입니다. SSID에는 대문자를 사용하고, 비밀번호에는 같은 값을 소문자로 사용합니다. 일반 형식은 `ancs-<lowercase_suffix>`이며 예시는 모델 번호가 아닙니다. 인프라 Wi-Fi 비밀번호는 case-sensitive 값으로 그대로 저장됩니다.
 
@@ -47,23 +47,23 @@ BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저�
 
 ## iPhone 등록
 
-Home Assistant의 **iPhone 등록 시작** 버튼이나 BOOT 버튼을 3초 눌러 120초 등록 창을 열고, iOS Bluetooth 설정에서 PIN `설정 포털에 등록 시간 동안 표시되는 장치별 6자리 코드`을 입력한 뒤 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
+설정 포털의 **iPhone 기기 등록** 버튼, Home Assistant의 **iPhone 등록 시작** 버튼 또는 BOOT 버튼 3초 누르기로 120초 등록 창을 엽니다. 설정 포털에 표시되는 장치별 6자리 코드를 iOS Bluetooth 설정에 입력하고 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
 
-## 지원 보드와 v0.3.6 빌드 사실
+## 지원 보드와 v0.3.7 빌드 사실
 
 공통 펌웨어는 최소 4 MB 플래시 레이아웃을 사용합니다. ESP32-S2는 BLE가 없고, ESP32-H2는 Wi-Fi가 없으며, ESP32-P4는 내장 Wi-Fi/BLE 라디오가 없어 제외됩니다.
 
-| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.6 상태 |
+| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.7 상태 |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,427,376 bytes | 빌드 검증, 제한적 실보드 플래시/부팅/AP 검증 |
-| `esp32c2` | ESP32-C2 | 1,447,504 bytes | 빌드 검증 |
-| `esp32c3` | ESP32-C3 | 1,636,560 bytes | 빌드 검증 |
-| `esp32c5` | ESP32-C5 | 1,781,696 bytes | 빌드 검증 |
-| `esp32c6` | ESP32-C6 | 1,781,712 bytes | 빌드 검증, 이전 하드웨어 증거는 과거 참고 |
-| `esp32c61` | ESP32-C61 | 1,724,816 bytes | 빌드 검증 |
-| `esp32s3` | ESP32-S3 | 1,409,392 bytes | 빌드 검증 |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,440,912 bytes | 빌드 검증, 제한적 실보드 플래시/부팅/AP 검증 |
+| `esp32c2` | ESP32-C2 | 1,461,792 bytes | 빌드 검증 |
+| `esp32c3` | ESP32-C3 | 1,650,800 bytes | 빌드 검증 |
+| `esp32c5` | ESP32-C5 | 1,795,936 bytes | 빌드 검증 |
+| `esp32c6` | ESP32-C6 | 1,795,968 bytes | 빌드 검증, 이전 하드웨어 증거는 과거 참고 |
+| `esp32c61` | ESP32-C61 | 1,739,072 bytes | 빌드 검증 |
+| `esp32s3` | ESP32-S3 | 1,422,960 bytes | 빌드 검증 |
 
-표의 상태는 공개된 v0.3.6 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
+표의 상태는 공개된 v0.3.7 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
 
 ## Home Assistant와 HACS
 

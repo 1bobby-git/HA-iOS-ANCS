@@ -82,6 +82,8 @@ def test_repeated_ble_auth_failure_stops_the_reconnect_loop():
 def test_portal_reclaims_stale_http_connections():
     source = read("components/portal_http/portal_http.c")
 
+    assert "PORTAL_HTTP_SERVER_STACK_SIZE 8192" in source
+    assert "config.stack_size = PORTAL_HTTP_SERVER_STACK_SIZE" in source
     assert "config.max_open_sockets = 7" in source
     assert "config.lru_purge_enable = true" in source
     assert "config.recv_wait_timeout = 5" in source
@@ -98,7 +100,7 @@ def test_device_specific_passkey_and_ap_hardening_are_enabled():
     assert "nvs_set_u32" in credentials
     assert "device_credentials_ble_passkey()" in client
     assert "123456" not in client
-    assert "#define PROVISIONING_AP_MAX_CLIENTS 1" in runtime
+    assert "#define PROVISIONING_AP_MAX_CLIENTS 2" in runtime
     assert "ap_config->ap.pmf_cfg.capable = true" in runtime
 
 
@@ -170,3 +172,24 @@ def test_existing_portal_contracts_match_new_verification_window():
 
     assert "설정 포털은 테스트를 위해 10분간 유지" in script
     assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in provisioning
+
+
+def test_device_credential_nvs_identifiers_fit_esp_idf_limit():
+    credentials = read("components/device_credentials/device_credentials.c")
+
+    assert '#define DEVICE_CREDENTIALS_NVS_NAME_MAX 15U' in credentials
+    assert '#define DEVICE_CREDENTIALS_NAMESPACE "ancs_creds"' in credentials
+    assert '_Static_assert(sizeof(DEVICE_CREDENTIALS_NAMESPACE)' in credentials
+    assert 'ancs_credentials' not in credentials
+
+
+def test_wifi_reconnect_uses_signal_sorting_driver_retries_and_bounded_recovery():
+    runtime = read("components/provisioning/provisioning_runtime.c")
+    header = read("components/provisioning/include/provisioning_runtime.h")
+
+    assert 'PROVISIONING_RUNTIME_WIFI_TIMEOUT_MS 45000' in header
+    assert 'WIFI_CONNECT_AP_BY_SIGNAL' in runtime
+    assert 'failure_retry_cnt = PROVISIONING_STA_FAILURE_RETRY_COUNT' in runtime
+    assert 'threshold.rssi = PROVISIONING_STA_MIN_RSSI' in runtime
+    assert 'set_wifi_mode_with_retry' in runtime
+    assert 'start_reconnect_timeout = true' in runtime

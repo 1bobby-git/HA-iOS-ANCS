@@ -97,6 +97,7 @@ typedef struct {
 
 typedef struct {
     ancs_client_state_t state;
+    bool initialized;
     esp_gatt_if_t gattc_if;
     uint16_t conn_id;
     esp_bd_addr_t remote_bda;
@@ -2079,6 +2080,7 @@ static void cleanup_init_resources(const init_progress_t *progress)
     }
 
     taskENTER_CRITICAL(&s_shared_state_lock);
+    s_client.initialized = false;
     s_client.connected = false;
     s_client.bonded = false;
     s_client.advertising = false;
@@ -2242,6 +2244,9 @@ esp_err_t ancs_client_init(void)
         goto init_failed;
     }
 
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    s_client.initialized = true;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
     ESP_LOGI(TAG,
              "initialized device=%s static_notification_bytes=%u cache_entries=%u",
              s_client.device_name,
@@ -2270,15 +2275,21 @@ esp_err_t ancs_client_register_boot_held_callback(
 esp_err_t ancs_client_request_enroll(void)
 {
     taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool initialized = s_client.initialized;
+    const esp_timer_handle_t enroll_timer = s_client.enroll_timer;
     const bool repair_required = s_client.pairing_repair_required;
     taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (!initialized || enroll_timer == NULL) {
+        ESP_LOGW(TAG, "enrollment requested before ANCS initialization completed");
+        return ESP_ERR_INVALID_STATE;
+    }
     if (repair_required) {
         ESP_LOGW(TAG,
                  "enrollment blocked until Replace enrollment clears stale pairing data");
         return ESP_ERR_INVALID_STATE;
     }
     if (current_bond_count() > 0 || ancs_client_has_bond()) {
-        (void)esp_timer_stop(s_client.enroll_timer);
+        (void)esp_timer_stop(enroll_timer);
         taskENTER_CRITICAL(&s_shared_state_lock);
         ble_enroll_close_window(&s_enroll);
         taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -2294,9 +2305,9 @@ esp_err_t ancs_client_request_enroll(void)
     if (error != ESP_OK) {
         return error;
     }
-    (void)esp_timer_stop(s_client.enroll_timer);
+    (void)esp_timer_stop(enroll_timer);
     const esp_err_t timer_error = esp_timer_start_once(
-        s_client.enroll_timer,
+        enroll_timer,
         (uint64_t)CONFIG_ANCS_ENROLL_WINDOW_MS * 1000U);
     if (timer_error != ESP_OK) {
         taskENTER_CRITICAL(&s_shared_state_lock);
@@ -2310,6 +2321,13 @@ esp_err_t ancs_client_request_enroll(void)
 
 esp_err_t ancs_client_replace_enrollment(bool confirmed)
 {
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool initialized = s_client.initialized;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (!initialized) {
+        ESP_LOGW(TAG, "enrollment replacement requested before ANCS initialization completed");
+        return ESP_ERR_INVALID_STATE;
+    }
     if (!confirmed) {
         taskENTER_CRITICAL(&s_shared_state_lock);
         s_client.last_replace_error = ESP_ERR_INVALID_STATE;

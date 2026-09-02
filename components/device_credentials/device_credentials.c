@@ -5,9 +5,17 @@
 #include "esp_random.h"
 #include "nvs.h"
 
-#define DEVICE_CREDENTIALS_NAMESPACE "ancs_credentials"
+#define DEVICE_CREDENTIALS_NVS_NAME_MAX 15U
+#define DEVICE_CREDENTIALS_NAMESPACE "ancs_creds"
 #define DEVICE_CREDENTIALS_BLE_PASSKEY_KEY "ble_passkey"
 #define DEVICE_CREDENTIALS_PASSKEY_MIN 100000U
+
+_Static_assert(sizeof(DEVICE_CREDENTIALS_NAMESPACE) - 1U <=
+                   DEVICE_CREDENTIALS_NVS_NAME_MAX,
+               "NVS namespace exceeds ESP-IDF limit");
+_Static_assert(sizeof(DEVICE_CREDENTIALS_BLE_PASSKEY_KEY) - 1U <=
+                   DEVICE_CREDENTIALS_NVS_NAME_MAX,
+               "NVS key exceeds ESP-IDF limit");
 #define DEVICE_CREDENTIALS_PASSKEY_SPAN 900000U
 
 static bool s_initialized;
