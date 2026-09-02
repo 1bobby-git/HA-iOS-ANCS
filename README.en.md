@@ -83,6 +83,7 @@ Example automations:
 ```text
 homeassistant/automation_ios_ancs_c6_relay.yaml
 homeassistant/automation_ios_ancs_parking_arrival_tts.yaml
+homeassistant/automation_ios_ancs_baemin_delivery_tts.yaml
 ```
 
 Before enabling it, replace `sensor.replace_with_your_last_notification_entity` with your discovered last-notification sensor and `notify.replace_with_your_mobile_app_service` with your mobile app notify service. The example forwards only new `relay_id` state changes and filters `complete=false`, `pre_existing=true`, `unknown`, `unavailable`, and availability-restore transitions.
@@ -131,3 +132,7 @@ python -m pytest tests -q
 ### Parking-arrival TTS conditions
 
 `automation_ios_ancs_parking_arrival_tts.yaml` runs only when both `app_id` and `app_name` exactly match the configured apartment app and a new notification contains a Korean vehicle plate plus the `차량이 입차` phrase. Replace the target app, event, TTS, and media-player entity IDs before enabling it.
+
+### Baemin arrival and delivery-complete TTS conditions
+
+`automation_ios_ancs_baemin_delivery_tts.yaml` processes only complete new notifications where both the iOS app ID `com.jawebs.baedal` and app name `배달의민족` exactly match. A `곧 도착합니다!` title announces that the rider will arrive soon, while `문앞으로 배달이 완료되었습니다.` announces the doorstep delivery and prompt pickup message. Coupon and promotional notifications are ignored. Replace the event, TTS, and media-player entity IDs before enabling it.

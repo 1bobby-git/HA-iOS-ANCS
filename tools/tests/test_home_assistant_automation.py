@@ -92,3 +92,44 @@ def test_parking_arrival_tts_requires_exact_target_app():
 
     assert " or notification_app_name == target_app_name" not in automation
     assert " or notification_app_id == target_app_id" not in automation
+
+
+def test_baemin_delivery_tts_only_announces_expected_delivery_states():
+    automation_path = (
+        Path(__file__).resolve().parents[2]
+        / "homeassistant"
+        / "automation_ios_ancs_baemin_delivery_tts.yaml"
+    )
+    automation = automation_path.read_text(encoding="utf-8")
+
+    required_fragments = (
+        "id: ios_ancs_baemin_delivery_tts",
+        "trigger: event.received",
+        "event.replace_with_your_ios_ancs_notification_event",
+        'target_app_id: "com.jawebs.baedal"',
+        'target_app_name: "배달의민족"',
+        "notification_app_id == target_app_id",
+        "notification_app_name == target_app_name",
+        "notification.get('event') == 'added'",
+        "notification.get('complete', false)",
+        "notification.get('pre_existing', true)",
+        "normalized_title == '곧도착합니다'",
+        "normalized_title == '문앞으로배달이완료되었습니다'",
+        "라이더가 잠시 후 도착합니다",
+        "배달을 받을 수 있도록 미리 준비해주세요",
+        "문앞에 주문 건을 보관하였습니다",
+        "분실 우려가 있으니 빠른 수령 부탁드립니다",
+        "action: tts.speak",
+        "tts.replace_with_your_korean_tts",
+        "media_player.replace_with_your_speaker",
+        "{{ announcement | trim }}",
+        "mode: queued",
+        "max: 10",
+    )
+    for fragment in required_fragments:
+        assert fragment in automation
+
+    assert " or notification_app_name == target_app_name" not in automation
+    assert " or notification_app_id == target_app_id" not in automation
+    assert "할인" not in automation
+    assert "쿠폰" not in automation

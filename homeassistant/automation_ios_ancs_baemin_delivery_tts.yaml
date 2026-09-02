@@ -1,0 +1,80 @@
+alias: 배달의민족 도착 및 배달완료 알림을 스피커로 안내
+id: ios_ancs_baemin_delivery_tts
+description: >-
+  배달의민족 iOS ANCS 알림 중 "곧 도착합니다!"와
+  "문앞으로 배달이 완료되었습니다." 상태만 구분해 스피커로 안내합니다.
+
+triggers:
+  - trigger: event.received
+    target:
+      entity_id: event.replace_with_your_ios_ancs_notification_event
+    options:
+      event_type:
+        - notification
+
+variables:
+  # 배달의민족 iOS 앱의 번들 ID와 알림에 표시되는 앱 이름입니다.
+  # Home Assistant의 앱 ID/앱 이름 센서 값이 다르면 실제 값으로 교체하세요.
+  target_app_id: "com.jawebs.baedal"
+  target_app_name: "배달의민족"
+
+  notification: "{{ trigger.to_state.attributes }}"
+  notification_app_id: "{{ notification.get('app_id') or '' }}"
+  notification_app_name: "{{ notification.get('app_name') or '' }}"
+  truncated: "{{ notification.get('truncated') or {} }}"
+  normalized_title: >-
+    {{ (notification.get('title') or '')
+       | replace(' ', '')
+       | replace('\n', '')
+       | replace('!', '')
+       | replace('.', '')
+       | trim }}
+  delivery_status: >-
+    {% if normalized_title == '곧도착합니다' -%}
+      arriving
+    {%- elif normalized_title == '문앞으로배달이완료되었습니다' -%}
+      delivered
+    {%- else -%}
+      none
+    {%- endif %}
+  announcement: >-
+    {% if delivery_status | trim == 'arriving' -%}
+      배달의민족 알림입니다. 곧 도착합니다. 라이더가 잠시 후 도착합니다.
+      배달을 받을 수 있도록 미리 준비해주세요.
+    {%- elif delivery_status | trim == 'delivered' -%}
+      배달의민족 알림입니다. 문앞으로 배달이 완료되었습니다.
+      요청하신대로 문앞에 주문 건을 보관하였습니다.
+      분실 우려가 있으니 빠른 수령 부탁드립니다.
+    {%- else -%}
+      {{ '' }}
+    {%- endif %}
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ notification_app_id == target_app_id
+         and notification_app_name == target_app_name }}
+  - condition: template
+    value_template: >-
+      {{ notification.get('event') == 'added'
+         and (notification.get('complete', false) | bool(false))
+         and not (notification.get('pre_existing', true) | bool(true))
+         and not (truncated.get('app_id', false) | bool(false))
+         and not (truncated.get('app_name', false) | bool(false))
+         and not (truncated.get('title', false) | bool(false))
+         and not (truncated.get('subtitle', false) | bool(false))
+         and not (truncated.get('message', false) | bool(false))
+         and notification.get('error') is none }}
+  - condition: template
+    value_template: "{{ announcement | trim != '' }}"
+
+actions:
+  - action: tts.speak
+    target:
+      entity_id: tts.replace_with_your_korean_tts
+    data:
+      media_player_entity_id: media_player.replace_with_your_speaker
+      message: "{{ announcement | trim }}"
+
+mode: queued
+max: 10
