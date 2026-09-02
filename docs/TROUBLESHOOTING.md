@@ -52,7 +52,7 @@ The setup AP should remain available while Wi-Fi or MQTT is unhealthy so setting
 
 - Open the 120-second enrollment window with setup-portal **iPhone 기기 등록**, Home Assistant **iPhone 등록 시작**, or BOOT for 3 seconds.
 - Keep the setup portal open and pair from iOS **Settings > Bluetooth**.
-- Enter the device-specific six-digit code displayed in the setup portal.
+- Enter the fixed PIN `123456` displayed in the setup portal.
 - Allow notification sharing when prompted.
 
 If pairing information already exists, enrollment requests reconnect to the stored iPhone only. Use confirmed Replace enrollment only when intentionally deleting the current iPhone pairing information.

@@ -91,13 +91,13 @@ def test_portal_reclaims_stale_http_connections():
     assert '"/favicon.ico"' in source
 
 
-def test_device_specific_passkey_and_ap_hardening_are_enabled():
+def test_fixed_passkey_and_ap_hardening_are_enabled():
     credentials = read("components/device_credentials/device_credentials.c")
     client = read("components/ancs_client/ancs_client.c")
     runtime = read("components/provisioning/provisioning_runtime.c")
 
-    assert "esp_fill_random" in credentials
-    assert "nvs_set_u32" in credentials
+    assert "#define DEVICE_CREDENTIALS_BLE_PASSKEY 123456U" in credentials
+    assert "esp_fill_random" not in credentials
     assert "device_credentials_ble_passkey()" in client
     assert "123456" not in client
     assert "#define PROVISIONING_AP_MAX_CLIENTS 2" in runtime
@@ -174,13 +174,17 @@ def test_existing_portal_contracts_match_new_verification_window():
     assert "esp_wifi_disable_pmf_config(WIFI_IF_AP)" not in provisioning
 
 
-def test_device_credential_nvs_identifiers_fit_esp_idf_limit():
+def test_device_credentials_use_fixed_pairing_pin_without_nvs():
     credentials = read("components/device_credentials/device_credentials.c")
+    component = read("components/device_credentials/CMakeLists.txt")
 
-    assert '#define DEVICE_CREDENTIALS_NVS_NAME_MAX 15U' in credentials
-    assert '#define DEVICE_CREDENTIALS_NAMESPACE "ancs_creds"' in credentials
-    assert '_Static_assert(sizeof(DEVICE_CREDENTIALS_NAMESPACE)' in credentials
-    assert 'ancs_credentials' not in credentials
+    assert "#define DEVICE_CREDENTIALS_BLE_PASSKEY 123456U" in credentials
+    assert "device_credentials_init" in credentials
+    assert "esp_fill_random" not in credentials
+    assert "nvs_" not in credentials
+    assert "nvs_flash" not in component
+    assert "esp_hw_support" not in component
+
 
 
 def test_wifi_reconnect_uses_signal_sorting_driver_retries_and_bounded_recovery():
