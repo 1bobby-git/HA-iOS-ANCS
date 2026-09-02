@@ -29,8 +29,8 @@ The project bridges iOS notifications into local Home Assistant automations thro
 2. Select the board model and flash the factory image with ESP Web Tools.
 3. Join the board's `IOS-ANCS-SETUP-XXXXXX` Wi-Fi using password `ancs-xxxxxx`.
 4. Open `http://192.168.4.1` and save Wi-Fi and MQTT settings only. The portal does not store Home Assistant or iPhone notification settings.
-5. In Home Assistant, wait for MQTT Discovery to find the device, then press **iPhone 등록 시작** to open the 120-second enrollment window.
-6. In iOS Bluetooth settings, select the device, enter PIN `the device-specific six-digit code shown in the setup portal while enrollment is open`, and allow notification sharing. Verify that `최근 알림` and `앱 이름` update in Home Assistant.
+5. Without leaving `http://192.168.4.1`, press **iPhone 기기 등록** in the setup portal to open the 120-second enrollment window. The Home Assistant **iPhone 등록 시작** button and holding BOOT for 3 seconds remain available alternatives.
+6. Read the device-specific six-digit enrollment code shown in the setup portal, select the device in iOS Bluetooth settings, enter the code, and allow notification sharing. Verify that `최근 알림` and `앱 이름` update in Home Assistant.
 
 `XXXXXX` is the last six hexadecimal digits of the base Wi-Fi MAC address. The SSID uses uppercase hex and the password uses the same suffix in lowercase. The generic form is `ancs-<lowercase_suffix>`, and it is not a model number.
 
@@ -42,13 +42,13 @@ The shared firmware uses a 4 MB minimum flash layout. All v0.3.7 images shown in
 
 | Target | Typical module/board | Factory image | v0.3.7 status |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,427,376 bytes | Build verified; limited board flash/boot/AP proof |
-| `esp32c2` | ESP32-C2 | 1,447,504 bytes | Build verified |
-| `esp32c3` | ESP32-C3 | 1,636,560 bytes | Build verified |
-| `esp32c5` | ESP32-C5 | 1,781,696 bytes | Build verified |
-| `esp32c6` | ESP32-C6 | 1,781,712 bytes | Build verified; older hardware evidence is historical |
-| `esp32c61` | ESP32-C61 | 1,724,816 bytes | Build verified |
-| `esp32s3` | ESP32-S3 | 1,409,392 bytes | Build verified |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,440,912 bytes | Build verified; limited board flash/boot/AP proof |
+| `esp32c2` | ESP32-C2 | 1,461,792 bytes | Build verified |
+| `esp32c3` | ESP32-C3 | 1,650,800 bytes | Build verified |
+| `esp32c5` | ESP32-C5 | 1,795,936 bytes | Build verified |
+| `esp32c6` | ESP32-C6 | 1,795,968 bytes | Build verified; older hardware evidence is historical |
+| `esp32c61` | ESP32-C61 | 1,739,072 bytes | Build verified |
+| `esp32s3` | ESP32-S3 | 1,422,960 bytes | Build verified |
 
 The table describes the published v0.3.7 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
@@ -94,8 +94,8 @@ Notification JSON preserves the original `app_id` and adds a friendly `app_name`
 - If `IOS-ANCS-SETUP-XXXXXX` is missing, verify power and flashing, then hold BOOT for 3 seconds to open the recovery window.
 - If `http://192.168.4.1` does not open, confirm you are connected to the setup AP and temporarily disable VPN or mobile-data routing.
 - If MQTT does not connect, check host, port, TLS CA, username/password, broker ACLs, and duplicate Client IDs.
-- If the iPhone does not see the device, reopen the 120-second enrollment window with **iPhone 등록 시작** or BOOT for 3 seconds.
-- If iOS asks for a PIN, enter `the device-specific six-digit code shown in the setup portal while enrollment is open` and allow notification sharing.
+- If the iPhone does not see the device, reopen the 120-second enrollment window with setup-portal **iPhone 기기 등록**, Home Assistant **iPhone 등록 시작**, or BOOT for 3 seconds.
+- If iOS asks for a PIN, enter the device-specific six-digit code shown in the setup portal while enrollment is open and allow notification sharing.
 - If Home Assistant entities are missing, check the MQTT integration, Discovery, retained configs, and `<base>/state`.
 
 See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLESHOOTING.md) for more detail.
@@ -106,7 +106,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
 - Empty secret fields preserve already stored values.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
-- Pairing uses PIN `the device-specific six-digit code shown in the setup portal while enrollment is open`; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.
+- Pairing uses the device-specific six-digit code shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.
 
 ## Developer Reference
 
