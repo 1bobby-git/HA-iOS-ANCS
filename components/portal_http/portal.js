@@ -55,6 +55,35 @@ function updateTile(id, state, value, detail) {
   $(`${id}-detail`).textContent = detail;
 }
 
+function updateEnrollmentControls(system, blePasskey) {
+  const button = $('start-enrollment');
+  const code = $('ble-enroll-code');
+  const codeValue = $('ble-enroll-code-value');
+  const busy = button.dataset.busy === 'true';
+  const windowOpen = Boolean(system.enroll_window_open);
+  code.hidden = !windowOpen;
+  codeValue.textContent = blePasskey || '확인 중';
+
+  let label = 'iPhone 기기 등록';
+  let unavailable = false;
+  if (system.ble_pairing_repair_required) {
+    label = '등록 교체 필요';
+    unavailable = true;
+  } else if (system.ble_connected) {
+    label = 'iPhone 연결됨';
+    unavailable = true;
+  } else if (windowOpen) {
+    label = '등록 신호 다시 보내기';
+  } else if (system.ble_bonded) {
+    label = '등록된 iPhone 다시 연결';
+  }
+  if (!busy) {
+    button.textContent = label;
+    button.dataset.label = label;
+  }
+  button.disabled = busy || unavailable;
+}
+
 function mqttEndpoint(config) {
   const host = config.mqtt_host || '브로커 주소 미설정';
   const port = Number(config.mqtt_port || 1883);
@@ -226,11 +255,13 @@ function applyStatus(status) {
       : `등록 신호를 보내고 있습니다. iPhone Bluetooth 설정에서 ${bluetoothName}을 선택하고 설정 포털에 표시된 6자리 코드를 입력하세요.`;
   } else if (system.ble_bonded) {
     updateTile('status-ble', 'pending', '등록됨 · 연결 대기', '등록된 iPhone을 찾고 있습니다');
-    $('ble-guidance').textContent = '등록된 iPhone만 자동으로 다시 연결됩니다. Home Assistant 버튼 또는 BOOT 3초 길게 누르기로 재연결 신호를 보낼 수 있습니다.';
+    $('ble-guidance').textContent = '등록된 iPhone만 자동으로 다시 연결됩니다. 이 페이지의 버튼으로 재연결 신호를 다시 보낼 수 있습니다.';
   } else {
     updateTile('status-ble', 'neutral', '미등록 · 광고 꺼짐', '등록 시작 전에는 Bluetooth 등록 신호를 보내지 않습니다');
-    $('ble-guidance').textContent = 'Home Assistant의 iPhone 등록 시작 버튼을 누르거나 BOOT 버튼을 3초 동안 누르면 Bluetooth 등록 신호를 보냅니다.';
+    $('ble-guidance').textContent = '이 페이지의 iPhone 기기 등록 버튼을 누르면 Bluetooth 등록 신호를 보냅니다.';
   }
+
+  updateEnrollmentControls(system, blePasskey);
 
   const published = Number(system.notifications_published || 0);
   const dropStats = relayDropBreakdown(system);
@@ -409,6 +440,21 @@ $('test-notification').addEventListener('click', () => runButton('test-notificat
     }
   }
   throw new Error('테스트 알림을 큐에 넣었지만 MQTT 전송 확인을 받지 못했습니다.');
+}));
+
+$('start-enrollment').addEventListener('click', () => runButton('start-enrollment', '등록 시작 중', async () => {
+  await api('/api/ble/enroll', { method: 'POST', body: '{}' });
+  const status = await loadStatus();
+  const passkey = Number(status.system?.ble_passkey || 0);
+  const code = Number.isInteger(passkey) && passkey >= 100000 && passkey <= 999999
+    ? String(passkey).padStart(6, '0')
+    : null;
+  setMessage(
+    code
+      ? `iPhone 등록을 시작했습니다. 이 페이지에 표시된 등록 코드 ${code}를 iPhone Bluetooth 등록 창에 입력하세요.`
+      : 'iPhone 등록 신호를 시작했습니다. 상태 카드가 갱신될 때까지 현재 페이지를 유지하세요.',
+    'success',
+  );
 }));
 
 $('replace-enrollment').addEventListener('click', () => {

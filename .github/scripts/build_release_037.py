@@ -227,7 +227,7 @@ def main() -> None:
         "docs/app.js",
         "docs/index.html",
         f"docs/release-fingerprints-v{VERSION}.sha256",
-        "docs/release-fingerprints-v0.3.6.sha256",
+        "docs/release-fingerprints-v0.3.7.sha256",
     )
     run(
         sys.executable,

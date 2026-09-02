@@ -22,7 +22,7 @@ param(
     [string]$BuildRoot,
     [ValidateRange(0, 64)]
     [int]$Jobs = 0,
-    [string]$Version = '0.3.6',
+    [string]$Version = '0.3.7',
     [switch]$KeepGoing
 )
 

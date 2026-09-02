@@ -99,7 +99,7 @@ def test_plain_enroll_with_existing_bond_does_not_open_pairing_window():
     assert "ble_enroll_close_window(&s_enroll);" in source
     assert "load_existing_ble_bond();" in source
     assert "start_advertising();" in source
-    assert "esp_timer_start_once(\n        s_client.enroll_timer" in source
+    assert "esp_timer_start_once(\n        enroll_timer" in source
 
 
 def test_every_advertising_entry_point_is_guarded_by_enrollment_policy():

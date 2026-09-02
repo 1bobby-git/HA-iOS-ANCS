@@ -48,6 +48,7 @@ typedef struct {
     esp_err_t (*mqtt_test)(void *context);
     esp_err_t (*test_notification)(void *context);
     esp_err_t (*reconnect)(const provision_config_t *config, void *context);
+    esp_err_t (*ble_enroll)(void *context);
     esp_err_t (*ble_replace)(void *context);
     esp_err_t (*restart)(void *context);
     esp_err_t (*reset_provisioning)(void *context);

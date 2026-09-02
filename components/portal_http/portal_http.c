@@ -18,6 +18,7 @@
 #define PORTAL_HTTP_REDIRECT_URI "http://192.168.4.1"
 #define PORTAL_HTTP_AP_HOST "192.168.4.1"
 #define PORTAL_HTTP_SCAN_LIMIT PROVISIONING_RUNTIME_SCAN_MAX_APS
+#define PORTAL_HTTP_SERVER_STACK_SIZE 8192
 
 extern const unsigned char portal_html_start[] asm("_binary_portal_html_start");
 extern const unsigned char portal_html_end[] asm("_binary_portal_html_end");
@@ -706,6 +707,33 @@ static esp_err_t handle_favicon_get(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+static esp_err_t handle_ble_enroll_post(httpd_req_t *req)
+{
+    esp_err_t guard_err = require_ap_local_request(req);
+    if (guard_err != ESP_OK) {
+        return send_ap_guard_error(req, guard_err);
+    }
+    if (s_handlers.ble_enroll == NULL) {
+        return send_error_json(req, "503 Service Unavailable", "enrollment unavailable");
+    }
+    cJSON *json = NULL;
+    esp_err_t err = read_json_body(req, &json);
+    if (err != ESP_OK) {
+        return send_error_json(req, "400 Bad Request", "invalid JSON");
+    }
+    cJSON_Delete(json);
+
+    err = s_handlers.ble_enroll(s_handlers.context);
+    if (err == ESP_ERR_INVALID_STATE) {
+        return send_error_json(req, "409 Conflict", "enrollment is not ready");
+    }
+    return err == ESP_OK
+               ? send_json(req, "{\"ok\":true,\"enroll_started\":true}")
+               : send_error_json(req,
+                                 "500 Internal Server Error",
+                                 "enrollment failed");
+}
+
 static esp_err_t handle_ble_replace_post(httpd_req_t *req)
 {
     esp_err_t guard_err = require_ap_local_request(req);
@@ -810,6 +838,7 @@ static esp_err_t register_all_routes(httpd_handle_t server)
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/config", HTTP_POST, handle_config_post), TAG, "config");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/mqtt/test", HTTP_POST, handle_mqtt_test_post), TAG, "mqtt test");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/notification/test", HTTP_POST, handle_test_notification_post), TAG, "notification test");
+    ESP_RETURN_ON_ERROR(register_uri(server, "/api/ble/enroll", HTTP_POST, handle_ble_enroll_post), TAG, "ble enroll");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/ble/replace", HTTP_POST, handle_ble_replace_post), TAG, "ble replace");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/restart", HTTP_POST, handle_restart_post), TAG, "restart");
     ESP_RETURN_ON_ERROR(register_uri(server, "/api/reset", HTTP_POST, handle_reset_post), TAG, "reset");
@@ -834,6 +863,7 @@ esp_err_t portal_http_init(const portal_http_handlers_t *handlers)
     }
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.stack_size = PORTAL_HTTP_SERVER_STACK_SIZE;
     config.max_uri_handlers = 24;
     config.max_open_sockets = 7;
     config.lru_purge_enable = true;

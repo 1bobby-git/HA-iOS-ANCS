@@ -650,6 +650,46 @@ summary:focus-visible {
   margin-bottom: 8px;
 }
 
+.ble-enroll-actions {
+  display: grid;
+  gap: 10px;
+  min-width: min(100%, 220px);
+}
+
+.ble-enroll-code {
+  padding: 12px 14px;
+  border: 1px solid #b9e2d3;
+  border-radius: 12px;
+  background: var(--color-success-soft);
+  text-align: center;
+}
+
+.ble-enroll-code span,
+.ble-enroll-code strong,
+.ble-enroll-code small {
+  display: block;
+}
+
+.ble-enroll-code span {
+  color: var(--color-success);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.ble-enroll-code strong {
+  margin: 4px 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 1.45rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+}
+
+.ble-enroll-code small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .management {
   padding: 0;
 }

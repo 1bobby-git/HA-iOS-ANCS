@@ -66,13 +66,18 @@ replace_once(
     "typedef struct {\n    ancs_client_state_t state;\n",
     "typedef struct {\n    ancs_client_state_t state;\n    bool initialized;\n",
 )
-replace_once(
+transform_block(
     "components/ancs_client/ancs_client.c",
-    "    taskENTER_CRITICAL(&s_shared_state_lock);\n"
-    "    s_client.connected = false;\n",
-    "    taskENTER_CRITICAL(&s_shared_state_lock);\n"
-    "    s_client.initialized = false;\n"
-    "    s_client.connected = false;\n",
+    "static void cleanup_init_resources(const init_progress_t *progress)",
+    "esp_err_t ancs_client_init(void)",
+    lambda block: block.replace(
+        "    taskENTER_CRITICAL(&s_shared_state_lock);\n"
+        "    s_client.connected = false;\n",
+        "    taskENTER_CRITICAL(&s_shared_state_lock);\n"
+        "    s_client.initialized = false;\n"
+        "    s_client.connected = false;\n",
+        1,
+    ),
 )
 replace_once(
     "components/ancs_client/ancs_client.c",
@@ -597,8 +602,8 @@ for raw_path in subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).spl
         content = file_path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, IsADirectoryError):
         continue
-    if "0.3.6" in content:
-        file_path.write_text(content.replace("0.3.6", "0.3.7"), encoding="utf-8", newline="\n")
+    if "0.3.7" in content:
+        file_path.write_text(content.replace("0.3.7", "0.3.7"), encoding="utf-8", newline="\n")
 
 replace_once(
     "CHANGELOG.md",

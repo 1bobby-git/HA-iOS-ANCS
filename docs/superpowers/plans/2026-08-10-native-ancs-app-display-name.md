@@ -39,10 +39,10 @@
 - `tests/test_sensor.py`, `tests/test_config_flow.py`, `tests/test_init.py`: entity count, translation, migration, and MQTT non-interference regressions.
 - `tools/tests/test_documentation_contract.py`, `tools/tests/test_multi_target_contract.py`, `tools/tests/test_release_integrity.py`: version and release/publication contracts.
 - `.github/workflows/pages.yml`: stage public docs while excluding internal `docs/superpowers` files.
-- `CMakeLists.txt`, `tools/build.ps1`, `tools/build.sh`, `tools/build_matrix.ps1`: firmware version `0.3.6`.
+- `CMakeLists.txt`, `tools/build.ps1`, `tools/build.sh`, `tools/build_matrix.ps1`: firmware version `0.3.7`.
 - `custom_components/ha_ios_ancs/manifest.json`: HACS integration version `0.6.3`.
 - `README.md`, `README.en.md`, `docs/index.html`, `docs/app.js`, `docs/manifests/*.json`: release documentation and installer pointers.
-- `docs/firmware/*/*.factory.bin`, `docs/release-fingerprints-v0.3.6.sha256`: rebuilt release artifacts and hashes.
+- `docs/firmware/*/*.factory.bin`, `docs/release-fingerprints-v0.3.7.sha256`: rebuilt release artifacts and hashes.
 
 ### Task 1: Keep Internal Plans Out of GitHub Pages
 
@@ -366,7 +366,7 @@ An active removed UID sets `active_canceled` in either stage. Drain completion/e
 Run:
 
 ```powershell
-.\tools\build_matrix.ps1 -Targets esp32c6 -Version 0.3.6
+.\tools\build_matrix.ps1 -Targets esp32c6 -Version 0.3.7
 ```
 
 Expected: firmware compile/link/merge PASS and no static-analysis warning from request buffer sizes or parser types. Run Unity on a connected test device if available.
@@ -451,30 +451,30 @@ Trailers: `Constraint: Preserve raw MQTT timing and all MQTT-owned entities`, `T
 - Modify: `custom_components/ha_ios_ancs/manifest.json`
 - Modify: `README.md`, `README.en.md`, `docs/index.html`, `docs/app.js`
 - Modify: `docs/manifests/ios-ancs.json`, `docs/manifests/esp32-c6.json`
-- Replace: seven `docs/firmware/*/ios-ancs-*-v0.3.3.factory.bin` files with `v0.3.6` builds
-- Replace: `docs/release-fingerprints-v0.3.3.sha256` with `docs/release-fingerprints-v0.3.6.sha256`
+- Replace: seven `docs/firmware/*/ios-ancs-*-v0.3.3.factory.bin` files with `v0.3.7` builds
+- Replace: `docs/release-fingerprints-v0.3.3.sha256` with `docs/release-fingerprints-v0.3.7.sha256`
 
 - [ ] **Step 1: Update release tests first and verify RED**
 
-Set firmware `VERSION = "0.3.6"`, rename test names from `v033` to `v034`, change installer/docs expectations to `0.3.6`, and change companion manifest expectations to `0.6.3`. Add README assertions that native ANCS Display Name is primary and static mapping is fallback. Run tool and manifest contract tests; expect failures against current `0.3.3`/`0.6.2` files.
+Set firmware `VERSION = "0.3.7"`, rename test names from `v033` to `v034`, change installer/docs expectations to `0.3.7`, and change companion manifest expectations to `0.6.3`. Add README assertions that native ANCS Display Name is primary and static mapping is fallback. Run tool and manifest contract tests; expect failures against current `0.3.3`/`0.6.2` files.
 
 - [ ] **Step 2: Update textual version anchors and guidance**
 
-Set firmware defaults/project version to `0.3.6` and integration manifest to `0.6.3`. Update both READMEs and installer surfaces to explain: first notification from an app may incur one native lookup; subsequent notifications use a session cache; app lookup failure falls back without losing notification details; HACS installs the companion only.
+Set firmware defaults/project version to `0.3.7` and integration manifest to `0.6.3`. Update both READMEs and installer surfaces to explain: first notification from an app may incur one native lookup; subsequent notifications use a session cache; app lookup failure falls back without losing notification details; HACS installs the companion only.
 
 - [ ] **Step 3: Build all seven firmware targets**
 
 Run:
 
 ```powershell
-.\tools\build_matrix.ps1 -Version 0.3.6 -Jobs 6
+.\tools\build_matrix.ps1 -Version 0.3.7 -Jobs 6
 ```
 
 Expected: seven successful results in `artifacts/build-matrix.json` and seven new factory binaries. For every report item, resolve its `path` and verify it begins with the repository's absolute `docs/firmware/` directory before removing the seven tracked `v0.3.3` images.
 
 - [ ] **Step 4: Update manifests, SHA prefixes, and fingerprints**
 
-Point both manifests to `v0.3.6` files. Compute each binary SHA-256, update its 12-character uppercase prefix in `docs/app.js`, and create the fingerprint file in manifest target order using lowercase full digests and repository-relative paths. Remove the superseded fingerprint and firmware files only after all new paths and hashes validate.
+Point both manifests to `v0.3.7` files. Compute each binary SHA-256, update its 12-character uppercase prefix in `docs/app.js`, and create the fingerprint file in manifest target order using lowercase full digests and repository-relative paths. Remove the superseded fingerprint and firmware files only after all new paths and hashes validate.
 
 - [ ] **Step 5: Run release integrity and complete local verification**
 
@@ -493,7 +493,7 @@ Expected: all suites PASS, seven manifest binaries exist and are tracked, finger
 
 Commit intent: `Ship native iOS app names across firmware and HACS`
 
-Trailers: `Constraint: Firmware 0.3.6 and companion 0.6.3 must remain independently identifiable`, `Tested: full pytest suites, seven-target builds, compileall, release integrity`, `Not-tested: physical iPhone notification until deployment step`.
+Trailers: `Constraint: Firmware 0.3.7 and companion 0.6.3 must remain independently identifiable`, `Tested: full pytest suites, seven-target builds, compileall, release integrity`, `Not-tested: physical iPhone notification until deployment step`.
 
 ### Task 8: Publish and Verify the Release
 
@@ -510,15 +510,15 @@ Run `git push origin main`. Inspect the Validate and Pages runs for the pushed S
 
 - [ ] **Step 3: Create and push HACS release tag**
 
-Create annotated tag `v0.6.3` at the verified SHA. Push the tag. Create a GitHub release named `iOS ANCS v0.6.3` with release notes separating companion `0.6.3` from firmware `0.3.6`, and attach all seven factory binaries plus `release-fingerprints-v0.3.6.sha256`.
+Create annotated tag `v0.6.3` at the verified SHA. Push the tag. Create a GitHub release named `iOS ANCS v0.6.3` with release notes separating companion `0.6.3` from firmware `0.3.7`, and attach all seven factory binaries plus `release-fingerprints-v0.3.7.sha256`.
 
 - [ ] **Step 4: Verify public artifacts**
 
-Fetch the GitHub release metadata, confirm tag/SHA/assets, open the Pages manifests, and verify all public manifest binary URLs return the new `0.3.6` files whose hashes match the committed fingerprint list. Confirm HACS can see manifest version `0.6.3`; do not claim HACS default-store acceptance unless its upstream review actually shows acceptance.
+Fetch the GitHub release metadata, confirm tag/SHA/assets, open the Pages manifests, and verify all public manifest binary URLs return the new `0.3.7` files whose hashes match the committed fingerprint list. Confirm HACS can see manifest version `0.6.3`; do not claim HACS default-store acceptance unless its upstream review actually shows acceptance.
 
 - [ ] **Step 5: Perform live deployment proof where accessible**
 
-If the intended ESP32-C6 serial port is identifiable without ambiguity, flash `ios-ancs-esp32c6-v0.3.6.factory.bin`, preserve provisioning, reconnect the paired iPhone, and inspect MQTT for a fresh non-Home-Assistant notification. Require the payload `app_name` to be a localized native name and Home Assistant to expose it on the separate `iOS ANCS` companion device while the MQTT device remains enabled. Confirm the deprecated `published_at_ms` companion entity is gone and `received_at_ms` remains.
+If the intended ESP32-C6 serial port is identifiable without ambiguity, flash `ios-ancs-esp32c6-v0.3.7.factory.bin`, preserve provisioning, reconnect the paired iPhone, and inspect MQTT for a fresh non-Home-Assistant notification. Require the payload `app_name` to be a localized native name and Home Assistant to expose it on the separate `iOS ANCS` companion device while the MQTT device remains enabled. Confirm the deprecated `published_at_ms` companion entity is gone and `received_at_ms` remains.
 
 - [ ] **Step 6: Report verified and unverified scopes separately**
 
