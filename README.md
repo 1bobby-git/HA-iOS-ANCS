@@ -3,9 +3,11 @@
   <img src="media/readme-logo.svg" alt="iOS ANCS 가로형 로고" width="480">
 </p>
 <p align="center">
-  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/stargazers">
-    <img src="https://img.shields.io/github/stars/1bobby-git/HA-iOS-ANCS?style=flat-square&logo=github&label=Stars" alt="GitHub Stars">
-  </a>
+  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/stargazers"><img src="https://img.shields.io/github/stars/1bobby-git/HA-iOS-ANCS?style=flat-square&logo=github&label=Stars" alt="GitHub Stars"></a>
+  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/releases"><img src="https://img.shields.io/github/v/release/1bobby-git/HA-iOS-ANCS?style=flat-square&label=Release" alt="Latest Release"></a>
+  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/blob/main/docs/manifests/ios-ancs.json"><img src="https://img.shields.io/badge/Architecture-ESP32%20family-0ea5e9?style=flat-square" alt="ESP32, ESP32-C2, ESP32-C3, ESP32-C5, ESP32-C6, ESP32-C61, ESP32-S3"></a>
+  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/blob/main/LICENSE"><img src="https://img.shields.io/github/license/1bobby-git/HA-iOS-ANCS?style=flat-square&label=License" alt="License"></a>
+  <a href="https://github.com/1bobby-git/HA-iOS-ANCS/commits/main"><img src="https://img.shields.io/github/last-commit/1bobby-git/HA-iOS-ANCS?style=flat-square&label=Updated" alt="Last Commit"></a>
 </p>
 <!-- project-branding:end -->
 
