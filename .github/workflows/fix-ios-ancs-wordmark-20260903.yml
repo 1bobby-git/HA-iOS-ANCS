@@ -1,0 +1,173 @@
+name: Rebuild iOS ANCS wordmark from existing icon
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-ios-ancs-wordmark-20260903.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild-wordmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow
+
+      - name: Rebuild horizontal logos without modifying icons
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import re
+          from pathlib import Path
+
+          from PIL import Image, ImageChops, ImageDraw, ImageFont
+
+          brand = Path("custom_components/ha_ios_ancs/brand")
+          readme_path = Path("README.md")
+          regular_font_path = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+          bold_font_path = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+
+          if not regular_font_path.is_file() or not bold_font_path.is_file():
+              raise SystemExit("Required DejaVu fonts are unavailable")
+
+          icon_paths = [brand / "icon.png", brand / "icon@2x.png"]
+          before_hashes = {
+              path: hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in icon_paths
+          }
+
+          def fitted_font(path: Path, text: str, preferred_size: int, max_width: int) -> ImageFont.FreeTypeFont:
+              size = preferred_size
+              while size >= 10:
+                  font = ImageFont.truetype(str(path), size=size)
+                  left, top, right, bottom = font.getbbox(text)
+                  if right - left <= max_width:
+                      return font
+                  size -= 1
+              raise RuntimeError(f"Could not fit text: {text}")
+
+          def build_logo(icon_path: Path, output_path: Path) -> None:
+              icon = Image.open(icon_path).convert("RGBA")
+              width, height = icon.size
+              canvas = Image.new("RGBA", (width * 5, height), (0, 0, 0, 0))
+
+              # Copy the existing icon byte-for-byte at pixel level. No scaling,
+              # recoloring, cropping, masking, or redrawing is applied.
+              canvas.paste(icon, (0, 0))
+
+              gap = max(18, round(width * 0.28))
+              text_x = width + gap
+              text_max_width = canvas.width - text_x - max(18, round(width * 0.18))
+              draw = ImageDraw.Draw(canvas)
+
+              small_text = "Home Assistant"
+              main_text = "iOS ANCS"
+              small_font = fitted_font(
+                  regular_font_path,
+                  small_text,
+                  preferred_size=max(18, round(height * 0.20)),
+                  max_width=text_max_width,
+              )
+              main_font = fitted_font(
+                  bold_font_path,
+                  main_text,
+                  preferred_size=max(34, round(height * 0.43)),
+                  max_width=text_max_width,
+              )
+
+              small_bbox = draw.textbbox((0, 0), small_text, font=small_font)
+              main_bbox = draw.textbbox((0, 0), main_text, font=main_font)
+              small_height = small_bbox[3] - small_bbox[1]
+              main_height = main_bbox[3] - main_bbox[1]
+              line_gap = max(5, round(height * 0.055))
+              total_height = small_height + line_gap + main_height
+              start_y = max(0, (height - total_height) // 2)
+
+              accent = (14, 165, 233, 255)
+              main_color = (15, 23, 42, 255)
+              draw.text(
+                  (text_x, start_y - small_bbox[1]),
+                  small_text,
+                  font=small_font,
+                  fill=accent,
+              )
+              main_y = start_y + small_height + line_gap
+              draw.text(
+                  (text_x, main_y - main_bbox[1]),
+                  main_text,
+                  font=main_font,
+                  fill=main_color,
+              )
+
+              copied_region = canvas.crop((0, 0, width, height))
+              if ImageChops.difference(copied_region, icon).getbbox() is not None:
+                  raise RuntimeError(f"Existing icon pixels changed in {output_path}")
+
+              output_path.parent.mkdir(parents=True, exist_ok=True)
+              canvas.save(output_path, format="PNG", optimize=True)
+
+              check = Image.open(output_path).convert("RGBA")
+              if check.size != canvas.size:
+                  raise RuntimeError(f"Unexpected output dimensions for {output_path}: {check.size}")
+              if ImageChops.difference(check.crop((0, 0, width, height)), icon).getbbox() is not None:
+                  raise RuntimeError(f"Saved logo does not preserve {icon_path} exactly")
+
+          build_logo(brand / "icon.png", brand / "logo.png")
+          build_logo(brand / "icon@2x.png", brand / "logo@2x.png")
+
+          after_hashes = {
+              path: hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in icon_paths
+          }
+          if before_hashes != after_hashes:
+              raise RuntimeError("Original icon files were modified")
+
+          readme = readme_path.read_text(encoding="utf-8")
+          branding_pattern = re.compile(
+              r"(<!-- project-branding:start -->.*?<img\s+src=\")[^\"]+(\"\s+alt=\"iOS ANCS[^\"]*\"\s+width=\")[^\"]+(\">)",
+              re.DOTALL,
+          )
+          replacement = (
+              r"\1custom_components/ha_ios_ancs/brand/logo@2x.png"
+              r"\g<2>520\3"
+          )
+          updated, count = branding_pattern.subn(replacement, readme, count=1)
+          if count == 0:
+              raise RuntimeError("README branding image could not be located")
+          readme_path.write_text(updated, encoding="utf-8")
+
+          obsolete = Path("media/readme-logo.svg")
+          if obsolete.exists():
+              obsolete.unlink()
+
+          print("icon.png sha256:", before_hashes[brand / "icon.png"])
+          print("icon@2x.png sha256:", before_hashes[brand / "icon@2x.png"])
+          print("logo.png:", Image.open(brand / "logo.png").size)
+          print("logo@2x.png:", Image.open(brand / "logo@2x.png").size)
+          PY
+
+      - name: Commit generated wordmark
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix-ios-ancs-wordmark-20260903.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md custom_components/ha_ios_ancs/brand/logo.png custom_components/ha_ios_ancs/brand/logo@2x.png media/readme-logo.svg .github/workflows/fix-ios-ancs-wordmark-20260903.yml 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "docs: preserve existing icon in iOS ANCS wordmark"
+          git push
