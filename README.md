@@ -1,6 +1,6 @@
 <!-- project-branding:start -->
 <p align="center">
-  <img src="custom_components/ha_ios_ancs/brand/icon@2x.png" alt="iOS ANCS 로고" width="128">
+  <img src="media/readme-logo.svg" alt="iOS ANCS 가로형 로고" width="480">
 </p>
 <p align="center">
   <a href="https://github.com/1bobby-git/HA-iOS-ANCS/stargazers">
