@@ -56,13 +56,11 @@ LEGACY_INSTALLER_COPY = (
 )
 PRIVATE_EXAMPLE_GUIDANCE = (
     "COM_PRIVATE",
-    "COM_PRIVATE_ALT",
-    "DEVICE_SUFFIX_PRIVATE",
+    "DEVICE-SUFFIX-PRIVATE",
     "PRIVATE_LOCATION_NAME",
-    "PRIVATE_PLACE_NAME",
-    "PRIVATE_ROUTER_NAME",
-    "notify.mobile_app_" + "1bobby",
-    "sensor.ios_ancs_c6_ab12_ios_ancs_c6_ab12_last_notification",
+    "PRIVATE_NETWORK_NAME",
+    "notify.mobile_app_private_owner",
+    "sensor.private_owner_ios_ancs_last_notification",
 )
 
 
