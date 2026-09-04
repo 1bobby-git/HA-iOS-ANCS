@@ -1,0 +1,133 @@
+name: Prepare iOS ANCS 0.6.9 release once
+
+on:
+  push:
+    branches:
+      - "release/v0.6.9-firmware-0.3.8"
+    paths:
+      - ".github/workflows/prepare-v0.6.9-release-once.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-ios-ancs-v0.6.9
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out release branch
+        uses: actions/checkout@v4
+        with:
+          ref: "release/v0.6.9-firmware-0.3.8"
+          fetch-depth: 0
+
+      - name: Apply release metadata
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          manifest_path = Path("custom_components/ha_ios_ancs/manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          if manifest.get("version") not in {"0.6.8", "0.6.9"}:
+              raise RuntimeError(f"Unexpected integration version: {manifest.get('version')!r}")
+          manifest["version"] = "0.6.9"
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          test_path = Path("tests/test_config_flow.py")
+          test_text = test_path.read_text(encoding="utf-8")
+          if '"version": "0.6.9"' not in test_text:
+              old_count = test_text.count('"version": "0.6.8"')
+              if old_count != 2:
+                  raise RuntimeError(
+                      f"Expected two 0.6.8 test contracts, found {old_count}"
+                  )
+              test_text = test_text.replace(
+                  '"version": "0.6.8"',
+                  '"version": "0.6.9"',
+              )
+          if "def test_release_069_contract()" not in test_text:
+              old_name = "def test_release_066_contract()"
+              if test_text.count(old_name) != 1:
+                  raise RuntimeError("Expected one legacy release contract test name")
+              test_text = test_text.replace(
+                  old_name,
+                  "def test_release_069_contract()",
+              )
+          test_path.write_text(test_text, encoding="utf-8")
+
+          changelog_path = Path("CHANGELOG.md")
+          changelog = changelog_path.read_text(encoding="utf-8")
+          heading = "## Home Assistant 통합 0.6.9 / 펌웨어 0.3.8 - 2026-09-04"
+          if heading not in changelog:
+              prefix = "# 변경 이력\n\n"
+              if not changelog.startswith(prefix):
+                  raise RuntimeError("Unexpected CHANGELOG.md header")
+              section = """## Home Assistant 통합 0.6.9 / 펌웨어 0.3.8 - 2026-09-04
+
+- Home Assistant 통합 버전을 `0.6.9`로 올리고 펌웨어 `0.3.8`과 결합한 GitHub Release를 배포합니다.
+- 펌웨어 `0.3.7`의 enroll 초기화 및 Wi-Fi 안정성 수정은 `0.3.8`에 모두 포함되며, `0.3.7`은 별도 공개 릴리스 없이 `0.3.8`로 대체합니다.
+- 고정 Bluetooth PIN `123456`, 120초 등록 창, ESP32 계열 7개 대상의 factory 이미지 및 SHA256 지문을 배포 계약으로 고정합니다.
+- GitHub Pages 설치 자산과 GitHub Release 첨부 자산을 각각 다시 내려받아 SHA256이 일치하는지 확인하도록 배포 검증을 강화합니다.
+
+"""
+              changelog = prefix + section + changelog[len(prefix):]
+              changelog_path.write_text(changelog, encoding="utf-8")
+
+          release_notes = """# iOS ANCS 0.6.9 / Firmware 0.3.8
+
+Home Assistant용 iOS ANCS 통합 `0.6.9`와 ESP32 펌웨어 `0.3.8` 릴리스입니다.
+
+## Home Assistant 통합 0.6.9
+
+- 펌웨어 `0.3.8` 배포 상태와 통합 버전을 하나의 GitHub Release로 정리했습니다.
+- 기존 MQTT Discovery 장치와 Home Assistant 보조 통합의 동작 및 엔티티 계약은 변경하지 않습니다.
+
+## ESP32 펌웨어 0.3.8
+
+- iPhone Bluetooth 페어링 PIN을 모든 지원 보드에서 `123456`으로 고정했습니다.
+- 신규 페어링은 사용자가 연 120초 등록 창 안에서만 허용합니다.
+- 펌웨어 `0.3.7`에 포함된 ANCS enroll 초기화 수정, Wi-Fi 재연결 및 AP/STA 안정성 개선을 모두 포함합니다.
+- ESP32, ESP32-C2, ESP32-C3, ESP32-C5, ESP32-C6, ESP32-C61, ESP32-S3용 factory 이미지를 제공합니다.
+
+## 배포 정리
+
+펌웨어 `0.3.7`은 소스와 설치 페이지에는 반영됐지만 별도 태그와 GitHub Release로 공개되지 않았습니다. `0.3.8`이 해당 변경을 모두 포함하므로 `0.3.7`을 별도 공개하지 않고 이 릴리스로 대체합니다.
+
+첨부된 `release-fingerprints-v0.3.8.sha256`으로 7개 factory 이미지의 SHA256을 검증할 수 있습니다.
+"""
+          notes_path = Path("docs/releases/v0.6.9.md")
+          notes_path.parent.mkdir(parents=True, exist_ok=True)
+          if notes_path.exists() and notes_path.read_text(encoding="utf-8") != release_notes:
+              raise RuntimeError(f"Unexpected existing release notes: {notes_path}")
+          notes_path.write_text(release_notes, encoding="utf-8")
+
+          workflow_path = Path(".github/workflows/prepare-v0.6.9-release-once.yml")
+          if not workflow_path.exists():
+              raise RuntimeError("Preparation workflow is already missing")
+          workflow_path.unlink()
+          PY
+
+      - name: Commit prepared release files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No release preparation changes to commit"
+            exit 0
+          fi
+          git commit -m "Release iOS ANCS 0.6.9 with firmware 0.3.8"
+          git push origin HEAD:"release/v0.6.9-firmware-0.3.8"
