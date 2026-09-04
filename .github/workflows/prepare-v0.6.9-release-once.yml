@@ -46,16 +46,25 @@ jobs:
 
           test_path = Path("tests/test_config_flow.py")
           test_text = test_path.read_text(encoding="utf-8")
-          if '"version": "0.6.9"' not in test_text:
-              old_count = test_text.count('"version": "0.6.8"')
-              if old_count != 2:
+          dict_old = '"version": "0.6.8"'
+          dict_new = '"version": "0.6.9"'
+          assert_old = 'assert manifest["version"] == "0.6.8"'
+          assert_new = 'assert manifest["version"] == "0.6.9"'
+
+          if dict_new not in test_text:
+              if test_text.count(dict_old) != 1:
                   raise RuntimeError(
-                      f"Expected two 0.6.8 test contracts, found {old_count}"
+                      f"Expected one 0.6.8 manifest contract, found {test_text.count(dict_old)}"
                   )
-              test_text = test_text.replace(
-                  '"version": "0.6.8"',
-                  '"version": "0.6.9"',
-              )
+              test_text = test_text.replace(dict_old, dict_new, 1)
+
+          if assert_new not in test_text:
+              if test_text.count(assert_old) != 1:
+                  raise RuntimeError(
+                      f"Expected one 0.6.8 release assertion, found {test_text.count(assert_old)}"
+                  )
+              test_text = test_text.replace(assert_old, assert_new, 1)
+
           if "def test_release_069_contract()" not in test_text:
               old_name = "def test_release_066_contract()"
               if test_text.count(old_name) != 1:
@@ -63,6 +72,7 @@ jobs:
               test_text = test_text.replace(
                   old_name,
                   "def test_release_069_contract()",
+                  1,
               )
           test_path.write_text(test_text, encoding="utf-8")
 
