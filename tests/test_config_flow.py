@@ -805,18 +805,18 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.8",
+        "version": "0.6.9",
     }
 
 
-def test_release_066_contract() -> None:
+def test_release_069_contract() -> None:
     manifest = json.loads(
         (ROOT / "custom_components/ha_ios_ancs/manifest.json").read_text(
             encoding="utf-8"
         )
     )
 
-    assert manifest["version"] == "0.6.8"
+    assert manifest["version"] == "0.6.9"
 
 
 def test_translations_contract() -> None:
