@@ -1,0 +1,333 @@
+name: Publish iOS ANCS 0.6.9 release once
+
+"on":
+  workflow_run:
+    workflows:
+      - Validate
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-ios-ancs-v0.6.9
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.6.9
+      RELEASE_TITLE: iOS ANCS 0.6.9 / Firmware 0.3.8
+    steps:
+      - name: Check out the validated main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Verify validated commit is current main
+        run: |
+          set -euo pipefail
+          release_sha="${{ github.event.workflow_run.head_sha }}"
+          git fetch origin main --tags
+          main_sha="$(git rev-parse origin/main)"
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$release_sha" = "$main_sha"
+          test "$checked_out_sha" = "$release_sha"
+
+      - name: Verify release contract and repository assets
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import string
+          from pathlib import Path
+
+          integration = json.loads(
+              Path("custom_components/ha_ios_ancs/manifest.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          firmware = json.loads(
+              Path("docs/manifests/ios-ancs.json").read_text(encoding="utf-8")
+          )
+
+          if integration.get("version") != "0.6.9":
+              raise RuntimeError("Home Assistant integration version is not 0.6.9")
+          if firmware.get("version") != "0.3.8":
+              raise RuntimeError("Firmware installer version is not 0.3.8")
+
+          expected = {
+              "ESP32": "../firmware/esp32/ios-ancs-esp32-v0.3.8.factory.bin",
+              "ESP32-C2": "../firmware/esp32c2/ios-ancs-esp32c2-v0.3.8.factory.bin",
+              "ESP32-C3": "../firmware/esp32c3/ios-ancs-esp32c3-v0.3.8.factory.bin",
+              "ESP32-C5": "../firmware/esp32c5/ios-ancs-esp32c5-v0.3.8.factory.bin",
+              "ESP32-C6": "../firmware/esp32c6/ios-ancs-esp32c6-v0.3.8.factory.bin",
+              "ESP32-C61": "../firmware/esp32c61/ios-ancs-esp32c61-v0.3.8.factory.bin",
+              "ESP32-S3": "../firmware/esp32s3/ios-ancs-esp32s3-v0.3.8.factory.bin",
+          }
+          builds = firmware.get("builds")
+          if not isinstance(builds, list) or len(builds) != len(expected):
+              raise RuntimeError("Firmware manifest does not contain seven builds")
+
+          seen: set[str] = set()
+          repo_paths: set[str] = set()
+          for build in builds:
+              family = build.get("chipFamily")
+              parts = build.get("parts")
+              if family not in expected or family in seen:
+                  raise RuntimeError(f"Unexpected or duplicate chip family: {family!r}")
+              if not isinstance(parts, list) or len(parts) != 1:
+                  raise RuntimeError(f"Unexpected parts for {family}")
+              part = parts[0]
+              if part.get("path") != expected[family] or part.get("offset") != 0:
+                  raise RuntimeError(f"Unexpected image contract for {family}")
+              repo_path = "docs/" + expected[family].removeprefix("../")
+              if not Path(repo_path).is_file():
+                  raise RuntimeError(f"Missing firmware image: {repo_path}")
+              seen.add(family)
+              repo_paths.add(repo_path)
+
+          if seen != set(expected):
+              raise RuntimeError("Firmware target set does not match the release contract")
+          if not Path("docs/releases/v0.6.9.md").is_file():
+              raise RuntimeError("Release notes are missing")
+
+          fingerprint_path = Path("docs/release-fingerprints-v0.3.8.sha256")
+          lines = [
+              line.strip()
+              for line in fingerprint_path.read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          ]
+          if len(lines) != len(expected):
+              raise RuntimeError("Fingerprint file does not contain seven entries")
+
+          fingerprint_paths: set[str] = set()
+          for line in lines:
+              fields = line.split(maxsplit=1)
+              if len(fields) != 2:
+                  raise RuntimeError(f"Malformed fingerprint line: {line!r}")
+              digest, path = fields
+              path = path.lstrip("*")
+              if len(digest) != 64 or any(char not in string.hexdigits for char in digest):
+                  raise RuntimeError(f"Malformed SHA256 digest: {digest!r}")
+              fingerprint_paths.add(path)
+          if fingerprint_paths != repo_paths:
+              raise RuntimeError("Fingerprint paths do not match manifest images")
+          PY
+          sha256sum -c docs/release-fingerprints-v0.3.8.sha256
+
+      - name: Wait for matching GitHub Pages deployment
+        run: |
+          set -euo pipefail
+          release_sha="${{ github.event.workflow_run.head_sha }}"
+          pages_status=""
+          pages_conclusion=""
+          for attempt in $(seq 1 60); do
+            result="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/runs?branch=main&per_page=30" \
+                --jq "([.workflow_runs[] | select(.head_sha == \"${release_sha}\" and .event == \"push\")][0] // {}) | [(.status // \"\"), (.conclusion // \"\")] | @tsv"
+            )"
+            IFS=$'\t' read -r pages_status pages_conclusion <<< "$result"
+            if [ "$pages_status" = "completed" ]; then
+              test "$pages_conclusion" = "success"
+              break
+            fi
+            sleep 10
+          done
+          test "$pages_status" = "completed"
+          test "$pages_conclusion" = "success"
+
+      - name: Verify live GitHub Pages installer assets
+        run: |
+          set -euo pipefail
+          targets=(esp32 esp32c2 esp32c3 esp32c5 esp32c6 esp32c61 esp32s3)
+          base="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.html_url')"
+          base="${base%/}"
+
+          verify_live_pages() {
+            rm -rf live
+            mkdir -p live
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              "$base/manifests/ios-ancs.json" \
+              -o live/ios-ancs.json || return 1
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              "$base/release-fingerprints-v0.3.8.sha256" \
+              -o live/release-fingerprints-v0.3.8.sha256 || return 1
+            for target in "${targets[@]}"; do
+              name="ios-ancs-${target}-v0.3.8.factory.bin"
+              curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+                "$base/firmware/${target}/${name}" \
+                -o "live/${name}" || return 1
+            done
+            python - <<'PY' || return 1
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("live/ios-ancs.json").read_text(encoding="utf-8"))
+          if manifest.get("version") != "0.3.8":
+              raise RuntimeError("Live installer manifest is not firmware 0.3.8")
+          if len(manifest.get("builds", [])) != 7:
+              raise RuntimeError("Live installer manifest does not contain seven builds")
+          PY
+            cmp \
+              docs/release-fingerprints-v0.3.8.sha256 \
+              live/release-fingerprints-v0.3.8.sha256 || return 1
+            while read -r expected path; do
+              [ -n "$expected" ] || continue
+              path="${path#\*}"
+              file="live/${path##*/}"
+              actual="$(sha256sum "$file" | awk '{print $1}')"
+              [ "$actual" = "$expected" ] || return 1
+            done < docs/release-fingerprints-v0.3.8.sha256
+          }
+
+          live_ok=false
+          for attempt in $(seq 1 30); do
+            if verify_live_pages; then
+              live_ok=true
+              break
+            fi
+            sleep 10
+          done
+          test "$live_ok" = true
+
+      - name: Prepare GitHub Release assets
+        run: |
+          set -euo pipefail
+          targets=(esp32 esp32c2 esp32c3 esp32c5 esp32c6 esp32c61 esp32s3)
+          rm -rf dist
+          mkdir -p dist
+          for target in "${targets[@]}"; do
+            cp \
+              "docs/firmware/${target}/ios-ancs-${target}-v0.3.8.factory.bin" \
+              dist/
+          done
+          cp docs/release-fingerprints-v0.3.8.sha256 dist/
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 8
+
+      - name: Create immutable release tag
+        run: |
+          set -euo pipefail
+          release_sha="${{ github.event.workflow_run.head_sha }}"
+          git fetch origin --tags
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "${RELEASE_TAG}")"
+            test "$tag_commit" = "$release_sha"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" "$release_sha" -m "$RELEASE_TITLE"
+            git push origin "refs/tags/${RELEASE_TAG}"
+          fi
+
+      - name: Create draft and upload assets
+        id: release_state
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            existing=true
+          else
+            existing=false
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --draft \
+              --title "$RELEASE_TITLE" \
+              --notes-file docs/releases/v0.6.9.md
+          fi
+
+          name="$(gh release view "$RELEASE_TAG" --json name --jq '.name')"
+          tag="$(gh release view "$RELEASE_TAG" --json tagName --jq '.tagName')"
+          draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')"
+          prerelease="$(gh release view "$RELEASE_TAG" --json isPrerelease --jq '.isPrerelease')"
+          test "$name" = "$RELEASE_TITLE"
+          test "$tag" = "$RELEASE_TAG"
+          test "$prerelease" = false
+
+          if [ "$draft" = true ]; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          fi
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
+          echo "existing=$existing" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify GitHub Release assets
+        run: |
+          set -euo pipefail
+          rm -rf verify-release
+          mkdir -p verify-release
+          gh release download "$RELEASE_TAG" --dir verify-release
+
+          printf '%s\n' \
+            ios-ancs-esp32-v0.3.8.factory.bin \
+            ios-ancs-esp32c2-v0.3.8.factory.bin \
+            ios-ancs-esp32c3-v0.3.8.factory.bin \
+            ios-ancs-esp32c5-v0.3.8.factory.bin \
+            ios-ancs-esp32c6-v0.3.8.factory.bin \
+            ios-ancs-esp32c61-v0.3.8.factory.bin \
+            ios-ancs-esp32s3-v0.3.8.factory.bin \
+            release-fingerprints-v0.3.8.sha256 \
+            | sort > expected-assets.txt
+          find verify-release -maxdepth 1 -type f -printf '%f\n' \
+            | sort > actual-assets.txt
+          diff -u expected-assets.txt actual-assets.txt
+          cmp \
+            docs/release-fingerprints-v0.3.8.sha256 \
+            verify-release/release-fingerprints-v0.3.8.sha256
+
+          while read -r expected path; do
+            [ -n "$expected" ] || continue
+            path="${path#\*}"
+            file="verify-release/${path##*/}"
+            actual="$(sha256sum "$file" | awk '{print $1}')"
+            test "$actual" = "$expected"
+          done < docs/release-fingerprints-v0.3.8.sha256
+
+      - name: Publish verified GitHub Release
+        if: steps.release_state.outputs.draft == 'true'
+        run: |
+          set -euo pipefail
+          gh release edit "$RELEASE_TAG" \
+            --draft=false \
+            --prerelease=false \
+            --latest \
+            --title "$RELEASE_TITLE" \
+            --notes-file docs/releases/v0.6.9.md
+
+      - name: Verify final public release
+        run: |
+          set -euo pipefail
+          release_sha="${{ github.event.workflow_run.head_sha }}"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$release_sha"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.tag_name')" = "$RELEASE_TAG"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.name')" = "$RELEASE_TITLE"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.draft')" = false
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.prerelease')" = false
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name')" = "$RELEASE_TAG"
+
+          printf '%s\n' \
+            ios-ancs-esp32-v0.3.8.factory.bin \
+            ios-ancs-esp32c2-v0.3.8.factory.bin \
+            ios-ancs-esp32c3-v0.3.8.factory.bin \
+            ios-ancs-esp32c5-v0.3.8.factory.bin \
+            ios-ancs-esp32c6-v0.3.8.factory.bin \
+            ios-ancs-esp32c61-v0.3.8.factory.bin \
+            ios-ancs-esp32s3-v0.3.8.factory.bin \
+            release-fingerprints-v0.3.8.sha256 \
+            | sort > expected-api-assets.txt
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            --jq '.assets[].name' \
+            | sort > actual-api-assets.txt
+          diff -u expected-api-assets.txt actual-api-assets.txt
