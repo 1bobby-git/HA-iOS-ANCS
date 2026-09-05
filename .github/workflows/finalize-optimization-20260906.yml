@@ -1,0 +1,42 @@
+name: Finalize optimization release
+on:
+  push:
+    branches: [release/optimization-20260906]
+    paths: [.github/workflows/finalize-optimization-20260906.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: finalize-optimization-20260906
+  cancel-in-progress: false
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_TAG: v0.6.10
+      DOMAIN: ha_ios_ancs
+      EXPECTED_RUN: '33998792042'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.6.10
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: 1bobby-git/HA-iOS-ANCS
+          ref: 6be0fac429668efc496a14fadaf3b0a93a89a8c8
+          path: .release-helper
+          sparse-checkout: .optimization-release
+          persist-credentials: false
+      - name: Verify tests, source, tag and asset digests before publishing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .release-helper/.optimization-release/finalize.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: published-release-evidence
+          path: |
+            ${{ runner.temp }}/published-result.json
+            ${{ runner.temp }}/original-validation/*.xml
