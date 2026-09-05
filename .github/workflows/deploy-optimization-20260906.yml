@@ -48,6 +48,35 @@ jobs:
           python -m pytest -q tools/tests tests --junitxml="$RUNNER_TEMP/optimization-baseline.xml"
       - name: Apply exact source patches and update documentation
         run: python "$RUNNER_TEMP/optimization-deploy.py" apply
+      - name: Align existing version assertions to the new release
+        run: |
+          python - <<'PY'
+          import ast, hashlib, json, os
+          from pathlib import Path
+          changes = {
+              'tools/tests/test_documentation_contract.py': ('2230a7868ca4bd4c2efefe7f2ec6f0fc7c53c585', [
+                  ('assert manifest["version"] == "0.6.9"', 'assert manifest["version"] == "0.6.10"')]),
+              'tests/test_config_flow.py': ('481120ffd5ef4024f08573c79b744a416aa79dd8', [
+                  ('"version": "0.6.9",', '"version": "0.6.10",'),
+                  ('def test_release_069_contract()', 'def test_release_0610_contract()'),
+                  ('assert manifest["version"] == "0.6.9"', 'assert manifest["version"] == "0.6.10"')]),
+          }
+          state_path = Path(os.environ['RUNNER_TEMP']) / 'optimization-state.json'
+          state = json.loads(state_path.read_text())
+          for filename, (expected, replacements) in changes.items():
+              p = Path(filename)
+              raw = p.read_bytes()
+              assert hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest() == expected, filename
+              text = raw.decode()
+              for old, new in replacements:
+                  assert text.count(old) == 1, (filename, old)
+                  text = text.replace(old, new)
+              ast.parse(text)
+              p.write_text(text)
+              state['paths'].append(filename)
+          state['paths'] = sorted(set(state['paths']))
+          state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n')
+          PY
       - name: Test complete patched integration
         run: |
           python -m compileall -q custom_components/ha_ios_ancs
