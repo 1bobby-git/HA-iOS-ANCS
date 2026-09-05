@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -104,16 +105,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         persist_notification,
         replay_pending=False,
     )
-    await runtime.async_start()
-    if not restored_notification and (
-        current_notification := runtime.latest_notification
-    ):
-        await store.async_save(current_notification)
-    entry.runtime_data = runtime
-
     try:
+        await runtime.async_start()
+        if not restored_notification and (
+            current_notification := runtime.latest_notification
+        ):
+            await store.async_save(current_notification)
+        entry.runtime_data = runtime
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    except Exception:
+    except (Exception, asyncio.CancelledError):
+        # Startup/save failures and cancellation must not leave live listeners.
         await runtime.async_stop()
         entry.runtime_data = None
         raise

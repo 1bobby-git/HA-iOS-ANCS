@@ -194,7 +194,7 @@ class AncsMqttRuntime:
                         _QOS,
                     )
                 )
-            except Exception:
+            except (Exception, asyncio.CancelledError):
                 for unsubscribe in unsubscribes:
                     unsubscribe()
                 raise

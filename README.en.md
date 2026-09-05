@@ -136,3 +136,7 @@ python -m pytest tests -q
 ### Baemin arrival and delivery-complete TTS conditions
 
 `automation_ios_ancs_baemin_delivery_tts.yaml` processes only complete new notifications where both the iOS app ID `com.jawebs.baedal` and app name `배달의민족` exactly match. A `곧 도착합니다!` title announces that the rider will arrive soon, while `문앞으로 배달이 완료되었습니다.` announces the doorstep delivery and prompt pickup message. Coupon and promotional notifications are ignored. Replace the event, TTS, and media-player entity IDs before enabling it.
+
+## Integration update 0.6.10
+
+See [optimization notes](docs/OPTIMIZATION_2026-09-06.md) for changes, validation scope and rollback. Existing identifiers and public services are preserved. Firmware/bridge applications are unchanged. Live Home Assistant, account sessions and physical devices were not validated by this release job.
