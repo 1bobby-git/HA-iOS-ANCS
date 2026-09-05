@@ -1,0 +1,74 @@
+name: Deploy optimization 20260906
+on:
+  push:
+    branches: [release/optimization-20260906]
+    paths: [.github/workflows/deploy-optimization-20260906.yml]
+permissions:
+  contents: write
+concurrency:
+  group: deploy-optimization-20260906
+  cancel-in-progress: false
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PATCH_SPEC: >-
+        {"repository":"1bobby-git/HA-iOS-ANCS","branch":"main","base_version":"0.6.9","candidate_version":"0.6.10","summary":["초기화·첫 알림 저장·플랫폼 등록 실패 및 취소 시 런타임 구독 정리","알림 이벤트·중복 방지·MQTT 토픽·엔티티 식별자는 변경하지 않음"],"changes":[{"path":"custom_components/ha_ios_ancs/__init__.py","git_blob_sha1":"7c2b8ea3256afddc6a54540c5f7b7e644cfc0cf7","old":"from typing import Any\n","new":"import asyncio\nfrom typing import Any\n"},{"path":"custom_components/ha_ios_ancs/__init__.py","git_blob_sha1":"7c2b8ea3256afddc6a54540c5f7b7e644cfc0cf7","old":"    await runtime.async_start()\n    if not restored_notification and (\n        current_notification := runtime.latest_notification\n    ):\n        await store.async_save(current_notification)\n    entry.runtime_data = runtime\n\n    try:\n        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)\n    except Exception:\n        await runtime.async_stop()\n        entry.runtime_data = None\n        raise\n","new":"    try:\n        await runtime.async_start()\n        if not restored_notification and (\n            current_notification := runtime.latest_notification\n        ):\n            await store.async_save(current_notification)\n        entry.runtime_data = runtime\n        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)\n    except (Exception, asyncio.CancelledError):\n        # Startup/save failures and cancellation must not leave live listeners.\n        await runtime.async_stop()\n        entry.runtime_data = None\n        raise\n"},{"path":"custom_components/ha_ios_ancs/runtime.py","git_blob_sha1":"df9dce5d7c277f9b027c72c32ef5ca53952620cf","old":"            except Exception:\n                for unsubscribe in unsubscribes:\n                    unsubscribe()\n                raise\n","new":"            except (Exception, asyncio.CancelledError):\n                for unsubscribe in unsubscribes:\n                    unsubscribe()\n                raise\n"},{"path":"custom_components/ha_ios_ancs/manifest.json","git_blob_sha1":"efc9ac4e1092a6ef5f89affa4075c8df0c2bf94d","old":"\"version\": \"0.6.9\"","new":"\"version\": \"0.6.10\""}]}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Read pinned release helper
+        uses: actions/checkout@v4
+        with:
+          repository: 1bobby-git/HA-iOS-ANCS
+          ref: 0a3ad2353f85b2dce9ea4d6598464bed18600999
+          path: .release-helper
+          sparse-checkout: .optimization-release
+          persist-credentials: false
+      - name: Keep helper outside release source
+        run: |
+          cp .release-helper/.optimization-release/deploy.py "$RUNNER_TEMP/optimization-deploy.py"
+          rm -rf .release-helper
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Check source hashes, version and branch protections
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python "$RUNNER_TEMP/optimization-deploy.py" check
+      - name: Install native test requirements
+        run: python -m pip install --disable-pip-version-check -r requirements_test.txt
+      - name: Test unchanged baseline
+        run: |
+          python -m compileall -q custom_components/ha_ios_ancs
+          python -m pytest -q tools/tests tests --junitxml="$RUNNER_TEMP/optimization-baseline.xml"
+      - name: Apply exact source patches and update documentation
+        run: python "$RUNNER_TEMP/optimization-deploy.py" apply
+      - name: Test complete patched integration
+        run: |
+          python -m compileall -q custom_components/ha_ios_ancs
+          python -m pytest -q tools/tests tests --junitxml="$RUNNER_TEMP/optimization-patched.xml"
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+      - name: Publish verified commit, tag and release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python "$RUNNER_TEMP/optimization-deploy.py" publish
+      - name: Preserve validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optimization-validation
+          path: |
+            ${{ runner.temp }}/optimization-baseline.xml
+            ${{ runner.temp }}/optimization-patched.xml
+            ${{ runner.temp }}/optimization-result.json
+          if-no-files-found: ignore
