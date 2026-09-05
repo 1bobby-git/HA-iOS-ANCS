@@ -1,0 +1,129 @@
+name: Finalize verified optimization release
+
+"on":
+  push:
+    branches: [release/finalize-optimization-20260906]
+    paths: [.github/workflows/finalize-optimization-20260906.yml]
+
+permissions: {}
+concurrency:
+  group: finalize-optimization-0.6.10
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == '1bobby-git/HA-iOS-ANCS'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7922bafb536c9cd5bffdfed8ad1d04ff221ab8e5
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Install existing native test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements_test.txt
+      - name: Validate the exact release source
+        run: |
+          python -m compileall -q custom_components/ha_ios_ancs
+          python -m pytest -q tools/tests tests --junitxml="$RUNNER_TEMP/release-tests.xml"
+      - name: HACS
+        uses: hacs/action@main
+        with:
+          category: integration
+      - name: Hassfest
+        uses: home-assistant/actions/hassfest@master
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalization-tests
+          path: ${{ runner.temp }}/release-tests.xml
+          if-no-files-found: error
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7922bafb536c9cd5bffdfed8ad1d04ff221ab8e5
+          persist-credentials: false
+      - name: Verify existing tag, draft and every asset before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import hashlib, io, json, os, re, subprocess, zipfile
+          from pathlib import Path
+
+          repo = '1bobby-git/HA-iOS-ANCS'
+          sha = '7922bafb536c9cd5bffdfed8ad1d04ff221ab8e5'
+          tag = 'v0.6.10'
+          release_id = 383404730
+          assert os.environ['GITHUB_REPOSITORY'] == repo
+
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}']))
+
+          release = api(f'releases/{release_id}')
+          assert release['tag_name'] == tag and not release['prerelease']
+          ref = api(f'git/ref/tags/{tag}')['object']
+          while ref['type'] == 'tag':
+              ref = api('git/tags/' + ref['sha'])['object']
+          assert ref['type'] == 'commit' and ref['sha'] == sha
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == sha
+          assert api('branches/main')['commit']['sha'] == sha, 'Main moved; review before publishing'
+          for other in api('releases?per_page=100'):
+              match = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)', other['tag_name'])
+              if match and not other['prerelease']:
+                  assert tuple(map(int, match.groups())) <= (0, 6, 10), 'Newer release exists'
+
+          previous = api('releases/382415326')
+          firmware = {a['name']: a for a in previous['assets'] if a['name'].endswith('.factory.bin')}
+          assets = {a['name']: a for a in release['assets']}
+          assert len(assets) == len(release['assets'])
+          assert set(assets) == set(firmware) | {'ha_ios_ancs.zip', 'SHA256SUMS.txt'}
+          assert len(firmware) == 7
+          downloaded = {}
+          for name, asset in assets.items():
+              assert Path(name).name == name and asset['state'] == 'uploaded'
+              data = subprocess.check_output(['gh', 'api', f"repos/{repo}/releases/assets/{asset['id']}", '-H', 'Accept: application/octet-stream'])
+              assert len(data) == asset['size'], name
+              digest = 'sha256:' + hashlib.sha256(data).hexdigest()
+              assert digest == asset['digest'], name
+              if name in firmware:
+                  assert digest == firmware[name]['digest'] and len(data) == firmware[name]['size'], name
+              downloaded[name] = data
+          checksums = {}
+          for line in downloaded['SHA256SUMS.txt'].decode().splitlines():
+              checksum, name = line.split('  ', 1)
+              assert name not in checksums and name in downloaded
+              checksums[name] = checksum
+              assert hashlib.sha256(downloaded[name]).hexdigest() == checksum, name
+          assert set(checksums) == set(assets) - {'SHA256SUMS.txt'}
+          component = Path('custom_components/ha_ios_ancs')
+          tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', str(component)]).decode().split('\0')
+          expected = {Path(p).relative_to(component).as_posix(): Path(p).read_bytes() for p in tracked if p and Path(p).is_file() and not Path(p).is_symlink() and '__pycache__' not in Path(p).parts and Path(p).suffix not in {'.pyc', '.pyo'}}
+          with zipfile.ZipFile(io.BytesIO(downloaded['ha_ios_ancs.zip'])) as archive:
+              assert archive.testzip() is None
+              assert len(archive.namelist()) == len(expected) and set(archive.namelist()) == set(expected)
+              assert json.loads(archive.read('manifest.json'))['version'] == '0.6.10'
+              for name, data in expected.items():
+                  assert archive.read(name) == data, name
+          if release['draft']:
+              body = release['body'] + '\n\n공개 복구 검증: https://github.com/' + repo + '/actions/runs/' + os.environ['GITHUB_RUN_ID'] + '\n기존 릴리스 초안을 ID로 확인하고 전체 테스트·HACS·Hassfest·배포 ZIP·펌웨어 해시를 재검증했습니다. 운영 HA 설치는 수행하지 않았습니다.\n'
+              payload = json.dumps({'draft': False, 'prerelease': False, 'make_latest': 'true', 'body': body})
+              subprocess.run(['gh', 'api', '--method', 'PATCH', f'repos/{repo}/releases/{release_id}', '--input', '-'], input=payload, text=True, check=True, stdout=subprocess.DEVNULL)
+          final = api('releases/tags/' + tag)
+          assert final['id'] == release_id and not final['draft'] and final['published_at'] and not final['prerelease']
+          assert api('releases/latest')['id'] == release_id
+          assert {a['name'] for a in final['assets']} == set(assets)
+          print(json.dumps({'repository': repo, 'version': '0.6.10', 'commit': sha, 'release': final['html_url'], 'assets_verified': len(assets), 'published_at': final['published_at']}, ensure_ascii=False))
+          PY
