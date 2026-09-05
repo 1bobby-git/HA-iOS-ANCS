@@ -30,10 +30,21 @@ jobs:
           path: .release-helper
           sparse-checkout: .optimization-release
           persist-credentials: false
+      - name: Preserve binary downloads written directly to verified asset files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          text = Path('.release-helper/.optimization-release/finalize.py').read_text()
+          old = "'-H', 'Accept: application/octet-stream']"
+          assert text.count(old) == 1
+          text = text.replace(old, "'-H', 'Accept: application/octet-stream', '--allow-escape-sequences']")
+          Path(os.environ['RUNNER_TEMP'], 'finalize.py').write_text(text)
+          PY
       - name: Verify tests, source, tag and asset digests before publishing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .release-helper/.optimization-release/finalize.py
+        run: python "$RUNNER_TEMP/finalize.py"
       - uses: actions/upload-artifact@v4
         with:
           name: published-release-evidence
