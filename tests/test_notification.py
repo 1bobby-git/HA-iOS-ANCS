@@ -68,6 +68,14 @@ def test_parse_notification_data_rejected_value_does_not_consume_id() -> None:
     assert parse_notification_data(payload(), seen) is not None
 
 
+@pytest.mark.parametrize("data", [[], "scalar", 3, None, True])
+def test_parse_notification_data_rejects_invalid_saved_json(data: object) -> None:
+    seen = RelayIdWindow()
+
+    assert parse_notification_data(data, seen) is None
+    assert parse_notification_data(payload(), seen) is not None
+
+
 @pytest.mark.parametrize(
     "raw",
     [

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -117,6 +119,27 @@ def stored_notification(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+@pytest.mark.parametrize("saved", [[], "invalid", 3, True])
+def test_setup_entry_ignores_invalid_saved_notification(
+    registry_hass: HomeAssistant, run, saved: object
+) -> None:
+    """A readable storage file with invalid data must not block setup."""
+    hass = registry_hass
+    entry = make_legacy_entry()
+    with patch.object(hass.config_entries, "async_setup", new=AsyncMock(return_value=True)):
+        run(hass.config_entries.async_add(entry))
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    with (
+        patch.object(Store, "async_load", new=AsyncMock(return_value=saved)),
+        patch("custom_components.ha_ios_ancs.AncsMqttRuntime.async_start", new=AsyncMock()),
+    ):
+        assert run(async_setup_entry(hass, entry)) is True
+
+    assert entry.runtime_data.latest_notification is None
+    assert entry.runtime_data.restore_notification(stored_notification()) is True
+    run(entry.runtime_data.async_stop())
 
 
 def test_setup_entry_restores_saved_notification_without_event_replay(

@@ -36,9 +36,14 @@ class RelayIdWindow:
 
 
 def parse_notification_data(
-    data: Mapping[str, Any], seen: RelayIdWindow
+    data: object, seen: RelayIdWindow
 ) -> dict[str, Any] | None:
     """Validate notification data and return an independent mapping."""
+
+    # Stored JSON may be syntactically valid but have the wrong root type.
+    # Reject it just like malformed MQTT data so setup can receive fresh data.
+    if not isinstance(data, Mapping):
+        return None
 
     relay_id = data.get("relay_id")
     if not isinstance(relay_id, str) or not relay_id.strip():
