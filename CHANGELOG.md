@@ -1,5 +1,11 @@
 # 변경 이력
 
+## 0.6.12 — 2026-09-30
+
+- 테스트·CI 환경을 Home Assistant `2026.9.4`(Python 3.14)에 맞춰 갱신했습니다.
+- Home Assistant `2026.9`에서 사용 중단된 `device_registry.async_get_device(identifiers=...)` 대신 `async_get_device_by_identifier`를 사용하도록 소유 기기 확인 테스트를 수정했습니다.
+- Home Assistant 통합 코드·엔티티 계약·MQTT 토픽·식별자는 변경하지 않으며, 펌웨어와 브라우저 설치 파일은 0.3.8을 유지합니다.
+
 ## 0.6.11 — 2026-09-08
 
 - 저장된 마지막 알림이 배열·문자열·숫자 등 잘못된 JSON 형태인 경우 통합 시작 실패 대신 해당 값을 무시하고 새 알림을 받을 수 있도록 복구합니다.
