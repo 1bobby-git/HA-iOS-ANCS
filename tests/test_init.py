@@ -386,8 +386,8 @@ def test_setup_entry_moves_only_companion_entities_to_owned_device(
         hass.config_entries.async_forward_entry_setups = AsyncMock()
         assert run(async_setup_entry(hass, entry)) is True
 
-    companion_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, entry.entry_id)}
+    companion_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
     )
     assert companion_device is not None
     assert companion_device.name == "iOS ANCS (ios_ancs_A1B2C3)"
