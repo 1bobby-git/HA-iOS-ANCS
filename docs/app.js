@@ -6,7 +6,7 @@ const boards = {
     validation: "v0.3.9 build verified",
     status: "BUILD VERIFIED",
     description: "ESP32/WROOM-32 계열용 v0.3.9 ANCS-to-MQTT factory build입니다.",
-    hash: "SHA256 E16E79299560",
+    hash: "SHA256 BCA88C0EFF6A",
   },
   esp32c2: {
     chip: "C2",
@@ -15,7 +15,7 @@ const boards = {
     validation: "v0.3.9 build verified",
     status: "BUILD VERIFIED",
     description: "ESP32-C2 계열용 v0.3.9 ANCS-to-MQTT factory build입니다.",
-    hash: "SHA256 BE4AC71064F8",
+    hash: "SHA256 EF194A35BEF8",
   },
   esp32c3: {
     chip: "C3",
@@ -24,7 +24,7 @@ const boards = {
     validation: "v0.3.9 build verified",
     status: "BUILD VERIFIED",
     description: "ESP32-C3 계열용 v0.3.9 ANCS-to-MQTT factory build입니다.",
-    hash: "SHA256 23D77770F0A4",
+    hash: "SHA256 5EF0E9414BC2",
   },
   esp32c5: {
     chip: "C5",
@@ -33,7 +33,7 @@ const boards = {
     validation: "v0.3.9 build verified",
     status: "BUILD VERIFIED",
     description: "ESP32-C5 계열용 v0.3.9 ANCS-to-MQTT factory build입니다.",
-    hash: "SHA256 4CDEFCAFD531",
+    hash: "SHA256 843B885941EC",
   },
   esp32c6: {
     chip: "C6",
@@ -42,7 +42,7 @@ const boards = {
     validation: "v0.3.9 build verified",
     status: "BUILD VERIFIED",
     description: "ESP32-C6 계열용 v0.3.9 ANCS-to-MQTT factory build입니다.",
-    hash: "SHA256 4388FD1E504D",
+    hash: "SHA256 DDACAF33D2C8",
   },
   esp32c61: {
     chip: "C61",
@@ -52,7 +52,7 @@ const boards = {
     status: "BUILD VERIFIED",
     description:
       "ESP32-C61은 ESP32-C6의 리비전이 아니라 별도 최신 칩입니다. 실제 보드 각인이 C61인 경우에 선택하세요.",
-    hash: "SHA256 5F8084383507",
+    hash: "SHA256 A1F04E9777A9",
   },
   esp32s3: {
     chip: "S3",
@@ -61,7 +61,7 @@ const boards = {
     validation: "v0.3.9 build verified",
     status: "BUILD VERIFIED",
     description: "ESP32-S3 계열용 v0.3.9 ANCS-to-MQTT factory build입니다.",
-    hash: "SHA256 CF1E90884792",
+    hash: "SHA256 14E8039F6D8A",
   },
 };
 
