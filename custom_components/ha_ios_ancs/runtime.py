@@ -126,6 +126,7 @@ class _DiagnosticsRuntime:
         self._diagnostics_timer: asyncio.TimerHandle | None = None
         self._diagnostics_received_at: float | None = None
         self._diagnostics_source_uptime: int | None = None
+        self._diagnostics_generation = 0
 
     @property
     def diagnostics(self) -> dict[str, Any]:
@@ -151,12 +152,18 @@ class _DiagnosticsRuntime:
             listener()
 
     @callback
-    def _expire_diagnostics(self) -> None:
-        self._diagnostics_timer = None
+    def _expire_diagnostics(self, generation: int | None = None) -> None:
+        if generation is not None and generation != self._diagnostics_generation:
+            return
+        if self._diagnostics_timer is not None:
+            self._diagnostics_timer.cancel()
+            self._diagnostics_timer = None
+        self._diagnostics_generation += 1
         self._diagnostics_received_at = None
-        self._ble_connected = None
-        for listener in tuple(self._ble_connection_listeners):
-            listener(None)
+        if self._ble_connected is not None:
+            self._ble_connected = None
+            for listener in tuple(self._ble_connection_listeners):
+                listener(None)
         self._notify_diagnostics()
 
     @callback
@@ -169,14 +176,16 @@ class _DiagnosticsRuntime:
         if self._diagnostics_timer is not None:
             self._diagnostics_timer.cancel()
             self._diagnostics_timer = None
+        self._diagnostics_generation += 1
         self._diagnostics_received_at = monotonic() if live else None
         if live:
             self._diagnostics_timer = self._hass.loop.call_later(
-                STATUS_TTL_SECONDS, self._expire_diagnostics
+                STATUS_TTL_SECONDS, self._expire_diagnostics, self._diagnostics_generation
             )
         self._notify_diagnostics()
 
     def _stop_diagnostics(self) -> None:
+        self._diagnostics_generation += 1
         if self._diagnostics_timer is not None:
             self._diagnostics_timer.cancel()
             self._diagnostics_timer = None

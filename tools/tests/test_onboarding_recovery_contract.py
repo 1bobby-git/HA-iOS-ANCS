@@ -69,7 +69,7 @@ def test_repeated_ble_auth_failure_stops_the_reconnect_loop():
     assert "AUTH_FAILURE_WINDOW_MS 120000LL" in client
     assert "pairing_repair_required" in client
     assert "pairing_repair_required" in header
-    assert "pairing repair required" in client
+    assert "authentication protection" in client
     assert "if (repair_required)" in client
     assert "schedule_advertising_retry();" in client
     repair = client.split("if (repair_required)", 1)[1].split("} else {", 1)[0]
@@ -118,19 +118,21 @@ def test_config_save_keeps_portal_open_for_verification_only():
 
 
 
-def test_repair_guard_requires_explicit_replace_enrollment():
+def test_no_peer_auth_guard_allows_explicit_enroll_without_deleting_bonds():
     client = read("components/ancs_client/ancs_client.c")
-    request = client.split("esp_err_t ancs_client_request_enroll", 1)[1].split(
-        "esp_err_t ancs_client_replace_enrollment", 1
-    )[0]
-    replace_enrollment = client.split(
-        "esp_err_t ancs_client_replace_enrollment", 1
-    )[1].split("uint32_t ancs_client_ble_passkey", 1)[0]
-
-    assert "repair_required" in request
+    request = client.split("esp_err_t ancs_client_request_enroll(void)\n{", 1)[1].split(
+        "static esp_err_t open_replacement_window(void)\n{", 1)[0]
+    assert "const bool busy = s_client.connected || s_client.replace_pending" in request
     assert "return ESP_ERR_INVALID_STATE" in request
-    assert "clear_auth_failure_guard_locked" not in request
-    assert "clear_auth_failure_guard_locked" in replace_enrollment
+    assert "const int count = sync_existing_ble_bond()" in request
+    assert "if (count < 0)" in request
+    existing = request.split("if (count > 0)", 1)[1].split("const int64_t now", 1)[0]
+    assert "ble_enroll_close_window" in existing
+    assert "return ESP_OK" in existing
+    assert "clear_auth_failure_guard_locked" not in existing
+    assert request.index("clear_auth_failure_guard_locked()") < request.index("ble_enroll_open_window")
+    assert "remove_all_ble_bonds" not in request
+    assert "esp_restart" not in request
 
 
 def test_mqtt_backoff_is_scheduled_only_once_per_failure_cycle():
@@ -196,4 +198,7 @@ def test_wifi_reconnect_uses_signal_sorting_driver_retries_and_bounded_recovery(
     assert 'failure_retry_cnt = PROVISIONING_STA_FAILURE_RETRY_COUNT' in runtime
     assert 'threshold.rssi = PROVISIONING_STA_MIN_RSSI' in runtime
     assert 'set_wifi_mode_with_retry' in runtime
-    assert 'start_reconnect_timeout = true' in runtime
+    assert runtime.count('esp_wifi_connect();') == 1
+    assert 'provisioning_retry_poll(&s_retry' in runtime
+    assert 'provisioning_retry_failed(&s_retry' in runtime
+    assert 'PROVISION_RETRY_OPEN_AP' in runtime

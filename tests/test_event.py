@@ -391,8 +391,8 @@ def test_all_companion_platforms_share_owned_device_and_unload_cleanly(
     companion_ids = sensor_ids + binary_sensor_ids + event_ids
 
     registry = entity_registry.async_get(hass)
-    assert len(sensor_ids) == 23
-    assert len(binary_sensor_ids) == 13
+    assert len(sensor_ids) == 24
+    assert len(binary_sensor_ids) == 14
     assert len(event_ids) == 1
     companion_device_ids = {
         registry_entry.device_id

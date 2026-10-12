@@ -79,6 +79,8 @@ typedef struct {
     bool authentication_protection;
     uint32_t auth_failure_count;
     int auth_error;
+    int last_auth_error;
+    uint64_t last_auth_error_at_ms;
     int ble_stage_error;
     int ble_disconnect_reason;
     uint32_t ble_generation;
@@ -87,6 +89,12 @@ typedef struct {
     int mqtt_tls_error;
     int mqtt_socket_errno;
     int mqtt_connect_return_code;
+    int last_mqtt_error_type;
+    int last_mqtt_esp_error;
+    int last_mqtt_tls_error;
+    int last_mqtt_socket_errno;
+    int last_mqtt_connect_return_code;
+    uint64_t last_mqtt_error_at_ms;
     uint32_t mqtt_retry_in_ms;
     int reset_reason;
     char firmware_elf_sha256[65];
@@ -111,6 +119,13 @@ typedef struct {
     int last_socket_errno;
     int connect_return_code;
     uint64_t last_error_at_ms;
+    int last_mqtt_error_type;
+    int last_mqtt_esp_error;
+    int last_mqtt_tls_error;
+    int last_mqtt_socket_errno;
+    int last_mqtt_connect_return_code;
+    uint64_t last_mqtt_error_at_ms;
+
 } mqtt_relay_connection_status_t;
 
 typedef enum {

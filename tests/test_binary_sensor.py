@@ -47,9 +47,10 @@ EXPECTED_BINARY_SENSOR_KEYS = {
     "message_truncated",
     "has_error",
     "ble_connected",
+    "notification_ready",
 }
 EXPECTED_NOTIFICATION_BINARY_SENSOR_KEYS = EXPECTED_BINARY_SENSOR_KEYS - {
-    "ble_connected"
+    "ble_connected", "notification_ready"
 }
 
 EXPECTED_FIELD_PATHS = {
@@ -192,6 +193,7 @@ def test_binary_states_are_strict_and_null_safe(run) -> None:
         "message_truncated": True,
         "has_error": False,
         "ble_connected": None,
+        "notification_ready": None,
     }
 
     by_key = {entity.entity_description.key: entity for entity in entities}

@@ -57,14 +57,29 @@ def main() -> None:
     for path in (application, elf):
         if not path.is_relative_to(build) or not path.is_file():
             raise ValueError("Missing built application or ELF")
+    app_offsets = [offset for offset, relative in config["flash_files"].items()
+                   if (build / relative).resolve() == application]
+    if len(app_offsets) != 1:
+        raise ValueError("Application offset is ambiguous in flasher metadata")
+    partition_table = build / "partition_table/partition-table.bin"
+    if not partition_table.is_file():
+        raise ValueError("Built partition table is missing")
     app_output = output / f"{base}.app.bin"
     app_output.write_bytes(application.read_bytes())
+    image = application.read_bytes()
+    if len(image) < 208 or image[32:36] != bytes.fromhex("3254cdab"):
+        raise ValueError("Application descriptor is missing")
+    idf_version = image[144:176].split(b"\0", 1)[0].decode("ascii")
+    if image[176:208].hex() != sha256(elf):
+        raise ValueError("Embedded ELF fingerprint does not match build")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     evidence = {
         "target": args.target, "version": version, "source_commit": commit,
-        "idf_version": project.get("idf_ver"), "factory_file": factory.name,
+        "idf_version": idf_version, "factory_file": factory.name,
         "factory_sha256": sha256(factory), "application_file": app_output.name,
         "application_sha256": sha256(app_output), "firmware_elf_sha256": sha256(elf),
+        "application_offset": app_offsets[0],
+        "partition_table_sha256": sha256(partition_table),
         "partition_csv_sha256": sha256(ROOT / "partitions.csv"),
         "hardware_validated": False, "bond_persistence_validated": False,
         "factory_overwrites_nvs": True,

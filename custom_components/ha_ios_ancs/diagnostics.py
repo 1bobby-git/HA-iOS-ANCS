@@ -1,7 +1,11 @@
 """Strict, content-free connection diagnostics shared by both runtime modes."""
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.config_entries import ConfigEntry
 
 STATUS_TTL_SECONDS = 180
 _BOOL_FIELDS = frozenset({
@@ -20,9 +24,11 @@ _INT_FIELDS = frozenset({
     "mqtt_socket_errno", "mqtt_connect_return_code", "mqtt_retry_in_ms", "reset_reason",
     "last_notification_uptime_ms", "accepted", "published_ack", "dropped_offline",
     "dropped_enqueue", "dropped_policy", "last_mqtt_error_type", "last_mqtt_esp_error",
-    "last_mqtt_error_at_ms",
+    "last_mqtt_error_at_ms", "last_mqtt_tls_error", "last_mqtt_socket_errno",
+    "last_mqtt_connect_return_code", "last_auth_error", "last_auth_error_at_ms",
 })
 _REQUIRED_READY = (
+    "wifi_connected", "mqtt_connected", "ancs_ready",
     "ble_connected", "session_authenticated", "link_encrypted", "ancs_service_found",
     "data_source_subscribed", "notification_source_subscribed",
 )
@@ -116,3 +122,13 @@ USER_ACTIONS = {
     "authentication_timeout": "인증 시간이 초과되었습니다. iPhone 연결 상태와 PIN 입력을 확인하세요.",
     "ancs_retry": "시스템 알림 공유가 켜져 있는지 확인하세요. 자동 복구는 기존 페어링을 삭제하지 않습니다.",
 }
+
+
+async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """Provide HA's diagnostic download without saved credentials or personal alerts."""
+    runtime = getattr(entry, "runtime_data", None)
+    return {
+        "connection": parse_diagnostics(getattr(runtime, "diagnostics", {})),
+        "status_fresh": bool(getattr(runtime, "diagnostics_fresh", False)),
+        "available": getattr(runtime, "available", None),
+    }

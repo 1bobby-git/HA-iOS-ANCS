@@ -613,6 +613,11 @@ init_failed:
     s_sta_connecting = false;
     s_sta_has_ip = false;
     s_event_overflow_count = 0;
+    s_sta_interface_ready = false;
+    s_sta_stop_pending = false;
+    s_automatic_recovery_ap = false;
+    s_expected_ssid[0] = '\0';
+    provisioning_retry_stop(&s_retry);
     s_active_sta_attempt_generation = 0;
     return err;
 }

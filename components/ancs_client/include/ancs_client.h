@@ -14,6 +14,8 @@ typedef struct {
     bool pairing_repair_required;
     uint8_t auth_failure_count;
     int auth_error;
+    int last_auth_error;
+    uint64_t last_auth_error_at_ms;
     int bond_count;
     esp_err_t last_replace_error;
     bool bond_store_known;

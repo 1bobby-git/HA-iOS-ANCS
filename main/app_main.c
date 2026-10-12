@@ -586,6 +586,8 @@ static esp_err_t refresh_diagnostics(void)
     d.authentication_protection = ble.pairing_repair_required;
     d.auth_failure_count = ble.auth_failure_count;
     d.auth_error = ble.auth_error;
+    d.last_auth_error = ble.last_auth_error;
+    d.last_auth_error_at_ms = ble.last_auth_error_at_ms;
     d.ble_stage_error = ble.last_stage_error;
     d.ble_disconnect_reason = ble.last_disconnect_reason;
     d.ble_generation = ble.generation;
@@ -594,6 +596,12 @@ static esp_err_t refresh_diagnostics(void)
     d.mqtt_tls_error = mqtt.last_tls_error;
     d.mqtt_socket_errno = mqtt.last_socket_errno;
     d.mqtt_connect_return_code = mqtt.connect_return_code;
+    d.last_mqtt_error_type = mqtt.last_mqtt_error_type;
+    d.last_mqtt_esp_error = mqtt.last_mqtt_esp_error;
+    d.last_mqtt_tls_error = mqtt.last_mqtt_tls_error;
+    d.last_mqtt_socket_errno = mqtt.last_mqtt_socket_errno;
+    d.last_mqtt_connect_return_code = mqtt.last_mqtt_connect_return_code;
+    d.last_mqtt_error_at_ms = mqtt.last_mqtt_error_at_ms;
     d.mqtt_retry_in_ms = mqtt_due > now ? (uint32_t)(mqtt_due - now) : 0;
     d.reset_reason = (int)esp_reset_reason();
     const esp_app_desc_t *desc = esp_app_get_description();

@@ -805,7 +805,7 @@ def test_manifest_contract() -> None:
         "iot_class": "local_push",
         "issue_tracker": "https://github.com/1bobby-git/HA-iOS-ANCS/issues",
         "requirements": [],
-        "version": "0.6.12",
+        "version": "0.6.13",
     }
 
 
@@ -816,7 +816,7 @@ def test_release_0612_contract() -> None:
         )
     )
 
-    assert manifest["version"] == "0.6.12"
+    assert manifest["version"] == "0.6.13"
 
 
 def test_translations_contract() -> None:
@@ -861,6 +861,7 @@ def test_translations_contract() -> None:
             "error_code",
             "error_name",
             "raw_notification",
+            "connection_state",
         },
         "binary_sensor": {
             "complete",
@@ -876,6 +877,7 @@ def test_translations_contract() -> None:
             "message_truncated",
             "has_error",
             "ble_connected",
+            "notification_ready",
         },
         "event": {"notification"},
     }

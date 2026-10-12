@@ -91,7 +91,7 @@ def test_mqtt_enroll_request_runs_only_in_the_app_coordinator():
     assert "ancs_client_request_enroll();" in handler
 
 
-def test_wifi_timeout_stops_station_before_starting_recovery_portal():
+def test_wifi_timeout_opens_recovery_ap_and_suspends_only_mqtt():
     source = read("main/app_main.c")
     recovery_helper = source.split("static void enter_wifi_timeout_recovery", 1)[1].split(
         "static void handle_provisioning_event", 1
@@ -105,7 +105,8 @@ def test_wifi_timeout_stops_station_before_starting_recovery_portal():
 
     assert "enter_wifi_timeout_recovery()" in wifi_timeout_case
     recovery = recovery_helper.index("provisioning_runtime_enter_stable_recovery()")
-    offline = recovery_helper.index("mqtt_relay_set_wifi_connected(false)")
+    offline = recovery_helper.index("suspend_mqtt_for_wifi()")
+    assert "provisioning_runtime_stop_sta()" not in recovery_helper
 
     assert recovery < offline
 
@@ -163,13 +164,15 @@ def test_wifi_timeout_uses_attempt_generation_for_config_handoff():
     assert "posted_at_us" not in event_msg
     assert "wifi_timeout_not_before_us" not in source
     assert "active_sta_attempt_generation" in stale_guard
-    assert "sta_attempt_generation != active_generation" in stale_guard
+    assert "sta_attempt_generation != runtime.sta_attempt_generation" in stale_guard
     assert "return;" in stale_guard
     assert stale_guard.index("return;") < handler.index(
         "provisioning_state_t state = reduce_app_state(event);"
     )
     assert "enter_wifi_timeout_recovery()" in timeout_case
-    assert "active_sta_attempt_generation = 0" in recovery_helper
+    assert "active_sta_attempt_generation = 0" not in recovery_helper
+    assert "runtime.retry_paused" in stale_guard
+    assert "runtime.sta_has_ip" in stale_guard
     assert recovery_helper.index("provisioning_runtime_enter_stable_recovery()") > 0
 
     start_sta = config_handler.index("provisioning_runtime_start_sta(&s_app.config)")
@@ -293,7 +296,7 @@ def test_wifi_refresh_timer_tracks_mqtt_lifecycle():
     mqtt_handler = source.split("static void handle_mqtt_event", 1)[1].split(
         "static void handle_config_changed", 1
     )[0]
-    connected = mqtt_handler.split("MQTT_RELAY_EVENT_CONNECTED", 1)[1].split(
+    connected = mqtt_handler.split("if (event == MQTT_RELAY_EVENT_CONNECTED)", 1)[1].split(
         "return;", 1
     )[0]
     assert "xTimerReset(s_wifi_status_timer" in connected

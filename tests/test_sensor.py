@@ -207,7 +207,7 @@ def test_seeded_sensor_states_preserve_full_notification(run) -> None:
 
     run(async_setup_entry(None, entry, entities.extend))
 
-    assert len(entities) == len(EXPECTED_SENSOR_KEYS)
+    assert len(entities) == len(EXPECTED_SENSOR_KEYS) + 1
     states = {entity.entity_description.key: entity.native_value for entity in entities}
     attributes = {
         entity.entity_description.key: entity.extra_state_attributes
@@ -244,7 +244,8 @@ def test_sensor_updates_nested_errors_and_rejects_invalid_values(run) -> None:
     updated["uid"] = True
     with patch.object(AncsNotificationSensor, "async_write_ha_state"):
         for entity in entities:
-            entity._handle_notification(updated)
+            if isinstance(entity, AncsNotificationSensor):
+                entity._handle_notification(updated)
 
     assert by_key["error_code"].native_value == -10
     assert by_key["error_name"].native_value == "timeout"
@@ -256,7 +257,8 @@ def test_sensor_updates_nested_errors_and_rejects_invalid_values(run) -> None:
     invalid["error"] = "invalid"
     with patch.object(AncsNotificationSensor, "async_write_ha_state"):
         for entity in entities:
-            entity._handle_notification(invalid)
+            if isinstance(entity, AncsNotificationSensor):
+                entity._handle_notification(invalid)
 
     assert by_key["message_size"].native_value is None
     assert by_key["error_code"].native_value is None
@@ -295,7 +297,7 @@ def test_source_sensors_use_separate_integration_device_without_mutating_mqtt(
     )
 
     registry = entity_registry.async_get(hass)
-    assert len(entity_ids) == len(EXPECTED_SENSOR_KEYS)
+    assert len(entity_ids) == len(EXPECTED_SENSOR_KEYS) + 1
     device_ids = {
         registry_entry.device_id
         for entity_id in entity_ids
@@ -343,7 +345,7 @@ def test_legacy_sensors_share_one_integration_owned_device(registry_hass, run) -
         for entity_id in entity_ids
         if (registry_entry := registry.async_get(entity_id)) is not None
     }
-    assert len(entity_ids) == len(EXPECTED_SENSOR_KEYS)
+    assert len(entity_ids) == len(EXPECTED_SENSOR_KEYS) + 1
     assert len(device_ids) == 1
     device_id = device_ids.pop()
     assert device_id is not None

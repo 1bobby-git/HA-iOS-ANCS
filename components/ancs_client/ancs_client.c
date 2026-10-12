@@ -134,6 +134,8 @@ typedef struct {
     uint32_t session_id;
     uint32_t generation;
     int auth_error;
+    int last_auth_error;
+    uint64_t last_auth_error_at_ms;
     uint8_t auth_failure_count;
     int64_t last_auth_failure_ms;
     bool pairing_repair_required;
@@ -1569,6 +1571,8 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
             taskENTER_CRITICAL(&s_shared_state_lock);
             s_client.auth_error =
                 parameter->ble_security.auth_cmpl.fail_reason;
+            s_client.last_auth_error = s_client.auth_error;
+            s_client.last_auth_error_at_ms = (uint64_t)failure_at_ms;
             const int auth_error = s_client.auth_error;
             const bool repair_required =
                 record_auth_failure_locked(failure_at_ms,
@@ -2659,6 +2663,8 @@ ancs_client_enrollment_status_t ancs_client_get_enrollment_status(void)
         .pairing_repair_required = s_client.pairing_repair_required,
         .auth_failure_count = s_client.auth_failure_count,
         .auth_error = s_client.auth_error,
+        .last_auth_error = s_client.last_auth_error,
+        .last_auth_error_at_ms = s_client.last_auth_error_at_ms,
         .bond_count = bond_count,
         .last_replace_error = s_client.last_replace_error,
         .bond_store_known = initialized && bond_count >= 0 && s_client.bond_store_error == ESP_OK,

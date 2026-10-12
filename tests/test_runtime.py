@@ -129,7 +129,7 @@ async def start_runtime_with_subscribe_patch(
     hass: HomeAssistant,
 ) -> tuple[AncsMqttRuntime, list[tuple[str, Callable[[ReceiveMessage], None], int]], list[Mock]]:
     subscriptions: list[tuple[str, Callable[[ReceiveMessage], None], int]] = []
-    unsubscribes = [Mock(), Mock()]
+    unsubscribes = [Mock(), Mock(), Mock()]
 
     async def fake_wait_for_client(hass: HomeAssistant) -> bool:
         return True
@@ -163,6 +163,7 @@ def test_runtime_subscribes_exact_topics_with_qos_one(hass: HomeAssistant, run) 
     assert [(topic, qos) for topic, _, qos in subscriptions] == [
         ("ios_ancs/notification", 1),
         ("ios_ancs/availability", 1),
+        ("ios_ancs/state", 1),
     ]
     assert runtime.ble_connected is None
     assert ble_updates == []
@@ -311,13 +312,13 @@ def test_runtime_repeated_start_is_idempotent_without_duplicate_subscriptions(ha
 
     run(runtime.async_start())
 
-    assert len(subscriptions) == 2
+    assert len(subscriptions) == 3
     run(runtime.async_stop())
 
 
-def test_runtime_concurrent_starts_create_one_subscription_pair(hass: HomeAssistant, run) -> None:
+def test_runtime_concurrent_starts_create_one_subscription_set(hass: HomeAssistant, run) -> None:
     subscriptions: list[tuple[str, Callable[[ReceiveMessage], None], int]] = []
-    unsubscribes = [Mock(), Mock()]
+    unsubscribes = [Mock(), Mock(), Mock()]
 
     async def fake_wait_for_client(hass: HomeAssistant) -> bool:
         await asyncio.sleep(0)
@@ -349,16 +350,17 @@ def test_runtime_concurrent_starts_create_one_subscription_pair(hass: HomeAssist
     assert [(topic, qos) for topic, _, qos in subscriptions] == [
         ("ios_ancs/notification", 1),
         ("ios_ancs/availability", 1),
+        ("ios_ancs/state", 1),
     ]
     run(runtime.async_stop())
-    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1, 1]
 
 
 def test_runtime_stop_waits_for_in_flight_start_and_unsubscribes(hass: HomeAssistant, run) -> None:
     wait_started = asyncio.Event()
     release_wait = asyncio.Event()
     subscriptions: list[str] = []
-    unsubscribes = [Mock(), Mock()]
+    unsubscribes = [Mock(), Mock(), Mock()]
 
     async def fake_wait_for_client(hass: HomeAssistant) -> bool:
         wait_started.set()
@@ -392,16 +394,17 @@ def test_runtime_stop_waits_for_in_flight_start_and_unsubscribes(hass: HomeAssis
 
     runtime = run(start_then_stop())
 
-    assert subscriptions == ["ios_ancs/notification", "ios_ancs/availability"]
-    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+    assert subscriptions == ["ios_ancs/notification", "ios_ancs/availability", "ios_ancs/state"]
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1, 1]
     run(runtime.async_stop())
-    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1, 1]
 
 
 def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run) -> None:
     first_unsubscribe = Mock()
     retry_notification_unsubscribe = Mock()
     retry_availability_unsubscribe = Mock()
+    retry_state_unsubscribe = Mock()
     subscriptions: list[str] = []
     subscribe_attempts = 0
 
@@ -424,6 +427,7 @@ def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run)
             1: first_unsubscribe,
             3: retry_notification_unsubscribe,
             4: retry_availability_unsubscribe,
+            5: retry_state_unsubscribe,
         }[subscribe_attempts]
 
     runtime = AncsMqttRuntime(hass, "ios_ancs")
@@ -446,12 +450,14 @@ def test_runtime_cleans_up_partial_start_and_can_retry(hass: HomeAssistant, run)
         "ios_ancs/availability",
         "ios_ancs/notification",
         "ios_ancs/availability",
+        "ios_ancs/state",
     ]
     assert retry_notification_unsubscribe.call_count == 0
     assert retry_availability_unsubscribe.call_count == 0
     run(runtime.async_stop())
     assert retry_notification_unsubscribe.call_count == 1
     assert retry_availability_unsubscribe.call_count == 1
+    assert retry_state_unsubscribe.call_count == 1
 
 
 def test_runtime_stop_unsubscribes_once_and_is_idempotent(hass: HomeAssistant, run) -> None:
@@ -464,7 +470,7 @@ def test_runtime_stop_unsubscribes_once_and_is_idempotent(hass: HomeAssistant, r
     run(runtime.async_stop())
     run(runtime.async_stop())
 
-    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1]
+    assert [unsubscribe.call_count for unsubscribe in unsubscribes] == [1, 1, 1]
     assert runtime.latest_notification is None
 
 

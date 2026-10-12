@@ -85,7 +85,7 @@ def test_replace_confirmation_and_status_contract():
     assert "ancs_client_replace_pending(void)" in header
     assert "ancs_client_last_replace_error(void)" in header
     assert "ancs_client_bond_count(void)" in header
-    assert "s_client.replace_pending = true;" in source
+    assert "s_client.replace_pending = bond_count > 0;" in source
     assert "s_client.last_replace_error = error;" in source
 
 
@@ -95,7 +95,7 @@ def test_plain_enroll_with_existing_bond_does_not_open_pairing_window():
 
     assert "if (state->has_bond)" in enroll
     assert "ble_enroll_close_window(state);" in enroll
-    assert "if (current_bond_count() > 0 || ancs_client_has_bond())" in source
+    assert "if (count > 0)" in source
     assert "ble_enroll_close_window(&s_enroll);" in source
     assert "load_existing_ble_bond();" in source
     assert "start_advertising();" in source
@@ -162,11 +162,12 @@ def test_every_advertising_entry_point_is_guarded_by_enrollment_policy():
         "esp_err_t ancs_client_request_enroll(void)",
         "esp_err_t ancs_client_replace_enrollment",
     )
-    assert "if (current_bond_count() > 0 || ancs_client_has_bond())" in request_enroll
+    assert "if (count > 0)" in request_enroll
     assert "ble_enroll_close_window(&s_enroll);" in request_enroll
-    assert "load_existing_ble_bond();" in request_enroll
+    assert "sync_existing_ble_bond()" in request_enroll
+    assert "if (count < 0)" in request_enroll
     assert "ble_enroll_open_window(&s_enroll, now)" in request_enroll
-    assert request_enroll.index("current_bond_count()") < request_enroll.index(
+    assert request_enroll.index("sync_existing_ble_bond()") < request_enroll.index(
         "ble_enroll_open_window"
     )
 
@@ -222,7 +223,9 @@ def test_connect_and_terminal_events_are_bound_to_the_accepted_peer():
     assert auth_case.index("authentication_event_matches") < auth_case.index(
         "s_client.auth_error"
     )
-    assert "reset_connection_session();" in auth_case
+    assert "reset_connection_session();" not in auth_case
+    assert "s_client.closing = true;" in auth_case
+    assert "s_client.session_authenticated = false;" in auth_case
 
 
 def test_failed_async_replace_resynchronizes_bonds_and_restarts_known_peer_advertising():
@@ -238,11 +241,12 @@ def test_failed_async_replace_resynchronizes_bonds_and_restarts_known_peer_adver
         "start_advertising();"
     )
 
-    sync_body = source.split("static int sync_existing_ble_bond(void)", 1)[1].split(
+    sync_body = source.split("static int sync_existing_ble_bond(void)\n{", 1)[1].split(
         "static void load_existing_ble_bond", 1
     )[0]
-    assert "return -1;" not in sync_body
-    assert "return bond_count;" in sync_body
+    assert "return -1;" in sync_body
+    assert "s_client.bond_store_error =" in sync_body
+    assert "return list_count;" in sync_body
 
     replace_body = source.split(
         "esp_err_t ancs_client_replace_enrollment(bool confirmed)", 1

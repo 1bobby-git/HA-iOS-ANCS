@@ -60,6 +60,12 @@ typedef struct {
     int mqtt_last_socket_errno;
     int mqtt_connect_return_code;
     uint64_t mqtt_last_error_at_ms;
+    int last_mqtt_error_type;
+    int last_mqtt_esp_error;
+    int last_mqtt_tls_error;
+    int last_mqtt_socket_errno;
+    int last_mqtt_connect_return_code;
+    uint64_t last_mqtt_error_at_ms;
     uint32_t test_sequence;
     bool ble_connected;
     bool ble_bonded;
@@ -136,6 +142,12 @@ static void mqtt_relay_note_local_error_locked(esp_err_t error)
     s_ctx.mqtt_connect_return_code = MQTT_CONNECTION_ACCEPTED;
     s_ctx.mqtt_last_error_at_ms =
         (uint64_t)(esp_timer_get_time() / 1000);
+    s_ctx.last_mqtt_error_type = s_ctx.mqtt_error_type;
+    s_ctx.last_mqtt_esp_error = s_ctx.mqtt_last_esp_error;
+    s_ctx.last_mqtt_tls_error = s_ctx.mqtt_last_tls_error;
+    s_ctx.last_mqtt_socket_errno = s_ctx.mqtt_last_socket_errno;
+    s_ctx.last_mqtt_connect_return_code = s_ctx.mqtt_connect_return_code;
+    s_ctx.last_mqtt_error_at_ms = s_ctx.mqtt_last_error_at_ms;
 }
 
 static void mqtt_relay_capture_error_locked(
@@ -153,6 +165,12 @@ static void mqtt_relay_capture_error_locked(
         (int)error->connect_return_code;
     s_ctx.mqtt_last_error_at_ms =
         (uint64_t)(esp_timer_get_time() / 1000);
+    s_ctx.last_mqtt_error_type = s_ctx.mqtt_error_type;
+    s_ctx.last_mqtt_esp_error = s_ctx.mqtt_last_esp_error;
+    s_ctx.last_mqtt_tls_error = s_ctx.mqtt_last_tls_error;
+    s_ctx.last_mqtt_socket_errno = s_ctx.mqtt_last_socket_errno;
+    s_ctx.last_mqtt_connect_return_code = s_ctx.mqtt_connect_return_code;
+    s_ctx.last_mqtt_error_at_ms = s_ctx.mqtt_last_error_at_ms;
 }
 
 static void mqtt_relay_emit_event(mqtt_relay_event_t event)
@@ -1179,6 +1197,8 @@ static esp_err_t append_diagnostics(char **cursor, size_t *remaining,
     DIAG_BOOL("authentication_protection", d->authentication_protection);
     DIAG_INT("auth_failure_count", d->auth_failure_count);
     DIAG_INT("auth_error", d->auth_error);
+    DIAG_INT("last_auth_error", d->last_auth_error);
+    DIAG_INT("last_auth_error_at_ms", d->last_auth_error_at_ms);
     DIAG_INT("ble_stage_error", d->ble_stage_error);
     DIAG_INT("ble_disconnect_reason", d->ble_disconnect_reason);
     DIAG_INT("ble_generation", d->ble_generation);
@@ -1187,6 +1207,12 @@ static esp_err_t append_diagnostics(char **cursor, size_t *remaining,
     DIAG_INT("mqtt_tls_error", d->mqtt_tls_error);
     DIAG_INT("mqtt_socket_errno", d->mqtt_socket_errno);
     DIAG_INT("mqtt_connect_return_code", d->mqtt_connect_return_code);
+    DIAG_INT("last_mqtt_error_type", d->last_mqtt_error_type);
+    DIAG_INT("last_mqtt_esp_error", d->last_mqtt_esp_error);
+    DIAG_INT("last_mqtt_tls_error", d->last_mqtt_tls_error);
+    DIAG_INT("last_mqtt_socket_errno", d->last_mqtt_socket_errno);
+    DIAG_INT("last_mqtt_connect_return_code", d->last_mqtt_connect_return_code);
+    DIAG_INT("last_mqtt_error_at_ms", d->last_mqtt_error_at_ms);
     DIAG_INT("mqtt_retry_in_ms", d->mqtt_retry_in_ms);
     DIAG_INT("reset_reason", d->reset_reason);
     DIAG_BOOL("notification_ready", runtime->wifi.connected && runtime->mqtt_connected && d->ancs_ready);
@@ -2816,6 +2842,13 @@ void mqtt_relay_get_connection_status(mqtt_relay_connection_status_t *out)
         .last_socket_errno = s_ctx.mqtt_last_socket_errno,
         .connect_return_code = s_ctx.mqtt_connect_return_code,
         .last_error_at_ms = s_ctx.mqtt_last_error_at_ms,
+        .last_mqtt_error_type = s_ctx.last_mqtt_error_type,
+        .last_mqtt_esp_error = s_ctx.last_mqtt_esp_error,
+        .last_mqtt_tls_error = s_ctx.last_mqtt_tls_error,
+        .last_mqtt_socket_errno = s_ctx.last_mqtt_socket_errno,
+        .last_mqtt_connect_return_code = s_ctx.last_mqtt_connect_return_code,
+        .last_mqtt_error_at_ms = s_ctx.last_mqtt_error_at_ms,
+
     };
     mqtt_relay_unlock();
 }

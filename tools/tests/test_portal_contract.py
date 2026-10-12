@@ -167,24 +167,18 @@ def test_task6_wifi_runtime_source_contracts():
     )
     assert "last_wifi_disconnect_reason" in header
     assert "wifi_event_sta_disconnected_t *disconnected" in runtime
-    assert "s_last_wifi_disconnect_reason = disconnected->reason" in runtime
-    assert "s_last_wifi_disconnect_rssi = disconnected->rssi" in runtime
-    assert '"STA disconnected reason=%u rssi=%d"' in runtime
+    assert "s_last_wifi_disconnect_reason = reason" in runtime
+    assert "s_last_wifi_disconnect_rssi = disconnected != NULL ? disconnected->rssi : 0" in runtime
+    assert '"STA disconnected reason=%u"' in runtime
     assert "const bool had_ip = s_sta_has_ip" in runtime
-    assert "if (had_ip)" in runtime
+    assert "notify = had_ip" in runtime
     assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT" in runtime
-    disconnected_case = runtime.split(
-        "event_id == WIFI_EVENT_STA_DISCONNECTED", 1
-    )[1].split("IP_EVENT_STA_GOT_IP", 1)[0]
-    assert "xTimerReset(s_wifi_timeout_timer, 0)" not in disconnected_case
-    had_ip_block = disconnected_case.split("if (had_ip)", 1)[1].split("unlock_state()", 1)[0]
-    assert "s_sta_connecting = true" in had_ip_block
-    assert "reconnect = true" in had_ip_block
-    assert "start_reconnect_timeout = true" in had_ip_block
-    assert "s_sta_started = false" not in had_ip_block
-    reconnect_block = disconnected_case.split("else if (s_sta_started && s_sta_connecting)", 1)[1]
-    assert "s_sta_connecting = true" in reconnect_block
-    assert "reconnect = true" in reconnect_block
+    disconnected_case = runtime.split("event_id == WIFI_EVENT_STA_DISCONNECTED", 1)[1].split("IP_EVENT_STA_GOT_IP", 1)[0]
+    assert "provisioning_retry_failed(&s_retry" in disconnected_case
+    assert "s_retry.in_flight || s_retry.online" in disconnected_case
+    assert "esp_wifi_connect()" not in disconnected_case
+    assert "s_sta_started = false" not in disconnected_case
+    assert "PROVISION_EVENT_WIFI_DISCONNECTED" in disconnected_case
     assert "out->last_wifi_disconnect_reason = s_last_wifi_disconnect_reason" in runtime
     assert "out->last_wifi_disconnect_rssi = s_last_wifi_disconnect_rssi" in runtime
     portal = read("components/portal_http/portal_http.c")
@@ -302,83 +296,37 @@ def test_task6_runtime_init_failure_cleans_partial_resources():
     assert "return err;" in cleanup
 
 
-def test_task6_sta_disconnect_revalidates_reconnect_after_operation_lock():
+def test_task6_wifi_connect_is_owned_and_serialized_by_retry_worker():
     runtime = read("components/provisioning/provisioning_runtime.c")
-    disconnected_case = runtime.split(
-        "event_id == WIFI_EVENT_STA_DISCONNECTED", 1
-    )[1].split("IP_EVENT_STA_GOT_IP", 1)[0]
-    reconnect_block = disconnected_case.split("if (reconnect)", 1)[1].split(
-        "} else if", 1
-    )[0]
-
-    assert "const uint32_t attempt_generation = s_active_sta_attempt_generation" in disconnected_case
-    assert "lock_wifi_operation()" in reconnect_block
-    assert "const bool reconnect_still_valid" in reconnect_block
-    assert "s_sta_started && s_sta_connecting" in reconnect_block
-    assert "s_active_sta_attempt_generation == attempt_generation" in reconnect_block
-    assert reconnect_block.index("lock_wifi_operation()") < reconnect_block.index(
-        "lock_state()"
-    )
-    assert reconnect_block.index("lock_state()") < reconnect_block.index(
-        "unlock_state()"
-    )
-    assert reconnect_block.index("unlock_state()") < reconnect_block.index(
-        "esp_wifi_connect()"
-    )
-    assert "if (reconnect_still_valid)" in reconnect_block
-    assert reconnect_block.index("esp_wifi_connect()") < reconnect_block.index(
-        "unlock_wifi_operation()"
-    )
+    worker = runtime.split("static void wifi_timeout_task(void *arg)\n{", 1)[1].split("static esp_err_t create_default_event_loop_once", 1)[0]
+    events = runtime.split("static void wifi_event_handler(", 1)[1].split("static esp_err_t ensure_runtime_ready", 1)[0]
+    assert runtime.count("esp_wifi_connect();") == 1
+    assert "esp_wifi_connect();" not in events
+    assert worker.index("lock_wifi_operation()") < worker.index("provisioning_retry_poll") < worker.index("esp_wifi_connect();") < worker.index("unlock_wifi_operation()")
+    assert "s_sta_started && s_sta_interface_ready && !s_sta_stop_pending" in worker
+    assert "const uint32_t generation = s_active_sta_attempt_generation" in worker
+    assert "provisioning_retry_failed(&s_retry" in events
 
 
-def test_task6_wifi_timeout_binds_origin_attempt_generation():
+def test_task6_wifi_deadlines_belong_to_current_policy_not_queued_wakeups():
     runtime = read("components/provisioning/provisioning_runtime.c")
     header = read("components/provisioning/include/provisioning_runtime.h")
-    start_sta = runtime.split(
-        "esp_err_t provisioning_runtime_start_sta", 1
-    )[1].split("esp_err_t provisioning_runtime_stop_sta", 1)[0]
-    timeout_task = runtime.split("static void wifi_timeout_task", 1)[1].split(
-        "static esp_err_t create_default_event_loop_once", 1
-    )[0]
-    disconnected_case = runtime.split(
-        "event_id == WIFI_EVENT_STA_DISCONNECTED", 1
-    )[1].split("IP_EVENT_STA_GOT_IP", 1)[0]
-    callback_task = runtime.split("static void event_callback_task", 1)[1].split(
-        "static void dispatch_event", 1
-    )[0]
-
-    assert "typedef struct {" in header
-    assert "provisioning_runtime_event_t" in header
-    assert "provisioning_event_t event;" in header
+    policy = read("components/provisioning/provisioning_retry.c")
+    start = runtime.split("esp_err_t provisioning_runtime_start_sta", 1)[1].split("esp_err_t provisioning_runtime_stop_sta", 1)[0]
+    worker = runtime.split("static void wifi_timeout_task(void *arg)\n{", 1)[1].split("static esp_err_t create_default_event_loop_once", 1)[0]
     assert "uint32_t sta_attempt_generation;" in header
-    assert "provisioning_runtime_event_t event" in runtime
-    assert "s_next_sta_attempt_generation" in runtime
-    assert "s_active_sta_attempt_generation" in runtime
-    assert "s_wifi_timeout_task" in runtime
-    assert "next_sta_attempt_generation" in runtime
     assert "if (generation == 0)" in runtime
-    assert start_sta.index("next_sta_attempt_generation()") < start_sta.index(
-        "s_sta_started = true"
-    )
-    assert "s_active_sta_attempt_generation = attempt_generation" in start_sta
-    assert "s_active_sta_attempt_generation = 0" in start_sta
-    assert "schedule_wifi_timeout(attempt_generation)" in start_sta
-    assert "cancel_wifi_timeout()" in start_sta
-    assert "callback(&msg.event, context)" in callback_task
-    assert "uint32_t pending_generation = 0" in timeout_task
-    assert "const uint32_t expired_generation = pending_generation" in timeout_task
-    assert "s_active_sta_attempt_generation == expired_generation" in timeout_task
-    assert "s_sta_started && s_sta_connecting" in timeout_task
-    assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, expired_generation)" in timeout_task
-    assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, attempt_generation)" not in timeout_task
-    assert "wifi_timeout_timer_cb" not in runtime
-    assert "xTimerReset(s_wifi_timeout_timer" not in runtime
-    assert "xTimerStop(s_wifi_timeout_timer" not in runtime
-    assert "TimerHandle_t s_wifi_timeout_timer" not in runtime
-    assert "const uint32_t attempt_generation = s_active_sta_attempt_generation" in disconnected_case
-    assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, attempt_generation)" not in disconnected_case
-    assert "schedule_wifi_timeout(attempt_generation)" in disconnected_case
-    assert "out->sta_attempt_generation = s_active_sta_attempt_generation" in runtime
+    assert "s_active_sta_attempt_generation = attempt_generation" in start
+    assert "provisioning_retry_start(&s_retry" in start
+    assert "provisioning_retry_stop(&s_retry)" in runtime
+    assert "provisioning_retry_matches(&s_retry, generation)" in runtime
+    assert "notification" in worker
+    assert "pending_generation" not in worker
+    assert "dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, generation)" in worker
+    assert "s_active_sta_attempt_generation = 0" not in worker
+    assert "next_attempt_ms = 0" in policy
+    assert "attempt_deadline_ms = 0" in policy
+    assert "callback(&msg.event, context)" in runtime
 
 
 def test_task6_ap_security_is_configured_before_wifi_start():
@@ -426,7 +374,7 @@ def test_task6_scan_rejects_while_sta_connecting():
     assert "esp_wifi_clear_ap_list" in runtime
     assert "threshold.authmode = WIFI_AUTH_OPEN" in runtime
     assert "schedule_wifi_timeout(attempt_generation)" in runtime
-    assert runtime.count("schedule_wifi_timeout(attempt_generation)") == 2
+    assert runtime.count("schedule_wifi_timeout(attempt_generation)") == 1
     scan = runtime.split("esp_err_t provisioning_runtime_scan", 1)[1].split(
         "esp_err_t provisioning_runtime_notify_mqtt_failed", 1
     )[0]
@@ -436,29 +384,21 @@ def test_task6_scan_rejects_while_sta_connecting():
     assert ".coex_background_scan = true" in scan
 
 
-def test_task6_timeout_disables_late_reconnect_and_stale_got_ip():
+def test_task6_timeout_keeps_retries_but_rejects_stale_ip_and_checks_live_ip():
     runtime = read("components/provisioning/provisioning_runtime.c")
-    timeout = runtime.split("static void wifi_timeout_task", 1)[1].split(
-        "static esp_err_t create_default_event_loop_once", 1
-    )[0]
-    disconnected_case = runtime.split(
-        "event_id == WIFI_EVENT_STA_DISCONNECTED", 1
-    )[1].split("IP_EVENT_STA_GOT_IP", 1)[0]
-    got_ip_case = runtime.split(
-        "event_id == IP_EVENT_STA_GOT_IP", 1
-    )[1].split("static esp_err_t ensure_runtime_ready", 1)[0]
-
-    assert "s_sta_started = false" in timeout
-    assert "s_sta_connecting = false" in timeout
-    assert "else if (s_sta_started && s_sta_connecting)" in disconnected_case
-    assert "const bool accept_ip = s_sta_started && s_sta_connecting" in got_ip_case
-    assert "if (!accept_ip)" in got_ip_case
-    assert got_ip_case.index("if (!accept_ip)") < got_ip_case.index(
-        "dispatch_event_with_generation(PROVISION_EVENT_WIFI_CONNECTED"
-    )
+    worker = runtime.split("static void wifi_timeout_task(void *arg)\n{", 1)[1].split("static esp_err_t create_default_event_loop_once", 1)[0]
+    got_ip = runtime.split("event_id == IP_EVENT_STA_GOT_IP", 1)[1].split("static esp_err_t ensure_runtime_ready", 1)[0]
+    assert "s_sta_started = false" not in worker
+    assert "current_station_has_ip()" in worker
+    assert worker.index("current_station_has_ip()") < worker.index("esp_wifi_disconnect()")
+    assert "ip_event->esp_netif == s_sta_netif" in got_ip
+    assert "s_sta_started && s_sta_interface_ready && !s_sta_stop_pending" in got_ip
+    assert "provisioning_retry_matches(&s_retry, generation) && live_ip" in got_ip
+    assert "provisioning_retry_connected(&s_retry, now)" in got_ip
+    assert "s_sta_has_ip = true" in got_ip
 
 
-def test_task6_recovery_enters_ap_only_and_scans_with_temporary_sta():
+def test_task6_automatic_recovery_keeps_sta_and_manual_ap_scan_restores_mode():
     runtime = read("components/provisioning/provisioning_runtime.c")
     mode = runtime.split("static esp_err_t apply_wifi_mode", 1)[1].split(
         "esp_err_t provisioning_runtime_init", 1
@@ -481,9 +421,9 @@ def test_task6_recovery_enters_ap_only_and_scans_with_temporary_sta():
     assert "mode = WIFI_MODE_STA;" in mode.split("else if (sta_started)", 1)[1]
     assert "WIFI_MODE_NULL" in mode
 
-    assert recovery.index("provisioning_runtime_stop_sta()") < recovery.index(
-        "provisioning_runtime_start_ap()"
-    )
+    assert "provisioning_runtime_stop_sta()" not in recovery
+    assert "provisioning_runtime_start_ap()" in recovery
+    assert "s_automatic_recovery_ap = true" in recovery
     assert "s_sta_started = false" in stop_sta
     assert "s_sta_connecting = false" in stop_sta
 
@@ -628,7 +568,8 @@ def test_portal_renders_ble_status_for_all_runtime_states():
     assert render_portal_ble_status({})["value"] == "미등록 · 광고 꺼짐"
     assert render_portal_ble_status({"enroll_window_open": True})["value"] == "등록 대기"
     assert render_portal_ble_status({"ble_bonded": True})["value"] == "등록됨 · 연결 대기"
-    assert render_portal_ble_status({"ble_connected": True})["value"] == "연결됨"
+    assert render_portal_ble_status({"ble_connected": True})["value"] == "연결됨 · 준비 중"
+    assert render_portal_ble_status({"ble_connected": True, "ancs_ready": True})["value"] == "알림 수신 준비 완료"
 
 
 def test_portal_enrollment_guidance_names_the_exact_iphone_bluetooth_entry():
