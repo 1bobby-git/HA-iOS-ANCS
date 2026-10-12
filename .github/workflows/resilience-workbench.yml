@@ -1,157 +1,105 @@
-name: Resilience workbench
+name: Resilience release validation
 
 "on":
   push:
-    branches: [fix/connection-resilience-20261012]
-    paths: [.github/workflows/resilience-workbench.yml]
+    branches: [fix/connection-resilience-20261012, main]
+    paths:
+      - .github/workflows/resilience-workbench.yml
+      - tests/**
+      - tools/tests/**
+      - custom_components/**
 
 permissions:
   contents: read
 
+concurrency:
+  group: resilience-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  apply:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
-      contents: write
-    outputs:
-      sha: ${{ steps.apply.outputs.sha }}
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
-      - name: Verify and apply release patch
-        id: apply
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive exact source for review
+        run: git archive --format=tar.gz --output=resilience-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resilience-source
+          path: resilience-source.tar.gz
+          retention-days: 7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: python -m pip install --disable-pip-version-check -r requirements_test.txt
+      - name: Complete source and Home Assistant regression tests
         shell: bash
         run: |
           set -euo pipefail
+          python -m compileall -q custom_components/ha_ios_ancs
+          python -m pytest -q tools/tests tests 2>&1 | tee resilience-final-tests.log
+      - name: Verify firmware source is unchanged from the successful seven-target build
+        shell: bash
+        run: |
           python - <<'PY'
-          import base64, hashlib, lzma, pathlib, subprocess, tempfile
-          root = pathlib.Path('.resilience-upload-20261012')
-          text = ''.join((root / f'p2.part{i}').read_text().strip() for i in range(1, 5))
-          patch = lzma.decompress(base64.b64decode(text, validate=True))
-          expected = '0eba7a99371f36972a121bbfafd2ba590d0bc5d7c77de7e4498cdf8eb2b59201'
-          assert hashlib.sha256(patch).hexdigest() == expected, 'Patch digest mismatch'
-          with tempfile.NamedTemporaryFile(suffix='.patch') as f:
-              f.write(patch)
-              f.flush()
-              subprocess.run(['git', 'apply', '--check', f.name], check=True)
-              subprocess.run(['git', 'apply', f.name], check=True)
+          import subprocess
+          source = 'f1b561a7bcdd89d9a951f4338d6f777eacd3331d'
+          changed = subprocess.check_output(['git', 'diff', '--name-only', source, 'HEAD'], text=True).splitlines()
+          prefixes = ('.github/', 'tests/', 'tools/tests/', 'custom_components/', 'docs/')
+          allowed = {'README.md', 'README.en.md', 'CHANGELOG.md'}
+          unexpected = [p for p in changed if p not in allowed and not p.startswith(prefixes)]
+          if unexpected:
+              raise SystemExit('Firmware inputs changed; rebuild before releasing: ' + ', '.join(unexpected))
+          print('Firmware inputs match', source)
           PY
-          git rm -r .resilience-upload-20261012
-          git add components main custom_components tools tests docs README.md README.en.md CHANGELOG.md CMakeLists.txt
-          git diff --cached --check
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix: validate resilience diagnostics and prepare companion 0.6.13 firmware 0.3.9'
-          git push origin HEAD:refs/heads/fix/connection-resilience-20261012
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-  tests:
-    needs: apply
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.apply.outputs.sha }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-      - run: python -m pip install --disable-pip-version-check -r requirements_test.txt
-      - run: python -m compileall -q custom_components/ha_ios_ancs
-      - name: Regression tests before binary finalization
-        shell: bash
-        run: |
-          set -o pipefail
-          python -m pytest -q tests tools/tests --ignore=tools/tests/test_release_integrity.py --ignore=tools/tests/test_multi_target_contract.py 2>&1 | tee resilience-tests.log
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: resilience-test-results-v039
-          path: resilience-tests.log
-          retention-days: 3
-  firmware:
-    needs: apply
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [esp32, esp32c2, esp32c3, esp32c5, esp32c6, esp32c61, esp32s3]
-    container: espressif/idf:v6.0.2
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.apply.outputs.sha }}
-      - name: Build using project script
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -o pipefail
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          bash tools/build.sh 2>&1 | tee "resilience-${TARGET}-build.log"
-      - name: Package and fingerprint images
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          source "$IDF_PATH/export.sh"
-          python tools/package_firmware.py --target "$TARGET" --build-dir "build-${TARGET}" --output "artifacts/${TARGET}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: resilience-release-${{ matrix.target }}
-          path: artifacts/${{ matrix.target }}
-          retention-days: 7
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: resilience-build-log-${{ matrix.target }}
-          path: resilience-${{ matrix.target }}-build.log
-          retention-days: 3
-  finalize:
-    needs: [apply, firmware]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.apply.outputs.sha }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
       - uses: actions/download-artifact@v4
         with:
+          github-token: ${{ github.token }}
+          run-id: 38236947241
           pattern: resilience-release-*
           path: artifacts/release
           merge-multiple: true
-      - name: Verify exact source and embedded image fingerprints
-        env:
-          SOURCE_COMMIT: ${{ needs.apply.outputs.sha }}
-        run: python tools/finalize_firmware_release.py --artifacts artifacts/release --source-commit "$SOURCE_COMMIT"
-      - name: Commit verified installer images to isolated branch
+      - name: Recheck every factory/app image and embedded fingerprint
         run: |
-          set -euo pipefail
-          git add docs README.md README.en.md
-          git diff --cached --check
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build: publish verified firmware 0.3.9 installer images and provenance'
-          git push origin HEAD:refs/heads/fix/connection-resilience-20261012
-      - run: python -m pip install --disable-pip-version-check -r requirements_test.txt
-      - name: Complete source and Home Assistant validation
-        run: |
-          set -o pipefail
-          python -m compileall -q custom_components/ha_ios_ancs
-          python -m pytest -q tools/tests tests 2>&1 | tee resilience-final-tests.log
-      - name: Stage companion package and release checksums
+          python tools/finalize_firmware_release.py --artifacts artifacts/release --source-commit f1b561a7bcdd89d9a951f4338d6f777eacd3331d
+          git diff --exit-code -- docs README.md README.en.md
+      - name: Package companion and immutable release manifest
+        shell: bash
         run: |
           python - <<'PY'
-          import hashlib, pathlib, zipfile
+          import hashlib, json, pathlib, subprocess, zipfile
           out = pathlib.Path('artifacts/release')
           root = pathlib.Path('custom_components/ha_ios_ancs')
+          manifest = json.loads((root / 'manifest.json').read_text())
+          if manifest['version'] != '0.6.13':
+              raise SystemExit('This verified artifact set is only for companion 0.6.13')
           with zipfile.ZipFile(out / 'ha_ios_ancs.zip', 'w', zipfile.ZIP_DEFLATED) as z:
               for file in sorted(root.rglob('*')):
                   if file.is_file() and '__pycache__' not in file.parts and file.suffix != '.pyc':
                       z.write(file, file.relative_to(root))
-          files = sorted(p for p in out.iterdir() if p.is_file())
-          (out / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in files))
+          release = {
+              'companion_version': manifest['version'],
+              'firmware_version': '0.3.9',
+              'release_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'firmware_source_commit': 'f1b561a7bcdd89d9a951f4338d6f777eacd3331d',
+              'firmware_build_run': 38236947241,
+              'hardware_verified': False,
+          }
+          (out / 'release-provenance.json').write_text(json.dumps(release, indent=2) + '\n')
+          files = sorted(p for p in out.iterdir() if p.is_file() and p.name != 'SHA256SUMS')
+          (out / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in files))
+          with zipfile.ZipFile(out / 'ha_ios_ancs.zip') as z:
+              assert json.loads(z.read('manifest.json'))['version'] == '0.6.13'
+              assert z.testzip() is None
+          print('Release package verified:', release)
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -163,4 +111,57 @@ jobs:
         with:
           name: resilience-final-validation
           path: resilience-final-tests.log
-          retention-days: 3
+          retention-days: 7
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hacs/action@main
+        with:
+          category: integration
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@master
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: [validate, hacs, hassfest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: resilience-verified-release-v0613
+          path: release
+      - name: Verify package checksums and release commit
+        run: |
+          (cd release && sha256sum --check SHA256SUMS)
+          python - <<'PY'
+          import json, os, pathlib
+          release = json.loads(pathlib.Path('release/release-provenance.json').read_text())
+          assert release['release_commit'] == os.environ['GITHUB_SHA']
+          assert release['companion_version'] == '0.6.13'
+          assert release['firmware_version'] == '0.3.9'
+          PY
+      - name: Publish HACS companion and separately identified firmware images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Refuse to replace any existing release or move an existing tag.
+          if gh release view v0.6.13 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v0.6.13 already exists; leaving it unchanged.'
+            exit 1
+          fi
+          gh release create v0.6.13 release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'iOS ANCS 0.6.13 / Firmware 0.3.9' --notes-file docs/releases/v0.6.13.md --latest
