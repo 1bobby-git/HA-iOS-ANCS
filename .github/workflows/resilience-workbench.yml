@@ -3,24 +3,96 @@ name: Resilience workbench
 "on":
   push:
     branches: [fix/connection-resilience-20261012]
+    paths: [.github/workflows/resilience-workbench.yml]
 
 permissions:
   contents: read
 
 jobs:
-  snapshot:
+  apply:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.apply.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
-      - name: Export tracked source only
+      - name: Verify and apply implementation patch
+        id: apply
+        shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/ancs-source"
-          git archive --format=tar HEAD | tar -xf - -C "$RUNNER_TEMP/ancs-source"
-          git rev-parse HEAD > "$RUNNER_TEMP/ancs-source/SNAPSHOT_COMMIT"
-      - uses: actions/upload-artifact@v4
+          set -euo pipefail
+          python - <<'PY'
+          import base64, hashlib, lzma, pathlib, subprocess, tempfile
+          root = pathlib.Path('.resilience-upload-20261012')
+          text = ''.join((root / f'p1.part{i}').read_text().strip() for i in range(1, 5))
+          patch = lzma.decompress(base64.b64decode(text, validate=True))
+          expected = '89588adaa9c3e59ddba25fea89a65d39d8d325c89078cf43dea892dbb05a293c'
+          assert hashlib.sha256(patch).hexdigest() == expected, 'Patch digest mismatch'
+          with tempfile.NamedTemporaryFile(suffix='.patch') as f:
+              f.write(patch)
+              f.flush()
+              subprocess.run(['git', 'apply', '--check', f.name], check=True)
+              subprocess.run(['git', 'apply', f.name], check=True)
+          PY
+          git rm -r .resilience-upload-20261012
+          git add components main custom_components tools
+          git diff --cached --check
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix: recover long Wi-Fi outages and separate BLE session diagnostics'
+          git push origin HEAD:refs/heads/fix/connection-resilience-20261012
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  tests:
+    needs: apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: resilience-source
-          path: ${{ runner.temp }}/ancs-source
-          include-hidden-files: true
-          retention-days: 1
+          ref: ${{ needs.apply.outputs.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install --disable-pip-version-check -r requirements_test.txt
+      - run: python -m compileall -q custom_components/ha_ios_ancs
+      - name: Source and integration regression tests
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -q tools/tests tests 2>&1 | tee resilience-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resilience-test-results
+          path: resilience-tests.log
+          retention-days: 3
+  firmware:
+    needs: apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: espressif/idf:v6.0.2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.apply.outputs.sha }}
+      - name: Build ESP32-C6 using project build script
+        shell: bash
+        env:
+          TARGET: esp32c6
+        run: |
+          set -o pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash tools/build.sh 2>&1 | tee resilience-build.log
+      - name: Package application and factory images
+        shell: bash
+        run: |
+          source "$IDF_PATH/export.sh"
+          python tools/package_firmware.py --target esp32c6 --build-dir build-esp32c6 --output artifacts/esp32c6
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resilience-esp32c6-candidate
+          path: |
+            resilience-build.log
+            artifacts/esp32c6
+          retention-days: 3
