@@ -129,3 +129,24 @@ def test_old_firmware_link_compatibility_does_not_invent_ancs_ready(hass, run):
     assert runtime.ble_connected is True
     assert notification_ready(runtime.diagnostics, runtime.diagnostics_fresh) is None
     run(runtime.async_stop())
+
+
+def test_ready_entity_never_reports_a_cached_ready_value_without_availability(hass, run):
+    from custom_components.ha_ios_ancs.binary_sensor import AncsNotificationReadyBinarySensor
+    from tests.test_event import make_entry
+
+    runtime = AncsMqttRuntime(hass, "ios_ancs")
+    runtime._handle_status(message(sample()))
+    entity = AncsNotificationReadyBinarySensor(make_entry(), runtime)
+    # Even a fresh ready payload is not evidence of current transport availability.
+    assert entity.is_on is True
+    assert runtime.available is None
+    assert entity.available is False
+    runtime._handle_availability(SimpleNamespace(payload="online"))
+    runtime._handle_status(message(sample(101)))
+    assert entity.available is True
+    assert entity.is_on is True
+    runtime._handle_availability(SimpleNamespace(payload="offline"))
+    assert entity.available is False
+    assert entity.is_on is None
+    run(runtime.async_stop())

@@ -52,6 +52,9 @@ class RuntimeStub:
         self.device_entry = device_entry
         self.latest_notification = deepcopy(latest_notification)
         self.ble_connected: bool | None = None
+        self.diagnostics: dict[str, Any] = {}
+        self.diagnostics_fresh = False
+        self._diagnostics_listeners: list[Callable[[], None]] = []
         self.async_start = AsyncMock()
         self.async_stop = AsyncMock()
         self._notification_listeners: list[Callable[[dict[str, Any]], None]] = []
@@ -61,6 +64,7 @@ class RuntimeStub:
         self.notification_listener_removed = False
         self.availability_listener_removed = False
         self.ble_connection_listener_removed = False
+        self.diagnostics_listener_removed = False
 
     def restore_notification(
         self, notification: dict[str, Any] | None
@@ -115,6 +119,20 @@ class RuntimeStub:
             self.ble_connection_listener_removed = True
             if listener in self._ble_connection_listeners:
                 self._ble_connection_listeners.remove(listener)
+
+        return remove_listener
+
+    @callback
+    def async_add_diagnostics_listener(
+        self, listener: Callable[[], None]
+    ) -> CALLBACK_TYPE:
+        self._diagnostics_listeners.append(listener)
+
+        @callback
+        def remove_listener() -> None:
+            self.diagnostics_listener_removed = True
+            if listener in self._diagnostics_listeners:
+                self._diagnostics_listeners.remove(listener)
 
         return remove_listener
 
@@ -416,24 +434,39 @@ def test_all_companion_platforms_share_owned_device_and_unload_cleanly(
         if item.platform == "mqtt"
     } == mqtt_before
 
+    # The additive recovery sensor stays visible to explain offline/stale state.
+    # Existing notification entities keep their original availability contract.
+    connection_id = next(
+        entity_id for entity_id in sensor_ids
+        if registry.async_get(entity_id).unique_id.endswith(":sensor:connection_state")
+    )
+    ready_id = next(
+        entity_id for entity_id in binary_sensor_ids
+        if registry.async_get(entity_id).unique_id.endswith(":binary_sensor:notification_ready")
+    )
+    notification_ids = [entity_id for entity_id in companion_ids
+                        if entity_id not in (connection_id, ready_id)]
+    assert len(runtime._diagnostics_listeners) == 2
+    assert all(hass.states.get(entity_id) is not None for entity_id in companion_ids)
+
     runtime.fire_availability(False)
     assert all(
-        (state := hass.states.get(entity_id)) is not None
-        and state.state == STATE_UNAVAILABLE
-        for entity_id in companion_ids
+        hass.states.get(entity_id).state == STATE_UNAVAILABLE
+        for entity_id in notification_ids + [ready_id]
     )
+    assert hass.states.get(connection_id).state == "offline"
     runtime.fire_availability(None)
     assert all(
-        (state := hass.states.get(entity_id)) is not None
-        and state.state == STATE_UNAVAILABLE
-        for entity_id in companion_ids
+        hass.states.get(entity_id).state == STATE_UNAVAILABLE
+        for entity_id in notification_ids + [ready_id]
     )
+    assert hass.states.get(connection_id).state == STATE_UNKNOWN
     runtime.fire_availability(True)
     assert all(
-        (state := hass.states.get(entity_id)) is not None
-        and state.state != STATE_UNAVAILABLE
+        hass.states.get(entity_id).state != STATE_UNAVAILABLE
         for entity_id in companion_ids
     )
+    assert hass.states.get(ready_id).state == STATE_UNKNOWN
 
     updated = firmware_notification()
     updated["relay_id"] = "boot1-1-43-aabbcc"
@@ -501,6 +534,8 @@ def test_all_companion_platforms_share_owned_device_and_unload_cleanly(
     assert runtime._notification_listeners == []
     assert runtime._availability_listeners == []
     assert runtime._ble_connection_listeners == []
+    assert runtime._diagnostics_listeners == []
+    assert runtime.diagnostics_listener_removed
     runtime.async_stop.assert_awaited_once()
     assert hass.states.get(registered.entity.entity_id) is not None
     assert {

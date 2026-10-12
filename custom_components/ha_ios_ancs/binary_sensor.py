@@ -224,7 +224,7 @@ class AncsNotificationReadyBinarySensor(AncsConnectionEntity, BinarySensorEntity
 
     @property
     def available(self) -> bool:
-        return self._runtime.available is not False
+        return self._runtime.available is True
 
     @property
     def is_on(self) -> bool | None:
