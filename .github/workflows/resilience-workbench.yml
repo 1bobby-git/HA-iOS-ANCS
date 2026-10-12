@@ -1,0 +1,26 @@
+name: Resilience workbench
+
+"on":
+  push:
+    branches: [fix/connection-resilience-20261012]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export tracked source only
+        run: |
+          mkdir -p "$RUNNER_TEMP/ancs-source"
+          git archive --format=tar HEAD | tar -xf - -C "$RUNNER_TEMP/ancs-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/ancs-source/SNAPSHOT_COMMIT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resilience-source
+          path: ${{ runner.temp }}/ancs-source
+          include-hidden-files: true
+          retention-days: 1
