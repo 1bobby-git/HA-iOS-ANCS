@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from time import monotonic
 from collections import deque
 from collections.abc import Callable
 from copy import deepcopy
@@ -26,6 +28,7 @@ from .const import (
     EVENT_TYPE_NOTIFICATION,
     NOTIFICATION_TOPIC_SUFFIX,
 )
+from .diagnostics import STATUS_TTL_SECONDS, parse_diagnostics
 from .notification import RelayIdWindow, parse_notification, parse_notification_data
 from .source import async_resolve_ancs_source, async_resolve_ancs_status_entity
 
@@ -47,6 +50,19 @@ class AncsRuntime(Protocol):
     @property
     def ble_connected(self) -> bool | None:
         """Return current BLE connection state."""
+        raise NotImplementedError
+
+    @property
+    def diagnostics(self) -> dict[str, Any]:
+        """Return sanitized connection diagnostics."""
+        raise NotImplementedError
+
+    @property
+    def diagnostics_fresh(self) -> bool:
+        """Whether the latest connection sample is demonstrably current."""
+        raise NotImplementedError
+
+    def async_add_diagnostics_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
         raise NotImplementedError
 
     @property
@@ -101,14 +117,85 @@ def _get_mqtt_api() -> Any:
     return mqtt
 
 
-class AncsMqttRuntime:
+class _DiagnosticsRuntime:
+    """Connection freshness is independent of the last notification's age."""
+
+    def _init_diagnostics(self) -> None:
+        self._diagnostics: dict[str, Any] = {}
+        self._diagnostics_listeners: list[Callable[[], None]] = []
+        self._diagnostics_timer: asyncio.TimerHandle | None = None
+        self._diagnostics_received_at: float | None = None
+        self._diagnostics_source_uptime: int | None = None
+
+    @property
+    def diagnostics(self) -> dict[str, Any]:
+        return deepcopy(self._diagnostics)
+
+    @property
+    def diagnostics_fresh(self) -> bool:
+        return (self._diagnostics_received_at is not None and
+                monotonic() - self._diagnostics_received_at < STATUS_TTL_SECONDS)
+
+    @callback
+    def async_add_diagnostics_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
+        self._diagnostics_listeners.append(listener)
+        @callback
+        def remove() -> None:
+            if listener in self._diagnostics_listeners:
+                self._diagnostics_listeners.remove(listener)
+        return remove
+
+    @callback
+    def _notify_diagnostics(self) -> None:
+        for listener in tuple(self._diagnostics_listeners):
+            listener()
+
+    @callback
+    def _expire_diagnostics(self) -> None:
+        self._diagnostics_timer = None
+        self._diagnostics_received_at = None
+        self._ble_connected = None
+        for listener in tuple(self._ble_connection_listeners):
+            listener(None)
+        self._notify_diagnostics()
+
+    @callback
+    def _update_diagnostics(self, data: Any, *, live: bool, preserve_fresh: bool = False) -> None:
+        parsed = parse_diagnostics(data)
+        self._diagnostics = parsed
+        if preserve_fresh and self.diagnostics_fresh:
+            self._notify_diagnostics()
+            return
+        if self._diagnostics_timer is not None:
+            self._diagnostics_timer.cancel()
+            self._diagnostics_timer = None
+        self._diagnostics_received_at = monotonic() if live else None
+        if live:
+            self._diagnostics_timer = self._hass.loop.call_later(
+                STATUS_TTL_SECONDS, self._expire_diagnostics
+            )
+        self._notify_diagnostics()
+
+    def _stop_diagnostics(self) -> None:
+        if self._diagnostics_timer is not None:
+            self._diagnostics_timer.cancel()
+            self._diagnostics_timer = None
+        self._diagnostics_received_at = None
+        self._diagnostics_source_uptime = None
+        self._diagnostics.clear()
+        self._diagnostics_listeners.clear()
+
+
+class AncsMqttRuntime(_DiagnosticsRuntime):
     """Manage MQTT subscriptions and listeners for iOS ANCS."""
 
     def __init__(self, hass: HomeAssistant, base_topic: str) -> None:
         self._hass = hass
+        self._init_diagnostics()
         self._base_topic = base_topic
         self._notification_topic = f"{base_topic}/{NOTIFICATION_TOPIC_SUFFIX}"
         self._availability_topic = f"{base_topic}/{AVAILABILITY_TOPIC_SUFFIX}"
+        self._state_topic = f"{base_topic}/state"
         self._seen = RelayIdWindow()
         self._notification_listeners: list[NotificationListener] = []
         self._notification_replay_listeners: list[NotificationListener] = []
@@ -194,6 +281,11 @@ class AncsMqttRuntime:
                         _QOS,
                     )
                 )
+                unsubscribes.append(
+                    await mqtt_api.async_subscribe(
+                        self._hass, self._state_topic, self._handle_status, _QOS
+                    )
+                )
             except (Exception, asyncio.CancelledError):
                 for unsubscribe in unsubscribes:
                     unsubscribe()
@@ -209,6 +301,7 @@ class AncsMqttRuntime:
             self._unsubscribes = []
             for unsubscribe in unsubscribes:
                 unsubscribe()
+            self._stop_diagnostics()
             self._notification_listeners.clear()
             self._notification_replay_listeners.clear()
             self._pending_notifications.clear()
@@ -277,6 +370,10 @@ class AncsMqttRuntime:
         if notification is None:
             return
 
+        if bool(getattr(msg, "retain", False)):
+            if self._latest_notification is None:
+                self._latest_notification = deepcopy(notification)
+            return
         self._latest_notification = deepcopy(notification)
         if not self._notification_replay_listeners:
             self._pending_notifications.append(deepcopy(notification))
@@ -287,12 +384,30 @@ class AncsMqttRuntime:
             listener(deepcopy(notification))
 
     @callback
+    def _handle_status(self, msg: Any) -> None:
+        try:
+            data = json.loads(msg.payload)
+        except (TypeError, ValueError, UnicodeDecodeError):
+            return
+        if not isinstance(data, dict):
+            return
+        live = not bool(getattr(msg, "retain", False))
+        self._update_diagnostics(data, live=live)
+        connected = self._diagnostics.get("ble_connected") if live else None
+        if connected is not self._ble_connected:
+            self._ble_connected = connected
+            for listener in tuple(self._ble_connection_listeners):
+                listener(connected)
+
+    @callback
     def _handle_availability(self, msg: Any) -> None:
         available = self._availability_from_payload(msg.payload)
         if available is None or available is self._available:
             return
 
         self._available = available
+        if available is False:
+            self._expire_diagnostics()
         for listener in tuple(self._availability_listeners):
             listener(available)
 
@@ -305,7 +420,7 @@ class AncsMqttRuntime:
         return None
 
 
-class AncsSourceRuntime:
+class AncsSourceRuntime(_DiagnosticsRuntime):
     """Consume notifications from an existing MQTT sensor entity."""
 
     def __init__(
@@ -315,6 +430,7 @@ class AncsSourceRuntime:
         mqtt_device_identifier: str,
     ) -> None:
         self._hass = hass
+        self._init_diagnostics()
         self._source_entity_unique_id = source_entity_unique_id
         self._mqtt_device_identifier = mqtt_device_identifier
         self._seen = RelayIdWindow()
@@ -416,10 +532,14 @@ class AncsSourceRuntime:
                 self._mqtt_device_identifier,
             )
             if status_entity_id is not None:
+                initial_status = self._hass.states.get(status_entity_id)
+                if initial_status is not None:
+                    self._update_diagnostics(dict(initial_status.attributes), live=False)
+                    uptime = initial_status.attributes.get("uptime_seconds")
+                    self._diagnostics_source_uptime = uptime if type(uptime) is int else None
                 self._set_ble_connected(
-                    self._ble_connected_from_state(
-                        self._hass.states.get(status_entity_id)
-                    )
+                    None if self._diagnostics.get("diagnostics_version") == 1
+                    else self._ble_connected_from_state(initial_status)
                 )
                 self._status_unsubscribe = async_track_state_change_event(
                     self._hass,
@@ -437,6 +557,7 @@ class AncsSourceRuntime:
             if self._status_unsubscribe is not None:
                 self._status_unsubscribe()
                 self._status_unsubscribe = None
+            self._stop_diagnostics()
             self._notification_listeners.clear()
             self._notification_replay_listeners.clear()
             self._pending_notifications.clear()
@@ -547,8 +668,24 @@ class AncsSourceRuntime:
     ) -> None:
         """Dispatch BLE connection state changes from MQTT status entity."""
 
+        state = event.data["new_state"]
+        if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            self._update_diagnostics({}, live=False)
+            self._set_ble_connected(None)
+            return
+        data = dict(state.attributes)
+        uptime = data.get("uptime_seconds")
+        previous = self._diagnostics_source_uptime
+        # Legacy samples without diagnostics keep existing link compatibility,
+        # while the new ready sensor stays unknown rather than guessing false.
+        legacy = data.get("diagnostics_version") != 1
+        live = legacy or (type(uptime) is int and previous is not None and uptime > previous)
+        preserve = not live and type(uptime) is int and uptime == previous
+        if type(uptime) is int:
+            self._diagnostics_source_uptime = uptime
+        self._update_diagnostics(data, live=live, preserve_fresh=preserve)
         self._set_ble_connected(
-            self._ble_connected_from_state(event.data["new_state"])
+            self._ble_connected_from_state(state) if self.diagnostics_fresh else None
         )
 
     @callback
@@ -558,6 +695,8 @@ class AncsSourceRuntime:
         if self._available is available:
             return
         self._available = available
+        if available is False:
+            self._expire_diagnostics()
         for listener in tuple(self._availability_listeners):
             listener(available)
 

@@ -70,7 +70,30 @@
       "device_name": {"name": "기기 이름"},
       "error_code": {"name": "오류 코드"},
       "error_name": {"name": "오류 이름"},
-      "raw_notification": {"name": "원본 알림"}
+      "raw_notification": {"name": "원본 알림"},
+      "connection_state": {
+        "name": "연결 복구 상태",
+        "state": {
+          "offline": "연결 끊김",
+          "stale": "상태 갱신 대기",
+          "configuration": "사용자 설정 중",
+          "wifi_retry": "Wi-Fi 재시도",
+          "mqtt_error": "MQTT 오류",
+          "bond_store_error": "저장소 조회 오류",
+          "authentication_protection": "인증 실패 보호",
+          "enrollment_open": "신규 등록 창 열림",
+          "authentication_failed": "인증 실패",
+          "pairing_check": "페어링 상태 확인 필요",
+          "enrollment_required": "신규 등록 필요",
+          "reconnecting": "기존 peer 재접속 대기",
+          "ready": "알림 수신 준비 완료",
+          "authentication_timeout": "인증 시간 초과",
+          "ancs_retry": "ANCS 복구 중",
+          "authenticating": "인증 중",
+          "discovering": "ANCS 검색 중",
+          "subscribing": "알림 구독 중"
+        }
+      }
     },
     "binary_sensor": {
       "complete": {"name": "수집 완료"},
@@ -85,12 +108,11 @@
       "subtitle_truncated": {"name": "부제목 잘림"},
       "message_truncated": {"name": "내용 잘림"},
       "has_error": {"name": "오류 발생"},
-      "ble_connected": {"name": "BLE 연결"}
+      "ble_connected": {"name": "BLE 연결"},
+      "notification_ready": {"name": "알림 수신 준비"}
     },
     "event": {
-      "notification": {
-        "name": "알림"
-      }
+      "notification": {"name": "알림"}
     }
   }
 }

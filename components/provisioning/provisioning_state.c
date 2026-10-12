@@ -44,6 +44,11 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
         current.wifi_connected = true;
         break;
 
+    case PROVISION_EVENT_WIFI_DISCONNECTED:
+        current.wifi_connected = false;
+        current.mqtt_connected = false;
+        break;
+
     case PROVISION_EVENT_WIFI_TIMEOUT:
         current.wifi_connected = false;
         current.mqtt_connected = false;

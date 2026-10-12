@@ -440,6 +440,10 @@ static cJSON *build_status_response(void)
         add_bool(runtime_json, "sta_started", runtime.sta_started) != ESP_OK ||
         add_bool(runtime_json, "sta_connecting", runtime.sta_connecting) != ESP_OK ||
         add_bool(runtime_json, "sta_has_ip", runtime.sta_has_ip) != ESP_OK ||
+        add_bool(runtime_json, "retry_paused", runtime.retry_paused) != ESP_OK ||
+        add_number(runtime_json, "retry_attempts", runtime.retry_attempts) != ESP_OK ||
+        add_number(runtime_json, "retry_in_ms", runtime.retry_in_ms) != ESP_OK ||
+        add_bool(runtime_json, "automatic_recovery_ap", runtime.automatic_recovery_ap) != ESP_OK ||
         add_number(runtime_json,
                    "last_wifi_disconnect_reason",
                    runtime.last_wifi_disconnect_reason) != ESP_OK ||
@@ -459,6 +463,16 @@ static cJSON *build_status_response(void)
         add_number(system_json, "mqtt_last_error_at_ms", system.mqtt_last_error_at_ms) != ESP_OK ||
         add_bool(system_json, "ble_bonded", system.ble_bonded) != ESP_OK ||
         add_bool(system_json, "ble_connected", system.ble_connected) != ESP_OK ||
+        add_bool(system_json, "bond_store_known", system.bond_store_known) != ESP_OK ||
+        add_number(system_json, "stored_peer_count", system.stored_peer_count) != ESP_OK ||
+        add_number(system_json, "bond_store_error", system.bond_store_error) != ESP_OK ||
+        add_bool(system_json, "session_authenticated", system.session_authenticated) != ESP_OK ||
+        add_bool(system_json, "link_encrypted", system.link_encrypted) != ESP_OK ||
+        add_bool(system_json, "ancs_service_found", system.ancs_service_found) != ESP_OK ||
+        add_bool(system_json, "data_source_subscribed", system.data_source_subscribed) != ESP_OK ||
+        add_bool(system_json, "notification_source_subscribed", system.notification_source_subscribed) != ESP_OK ||
+        add_bool(system_json, "ancs_ready", system.ancs_ready) != ESP_OK ||
+        add_number(system_json, "enrollment_remaining_seconds", system.enrollment_remaining_seconds) != ESP_OK ||
         add_bool(system_json, "enroll_window_open", system.enroll_window_open) != ESP_OK ||
         add_number(system_json, "ble_passkey", system.ble_passkey) != ESP_OK ||
         add_bool(system_json,

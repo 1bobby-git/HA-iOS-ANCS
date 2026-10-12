@@ -70,7 +70,30 @@
       "device_name": {"name": "Device name"},
       "error_code": {"name": "Error code"},
       "error_name": {"name": "Error name"},
-      "raw_notification": {"name": "Raw notification"}
+      "raw_notification": {"name": "Raw notification"},
+      "connection_state": {
+        "name": "Connection recovery",
+        "state": {
+          "offline": "Offline",
+          "stale": "Waiting for fresh status",
+          "configuration": "Configuring",
+          "wifi_retry": "Retrying Wi-Fi",
+          "mqtt_error": "MQTT error",
+          "bond_store_error": "Bond store read error",
+          "authentication_protection": "Authentication protection",
+          "enrollment_open": "Enrollment window open",
+          "authentication_failed": "Authentication failed",
+          "pairing_check": "Check pairing state",
+          "enrollment_required": "Enrollment required",
+          "reconnecting": "Waiting for existing peer",
+          "ready": "Ready for notifications",
+          "authentication_timeout": "Authentication timed out",
+          "ancs_retry": "Recovering ANCS",
+          "authenticating": "Authenticating",
+          "discovering": "Discovering ANCS",
+          "subscribing": "Subscribing"
+        }
+      }
     },
     "binary_sensor": {
       "complete": {"name": "Collection complete"},
@@ -85,12 +108,11 @@
       "subtitle_truncated": {"name": "Subtitle truncated"},
       "message_truncated": {"name": "Message truncated"},
       "has_error": {"name": "Error present"},
-      "ble_connected": {"name": "BLE connection"}
+      "ble_connected": {"name": "BLE connection"},
+      "notification_ready": {"name": "Notification ready"}
     },
     "event": {
-      "notification": {
-        "name": "Notification"
-      }
+      "notification": {"name": "Notification"}
     }
   }
 }

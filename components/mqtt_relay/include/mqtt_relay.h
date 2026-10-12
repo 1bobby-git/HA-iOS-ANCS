@@ -56,11 +56,50 @@ typedef struct {
 } mqtt_relay_wifi_status_t;
 
 typedef struct {
+    bool valid;
+    uint32_t wifi_retry_attempts;
+    uint32_t wifi_retry_in_ms;
+    uint32_t wifi_generation;
+    int wifi_disconnect_reason;
+    int wifi_connect_error;
+    bool automatic_recovery_ap;
+    bool wifi_retry_paused;
+    bool bond_store_known;
+    int stored_peer_count;
+    int bond_store_error;
+    int boot_peer_count;
+    bool session_authenticated;
+    bool link_encrypted;
+    bool ancs_service_found;
+    bool data_source_subscribed;
+    bool notification_source_subscribed;
+    bool ancs_ready;
+    bool enrollment_active;
+    uint32_t enrollment_remaining_seconds;
+    bool authentication_protection;
+    uint32_t auth_failure_count;
+    int auth_error;
+    int ble_stage_error;
+    int ble_disconnect_reason;
+    uint32_t ble_generation;
+    int mqtt_error_type;
+    int mqtt_esp_error;
+    int mqtt_tls_error;
+    int mqtt_socket_errno;
+    int mqtt_connect_return_code;
+    uint32_t mqtt_retry_in_ms;
+    int reset_reason;
+    char firmware_elf_sha256[65];
+} mqtt_relay_diagnostics_t;
+
+typedef struct {
     mqtt_relay_wifi_status_t wifi;
     bool mqtt_connected;
     bool ble_connected;
     bool ble_bonded;
     uint64_t uptime_seconds;
+    uint64_t last_notification_uptime_ms;
+    mqtt_relay_diagnostics_t diagnostics;
 } mqtt_relay_runtime_status_t;
 
 typedef struct {
@@ -218,6 +257,7 @@ void mqtt_relay_set_wifi_connected(bool connected);
 void mqtt_relay_observe_notification(const ancs_notification_t *notification,
                                      const char *device_name,
                                      void *context);
+esp_err_t mqtt_relay_update_diagnostics(const mqtt_relay_diagnostics_t *status);
 void mqtt_relay_get_counters(mqtt_relay_counters_t *out);
 void mqtt_relay_get_connection_status(mqtt_relay_connection_status_t *out);
 

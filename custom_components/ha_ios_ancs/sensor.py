@@ -16,6 +16,8 @@ from homeassistant.const import EntityCategory, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .connection import AncsConnectionEntity
+from .diagnostics import connection_state
 from .entity import (
     MAX_STATE_TEXT_LENGTH,
     AncsNotificationEntity,
@@ -225,10 +227,11 @@ async def async_setup_entry(
     """Set up all purpose-specific notification sensors."""
 
     runtime: AncsRuntime = entry.runtime_data
-    async_add_entities(
-        AncsNotificationSensor(entry, runtime, description)
-        for description in SENSOR_DESCRIPTIONS
-    )
+    async_add_entities([
+        *(AncsNotificationSensor(entry, runtime, description)
+          for description in SENSOR_DESCRIPTIONS),
+        AncsConnectionStateSensor(entry, runtime),
+    ])
 
 
 class AncsNotificationSensor(AncsNotificationEntity, SensorEntity):
@@ -304,3 +307,29 @@ class AncsNotificationSensor(AncsNotificationEntity, SensorEntity):
         if value is None or len(value) <= MAX_STATE_TEXT_LENGTH:
             return None
         return {"full_value": value}
+
+
+CONNECTION_STATE_OPTIONS = [
+    "offline", "stale", "configuration", "wifi_retry", "mqtt_error", "bond_store_error",
+    "authentication_protection", "enrollment_open", "authentication_failed", "pairing_check",
+    "enrollment_required", "reconnecting", "ready", "authentication_timeout", "ancs_retry",
+    "authenticating", "discovering", "subscribing",
+]
+
+
+class AncsConnectionStateSensor(AncsConnectionEntity, SensorEntity):
+    """Show recovery stage and the least destructive applicable user action."""
+    _attr_translation_key = "connection_state"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = CONNECTION_STATE_OPTIONS
+    entity_description = SensorEntityDescription(key="connection_state")
+
+    def __init__(self, entry, runtime) -> None:
+        super().__init__(entry, runtime, Platform.SENSOR.value, "connection_state")
+
+    @property
+    def native_value(self) -> str | None:
+        return connection_state(getattr(self._runtime, "diagnostics", {}),
+                                getattr(self._runtime, "diagnostics_fresh", False),
+                                self._runtime.available)

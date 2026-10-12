@@ -29,6 +29,11 @@
 #include "platform_identity.h"
 #include "nvs_flash.h"
 
+#define ANCS_AUTH_TIMEOUT_MS INT64_C(30000)
+#define ANCS_DISCOVERY_TIMEOUT_MS INT64_C(15000)
+#define ANCS_SUBSCRIBE_TIMEOUT_MS INT64_C(10000)
+#define ANCS_PREPARE_TIMEOUT_MS INT64_C(90000)
+#define ANCS_DISCOVERY_RETRIES 2U
 #define ANCS_APP_ID 0
 #define INVALID_HANDLE 0
 #define ADV_DATA_PENDING (1U << 0)
@@ -105,7 +110,12 @@ typedef struct {
     char device_name[32];
 
     bool connected;
-    bool bonded;
+    bool bonded; /* Legacy mixed state; never use this to authorize a session. */
+    bool session_authenticated;
+    bool link_encrypted;
+    bool closing;
+    uint8_t close_attempts;
+    int64_t close_retry_due_ms;
     bool mtu_ready;
     bool discovery_in_progress;
     bool service_found;
@@ -127,6 +137,16 @@ typedef struct {
     uint8_t auth_failure_count;
     int64_t last_auth_failure_ms;
     bool pairing_repair_required;
+    esp_err_t bond_store_error;
+    int boot_bond_count;
+    int last_stage_error;
+    int last_disconnect_reason;
+    int64_t stage_deadline_ms;
+    int64_t prepare_deadline_ms;
+    int64_t discovery_retry_due_ms;
+    uint32_t discovery_retry_generation;
+    uint16_t pending_notify_handle;
+    uint32_t pending_notify_generation;
 
     bool advertising;
     bool advertising_starting;
@@ -141,6 +161,7 @@ typedef struct {
     esp_timer_handle_t enroll_timer;
     esp_timer_handle_t button_timer;
     bool replace_pending;
+    bool reopen_after_disconnect;
     esp_err_t last_replace_error;
     ancs_client_boot_held_callback_t boot_held_callback;
     void *boot_held_callback_context;
@@ -169,6 +190,8 @@ typedef struct {
 static client_context_t s_client = {
     .state = ANCS_STATE_BOOT,
     .gattc_if = ESP_GATT_IF_NONE,
+    .boot_bond_count = -1,
+    .bond_store_error = ESP_ERR_INVALID_STATE,
 };
 static worker_context_t s_worker;
 static ble_enroll_state_t s_enroll;
@@ -204,6 +227,9 @@ static void start_advertising(void);
 static void stop_advertising(void);
 static void start_discovery(void);
 static int sync_existing_ble_bond(void);
+static esp_err_t open_replacement_window(void);
+static void enroll_timeout_callback(void *argument);
+static void check_connection_deadline(void);
 
 static int64_t now_ms(void)
 {
@@ -243,8 +269,8 @@ static bool enroll_should_advertise_now(void)
 
 static int current_bond_count(void)
 {
-    const int bond_count = esp_ble_get_bond_device_num();
-    return bond_count < 0 ? 0 : bond_count;
+    /* -1 means unknown/error, never an empty persistent store. */
+    return esp_ble_get_bond_device_num();
 }
 
 static bool bond_list_contains_peer(const uint8_t peer_addr[ESP_BD_ADDR_LEN])
@@ -279,7 +305,11 @@ static bool bond_list_contains_peer(const uint8_t peer_addr[ESP_BD_ADDR_LEN])
 static bool connection_peer_allowed(
     const uint8_t peer_addr[ESP_BD_ADDR_LEN])
 {
-    if (current_bond_count() > 0) {
+    const int count = current_bond_count();
+    if (count < 0) {
+        return false;
+    }
+    if (count > 0) {
         return bond_list_contains_peer(peer_addr);
     }
     return enroll_window_active_now();
@@ -300,6 +330,15 @@ static bool connection_event_matches(
     return matched;
 }
 
+static bool gatt_connection_matches(uint16_t conn_id)
+{
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool matched = s_client.connected && !s_client.closing &&
+                         s_client.conn_id == conn_id;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    return matched;
+}
+
 static bool authentication_event_matches(
     const uint8_t peer_addr[ESP_BD_ADDR_LEN])
 {
@@ -308,7 +347,8 @@ static bool authentication_event_matches(
     }
     taskENTER_CRITICAL(&s_shared_state_lock);
     const bool matched =
-        s_client.connected &&
+        s_client.connected && !s_client.closing &&
+        !s_client.session_authenticated &&
         memcmp(s_client.remote_bda, peer_addr, ESP_BD_ADDR_LEN) == 0;
     taskEXIT_CRITICAL(&s_shared_state_lock);
     return matched;
@@ -406,7 +446,8 @@ static void clear_auth_failure_guard_locked(void)
 static bool record_auth_failure_locked(int64_t failure_at_ms,
                                        bool missing_local_bond)
 {
-    if (s_client.last_auth_failure_ms <= 0 ||
+    if (s_client.auth_failure_count == 0U ||
+        failure_at_ms < s_client.last_auth_failure_ms ||
         failure_at_ms - s_client.last_auth_failure_ms >
             AUTH_FAILURE_WINDOW_MS) {
         s_client.auth_failure_count = 0U;
@@ -443,6 +484,8 @@ static void invalidate_ancs_handles_locked(void)
     s_client.control_point_handle = INVALID_HANDLE;
     s_client.data_source_cccd_handle = INVALID_HANDLE;
     s_client.notification_source_cccd_handle = INVALID_HANDLE;
+    s_client.pending_notify_handle = INVALID_HANDLE;
+    s_client.pending_notify_generation = 0;
 }
 
 static void invalidate_ancs_handles(void)
@@ -851,6 +894,8 @@ static void worker_task(void *argument)
     s_worker.generation = current_generation();
 
     for (;;) {
+        check_connection_deadline();
+        enroll_timeout_callback(NULL); /* Also covers lost/old timer wakeups. */
         const uint32_t generation = current_generation();
         if (s_worker.generation != generation) {
             reset_worker_session(generation);
@@ -908,12 +953,62 @@ static void advertising_retry_callback(void *argument)
 static void enroll_timeout_callback(void *argument)
 {
     (void)argument;
+    const int64_t now = now_ms();
     taskENTER_CRITICAL(&s_shared_state_lock);
-    ble_enroll_close_window(&s_enroll);
+    const bool expired = s_enroll.window_open &&
+                         !ble_enroll_window_active(&s_enroll, now);
+    if (expired) {
+        ble_enroll_close_window(&s_enroll);
+    }
     const bool has_bond = ble_enroll_has_bond(&s_enroll);
     taskEXIT_CRITICAL(&s_shared_state_lock);
-    if (!has_bond) {
+    if (expired && !has_bond) {
         stop_advertising();
+        ESP_LOGI(TAG, "enrollment window expired");
+    }
+}
+
+static void check_connection_deadline(void)
+{
+    const int64_t now = now_ms();
+    esp_bd_addr_t peer;
+    uint32_t generation = 0;
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool expired = s_client.connected && !s_client.ready &&
+        !s_client.closing &&
+        ((s_client.stage_deadline_ms != 0 && now >= s_client.stage_deadline_ms) ||
+         (s_client.prepare_deadline_ms != 0 && now >= s_client.prepare_deadline_ms));
+    const ancs_client_state_t stage = s_client.state;
+    if (expired) {
+        s_client.closing = true;
+        s_client.ready = false;
+        s_client.last_stage_error = ESP_ERR_TIMEOUT;
+        s_client.discovery_retry_due_ms = 0;
+    }
+    const bool request_close = s_client.connected && s_client.closing &&
+        s_client.close_attempts < 3U && now >= s_client.close_retry_due_ms;
+    if (request_close) {
+        ++s_client.close_attempts;
+        s_client.close_retry_due_ms = now + 3000;
+        generation = s_client.generation;
+        memcpy(peer, s_client.remote_bda, sizeof(peer));
+    }
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (expired) {
+        ESP_LOGW(TAG, "connection stage timeout stage=%s", ancs_client_state_name(stage));
+        set_state(ANCS_STATE_RECOVERING);
+    }
+    if (request_close) {
+        /* Keep bond and session identity until the actual DISCONNECT callback. */
+        const esp_err_t error = esp_ble_gap_disconnect(peer);
+        if (error != ESP_OK) {
+            taskENTER_CRITICAL(&s_shared_state_lock);
+            if (s_client.generation == generation) {
+                s_client.last_stage_error = error;
+            }
+            taskEXIT_CRITICAL(&s_shared_state_lock);
+            ESP_LOGW(TAG, "link close command failed code=%d", (int)error);
+        }
     }
 }
 
@@ -942,7 +1037,19 @@ static void enroll_button_callback(void *argument)
 static void discovery_retry_callback(void *argument)
 {
     (void)argument;
-    start_discovery();
+    const int64_t now = now_ms();
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool current = s_client.connected && !s_client.closing &&
+        s_client.discovery_retry_generation == s_client.generation &&
+        s_client.discovery_retry_due_ms != 0 &&
+        now >= s_client.discovery_retry_due_ms;
+    if (current) {
+        s_client.discovery_retry_due_ms = 0;
+    }
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (current) {
+        start_discovery();
+    }
 }
 
 static void schedule_advertising_retry(void)
@@ -972,23 +1079,26 @@ static void schedule_advertising_retry(void)
 static void schedule_discovery_retry(void)
 {
     taskENTER_CRITICAL(&s_shared_state_lock);
-    if (!s_client.connected || s_client.discovery_in_progress) {
+    if (!s_client.connected || s_client.closing ||
+        !s_client.session_authenticated || s_client.discovery_in_progress ||
+        s_client.discovery_retry_due_ms != 0) {
         taskEXIT_CRITICAL(&s_shared_state_lock);
         return;
     }
-    const uint32_t shift =
-        s_client.discovery_attempt < 3U ? s_client.discovery_attempt : 3U;
-    uint32_t delay_ms = 500U << shift;
-    if (delay_ms > DISCOVERY_BACKOFF_MAX_MS) {
-        delay_ms = DISCOVERY_BACKOFF_MAX_MS;
+    s_client.last_stage_error = ESP_FAIL;
+    if (s_client.discovery_attempt >= ANCS_DISCOVERY_RETRIES) {
+        s_client.stage_deadline_ms = now_ms(); /* Worker safely closes the link. */
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        return;
     }
-    if (s_client.discovery_attempt < UINT8_MAX) {
-        s_client.discovery_attempt++;
-    }
+    const uint32_t delay_ms = s_client.discovery_attempt++ == 0 ? 2000 : 5000;
+    s_client.discovery_retry_generation = s_client.generation;
+    s_client.discovery_retry_due_ms = now_ms() + delay_ms;
+    s_client.stage_deadline_ms = s_client.discovery_retry_due_ms + ANCS_DISCOVERY_TIMEOUT_MS;
     taskEXIT_CRITICAL(&s_shared_state_lock);
     (void)esp_timer_stop(s_client.discovery_retry_timer);
-    (void)esp_timer_start_once(
-        s_client.discovery_retry_timer, (uint64_t)delay_ms * 1000U);
+    (void)esp_timer_start_once(s_client.discovery_retry_timer,
+                              (uint64_t)delay_ms * 1000U);
 }
 
 static void start_advertising(void)
@@ -1037,7 +1147,8 @@ static void maybe_start_discovery(void)
 static void start_discovery(void)
 {
     taskENTER_CRITICAL(&s_shared_state_lock);
-    if (!s_client.connected || !s_client.bonded || !s_client.mtu_ready ||
+    if (!s_client.connected || s_client.closing ||
+        !s_client.session_authenticated || !s_client.link_encrypted || !s_client.mtu_ready ||
         s_client.ready || s_client.gattc_if == ESP_GATT_IF_NONE ||
         s_client.discovery_in_progress) {
         taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -1055,6 +1166,8 @@ static void start_discovery(void)
     s_client.notification_source_cccd_handle = INVALID_HANDLE;
     s_client.service_found = false;
     s_client.discovery_in_progress = true;
+    s_client.discovery_retry_due_ms = 0;
+    s_client.stage_deadline_ms = now_ms() + ANCS_DISCOVERY_TIMEOUT_MS;
     taskEXIT_CRITICAL(&s_shared_state_lock);
 
     esp_bt_uuid_t uuid = {
@@ -1137,6 +1250,13 @@ static esp_err_t write_cccd(uint16_t characteristic_handle, uint16_t *saved_hand
 static void begin_data_source_subscription(void)
 {
     taskENTER_CRITICAL(&s_shared_state_lock);
+    if (!s_client.connected || s_client.closing || !s_client.session_authenticated) {
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        return;
+    }
+    s_client.stage_deadline_ms = now_ms() + ANCS_SUBSCRIBE_TIMEOUT_MS;
+    s_client.pending_notify_handle = s_client.data_source_handle;
+    s_client.pending_notify_generation = s_client.generation;
     const esp_gatt_if_t gattc_if = s_client.gattc_if;
     const uint16_t data_source_handle = s_client.data_source_handle;
     esp_bd_addr_t remote_bda;
@@ -1156,6 +1276,13 @@ static void begin_data_source_subscription(void)
 static void begin_notification_source_subscription(void)
 {
     taskENTER_CRITICAL(&s_shared_state_lock);
+    if (!s_client.connected || s_client.closing || !s_client.session_authenticated) {
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        return;
+    }
+    s_client.stage_deadline_ms = now_ms() + ANCS_SUBSCRIBE_TIMEOUT_MS;
+    s_client.pending_notify_handle = s_client.notification_source_handle;
+    s_client.pending_notify_generation = s_client.generation;
     const esp_gatt_if_t gattc_if = s_client.gattc_if;
     const uint16_t notification_source_handle =
         s_client.notification_source_handle;
@@ -1180,7 +1307,8 @@ static void discover_characteristics(void)
 {
     taskENTER_CRITICAL(&s_shared_state_lock);
     const bool discovery_valid =
-        s_client.connected && s_client.service_found &&
+        s_client.connected && !s_client.closing && s_client.session_authenticated &&
+        s_client.service_found &&
         s_client.gattc_if != ESP_GATT_IF_NONE;
     const uint32_t generation = s_client.generation;
     const esp_gatt_if_t gattc_if = s_client.gattc_if;
@@ -1275,7 +1403,16 @@ static void reset_connection_session(void)
     taskENTER_CRITICAL(&s_shared_state_lock);
     s_client.connected = false;
     s_client.bonded = false;
+    s_client.session_authenticated = false;
+    s_client.link_encrypted = false;
+    s_client.closing = false;
+    s_client.close_attempts = 0;
+    s_client.close_retry_due_ms = 0;
     s_client.mtu_ready = false;
+    s_client.stage_deadline_ms = 0;
+    s_client.prepare_deadline_ms = 0;
+    s_client.discovery_retry_due_ms = 0;
+    s_client.discovery_attempt = 0;
     const uint32_t generation = ++s_client.generation;
     invalidate_ancs_handles_locked();
     taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -1290,6 +1427,13 @@ static void handle_service_changed(void)
 {
     ESP_LOGW(TAG, "GATT Service Changed received; invalidating ANCS handles");
     taskENTER_CRITICAL(&s_shared_state_lock);
+    if (!s_client.connected || s_client.closing) {
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        return;
+    }
+    s_client.prepare_deadline_ms = now_ms() + ANCS_PREPARE_TIMEOUT_MS;
+    s_client.discovery_retry_due_ms = 0;
+    s_client.discovery_attempt = 0;
     const uint32_t generation = ++s_client.generation;
     invalidate_ancs_handles_locked();
     taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -1404,6 +1548,9 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
         if (parameter->ble_security.auth_cmpl.success) {
             taskENTER_CRITICAL(&s_shared_state_lock);
             s_client.bonded = true;
+            s_client.session_authenticated = true;
+            s_client.link_encrypted = true; /* Successful requested MITM encryption. */
+            s_client.stage_deadline_ms = now_ms() + ANCS_DISCOVERY_TIMEOUT_MS;
             clear_auth_failure_guard_locked();
             ble_enroll_note_bonded(
                 &s_enroll, parameter->ble_security.auth_cmpl.bd_addr);
@@ -1418,7 +1565,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
             maybe_start_discovery();
         } else {
             const int64_t failure_at_ms = now_ms();
-            const bool missing_local_bond = current_bond_count() <= 0;
+            const bool missing_local_bond = current_bond_count() == 0;
             taskENTER_CRITICAL(&s_shared_state_lock);
             s_client.auth_error =
                 parameter->ble_security.auth_cmpl.fail_reason;
@@ -1433,7 +1580,13 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
                      "authentication failed reason=0x%x count=%u",
                      auth_error,
                      (unsigned int)failure_count);
-            reset_connection_session();
+            taskENTER_CRITICAL(&s_shared_state_lock);
+            s_client.closing = true;
+            s_client.session_authenticated = false;
+            s_client.link_encrypted = false;
+            s_client.ready = false;
+            s_client.discovery_retry_due_ms = 0;
+            taskEXIT_CRITICAL(&s_shared_state_lock);
             set_state(ANCS_STATE_RECOVERING);
             publish_state();
             (void)esp_ble_gap_disconnect(
@@ -1442,7 +1595,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
                 (void)esp_timer_stop(s_client.enroll_timer);
                 stop_advertising();
                 ESP_LOGE(TAG,
-                         "pairing repair required; remove the stale iOS Bluetooth entry and start Replace enrollment");
+                         "authentication protection active; explicitly request enrollment to retry; bonds were not erased");
             } else {
                 schedule_advertising_retry();
             }
@@ -1474,7 +1627,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
         }
         taskEXIT_CRITICAL(&s_shared_state_lock);
         if (should_open) {
-            const esp_err_t enroll_error = ancs_client_request_enroll();
+            const esp_err_t enroll_error = open_replacement_window();
             if (enroll_error != ESP_OK) {
                 taskENTER_CRITICAL(&s_shared_state_lock);
                 s_client.last_replace_error = enroll_error;
@@ -1499,17 +1652,13 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
         break;
 
     case ESP_GAP_BLE_NC_REQ_EVT:
-        ESP_LOGE(TAG,
-                 "unexpected numeric comparison request passkey=%06" PRIu32,
-                 parameter->ble_security.key_notif.passkey);
+        ESP_LOGE(TAG, "unexpected numeric comparison request rejected");
         (void)esp_ble_confirm_reply(
             parameter->ble_security.ble_req.bd_addr, false);
         break;
 
     case ESP_GAP_BLE_PASSKEY_NOTIF_EVT:
-        ESP_LOGI(TAG,
-                 "passkey=%06" PRIu32,
-                 parameter->ble_security.key_notif.passkey);
+        ESP_LOGI(TAG, "pairing PIN requested; consult the authorized setup page");
         break;
 
     default:
@@ -1537,6 +1686,23 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
             break;
         }
         taskENTER_CRITICAL(&s_shared_state_lock);
+        if (s_client.connected) {
+            taskEXIT_CRITICAL(&s_shared_state_lock);
+            break;
+        }
+        ++s_client.generation;
+        s_client.session_authenticated = false;
+        s_client.link_encrypted = false;
+        s_client.closing = false;
+        s_client.close_attempts = 0;
+        s_client.close_retry_due_ms = 0;
+        s_client.mtu_ready = false;
+        s_client.discovery_attempt = 0;
+        s_client.discovery_retry_due_ms = 0;
+        s_client.last_stage_error = 0;
+        s_client.prepare_deadline_ms = now_ms() + ANCS_PREPARE_TIMEOUT_MS;
+        s_client.stage_deadline_ms = now_ms() + ANCS_AUTH_TIMEOUT_MS;
+        invalidate_ancs_handles_locked();
         memcpy(s_client.remote_bda,
                parameter->connect.remote_bda,
                sizeof(esp_bd_addr_t));
@@ -1571,7 +1737,6 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
                 parameter->open.conn_id,
                 parameter->open.remote_bda)) {
             ESP_LOGW(TAG, "ignored GATT open event from stale peer");
-            (void)esp_ble_gap_disconnect(parameter->open.remote_bda);
             break;
         }
         if (parameter->open.status != ESP_GATT_OK) {
@@ -1599,6 +1764,9 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
         break;
 
     case ESP_GATTC_CFG_MTU_EVT:
+        if (!gatt_connection_matches(parameter->cfg_mtu.conn_id)) {
+            break;
+        }
         taskENTER_CRITICAL(&s_shared_state_lock);
         s_client.mtu_ready = true;
         taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -1613,7 +1781,16 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
         }
         break;
 
-    case ESP_GATTC_SEARCH_RES_EVT:
+    case ESP_GATTC_SEARCH_RES_EVT: {
+        taskENTER_CRITICAL(&s_shared_state_lock);
+        const bool searching = s_client.discovery_in_progress;
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        if (!searching) {
+            break;
+        }
+        if (!gatt_connection_matches(parameter->search_res.conn_id)) {
+            break;
+        }
         if (uuid_equal(&parameter->search_res.srvc_id.uuid,
                        ANCS_SERVICE_UUID)) {
             taskENTER_CRITICAL(&s_shared_state_lock);
@@ -1623,8 +1800,18 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
             taskEXIT_CRITICAL(&s_shared_state_lock);
         }
         break;
+    }
 
     case ESP_GATTC_SEARCH_CMPL_EVT: {
+        taskENTER_CRITICAL(&s_shared_state_lock);
+        const bool searching = s_client.discovery_in_progress;
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        if (!searching) {
+            break;
+        }
+        if (!gatt_connection_matches(parameter->search_cmpl.conn_id)) {
+            break;
+        }
         taskENTER_CRITICAL(&s_shared_state_lock);
         s_client.discovery_in_progress = false;
         const bool service_found = s_client.service_found;
@@ -1643,6 +1830,19 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
     }
 
     case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
+        taskENTER_CRITICAL(&s_shared_state_lock);
+        const bool expected = s_client.connected && !s_client.closing &&
+            s_client.session_authenticated &&
+            s_client.pending_notify_generation == s_client.generation &&
+            s_client.pending_notify_handle != INVALID_HANDLE &&
+            s_client.pending_notify_handle == parameter->reg_for_notify.handle;
+        if (expected) {
+            s_client.pending_notify_handle = INVALID_HANDLE;
+        }
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        if (!expected) {
+            break;
+        }
         if (parameter->reg_for_notify.status != ESP_GATT_OK) {
             ESP_LOGE(TAG,
                      "register for notify failed status=0x%x",
@@ -1697,6 +1897,21 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
     }
 
     case ESP_GATTC_WRITE_DESCR_EVT: {
+        if (!gatt_connection_matches(parameter->write.conn_id)) {
+            break;
+        }
+        taskENTER_CRITICAL(&s_shared_state_lock);
+        const bool expected = s_client.session_authenticated &&
+            ((parameter->write.handle != INVALID_HANDLE &&
+              parameter->write.handle == s_client.data_source_cccd_handle &&
+              !s_client.data_source_subscribed) ||
+             (parameter->write.handle != INVALID_HANDLE &&
+              parameter->write.handle == s_client.notification_source_cccd_handle &&
+              s_client.data_source_subscribed && !s_client.notification_source_subscribed));
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        if (!expected) {
+            break;
+        }
         if (parameter->write.status != ESP_GATT_OK) {
             ESP_LOGE(TAG,
                      "CCCD write failed handle=0x%04x status=0x%x",
@@ -1722,9 +1937,16 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
                    notification_source_cccd_handle) {
             taskENTER_CRITICAL(&s_shared_state_lock);
             s_client.notification_source_subscribed = true;
-            const bool ready = s_client.data_source_subscribed;
-            ++s_client.session_id;
+            const bool ready = s_client.connected && s_client.session_authenticated &&
+                s_client.link_encrypted && s_client.service_found &&
+                s_client.data_source_subscribed;
+            if (ready && !s_client.ready) {
+                ++s_client.session_id;
+            }
             s_client.ready = ready;
+            s_client.stage_deadline_ms = 0;
+            s_client.discovery_retry_due_ms = 0;
+            s_client.last_stage_error = 0;
             taskEXIT_CRITICAL(&s_shared_state_lock);
             transition(ANCS_SIGNAL_NOTIFICATION_SUBSCRIBED);
             if (!ready) {
@@ -1736,6 +1958,9 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
     }
 
     case ESP_GATTC_NOTIFY_EVT: {
+        if (!gatt_connection_matches(parameter->notify.conn_id)) {
+            break;
+        }
         taskENTER_CRITICAL(&s_shared_state_lock);
         const uint16_t notification_source_handle =
             s_client.notification_source_handle;
@@ -1795,6 +2020,9 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
     }
 
     case ESP_GATTC_WRITE_CHAR_EVT: {
+        if (!gatt_connection_matches(parameter->write.conn_id)) {
+            break;
+        }
         taskENTER_CRITICAL(&s_shared_state_lock);
         const uint16_t control_point_handle = s_client.control_point_handle;
         taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -1835,9 +2063,23 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
         ESP_LOGW(TAG,
                  "disconnected reason=0x%x",
                  parameter->disconnect.reason);
+        taskENTER_CRITICAL(&s_shared_state_lock);
+        s_client.last_disconnect_reason = parameter->disconnect.reason;
+        taskEXIT_CRITICAL(&s_shared_state_lock);
         reset_connection_session();
         transition(ANCS_SIGNAL_DISCONNECTED);
-        schedule_advertising_retry();
+        taskENTER_CRITICAL(&s_shared_state_lock);
+        const bool reopen = s_client.reopen_after_disconnect;
+        s_client.reopen_after_disconnect = false;
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        if (reopen) {
+            const esp_err_t error = ancs_client_request_enroll();
+            taskENTER_CRITICAL(&s_shared_state_lock);
+            s_client.last_replace_error = error;
+            taskEXIT_CRITICAL(&s_shared_state_lock);
+        } else {
+            schedule_advertising_retry();
+        }
         break;
 
     default:
@@ -1872,50 +2114,50 @@ static void gattc_callback(esp_gattc_cb_event_t event,
 static int sync_existing_ble_bond(void)
 {
     const int bond_count = current_bond_count();
-    if (bond_count <= 0) {
-        taskENTER_CRITICAL(&s_shared_state_lock);
-        ble_enroll_clear_bond(&s_enroll);
-        s_client.bonded = false;
-        taskEXIT_CRITICAL(&s_shared_state_lock);
-        return 0;
-    }
-    esp_ble_bond_dev_t *bond_list =
-        calloc((size_t)bond_count, sizeof(*bond_list));
-    if (bond_list == NULL) {
-        ESP_LOGE(TAG, "no memory to load BLE bond list");
-        return bond_count;
-    }
+    esp_err_t error = bond_count < 0 ? ESP_FAIL : ESP_OK;
     int list_count = bond_count;
-    const esp_err_t error =
-        esp_ble_get_bond_device_list(&list_count, bond_list);
+    esp_ble_bond_dev_t *bond_list = NULL;
+    if (bond_count > 0) {
+        bond_list = calloc((size_t)bond_count, sizeof(*bond_list));
+        error = bond_list == NULL ? ESP_ERR_NO_MEM
+                                 : esp_ble_get_bond_device_list(&list_count, bond_list);
+    }
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    s_client.bond_store_error = error;
     if (error == ESP_OK && list_count > 0) {
-        taskENTER_CRITICAL(&s_shared_state_lock);
         ble_enroll_note_bonded(&s_enroll, bond_list[0].bd_addr);
-        s_client.bonded = true;
-        taskEXIT_CRITICAL(&s_shared_state_lock);
-        ESP_LOGI(TAG, "loaded existing BLE bond count=%d", list_count);
-    } else if (error == ESP_OK) {
-        taskENTER_CRITICAL(&s_shared_state_lock);
+        s_client.bonded = true; /* Preserve legacy output; auth is separate. */
+    } else if (error == ESP_OK && list_count == 0) {
         ble_enroll_clear_bond(&s_enroll);
         s_client.bonded = false;
-        taskEXIT_CRITICAL(&s_shared_state_lock);
-    } else {
-        ESP_LOGE(TAG, "failed to read BLE bond list: %s", esp_err_to_name(error));
-        list_count = bond_count;
     }
+    taskEXIT_CRITICAL(&s_shared_state_lock);
     free(bond_list);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "bond store query failed code=%d; no erase", (int)error);
+        return -1;
+    }
+    ESP_LOGI(TAG, "bond store query count=%d", list_count);
     return list_count;
 }
 
 static void load_existing_ble_bond(void)
 {
-    (void)sync_existing_ble_bond();
+    const int count = sync_existing_ble_bond();
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    if (!s_client.initialized) {
+        s_client.boot_bond_count = count;
+    }
+    taskEXIT_CRITICAL(&s_shared_state_lock);
 }
 
 static esp_err_t remove_all_ble_bonds(void)
 {
     const int bond_count = esp_ble_get_bond_device_num();
-    if (bond_count <= 0) {
+    if (bond_count < 0) {
+        return ESP_FAIL; /* Unknown storage is not an empty store. */
+    }
+    if (bond_count == 0) {
         taskENTER_CRITICAL(&s_shared_state_lock);
         ble_enroll_clear_bond(&s_enroll);
         s_client.bonded = false;
@@ -2100,6 +2342,7 @@ esp_err_t ancs_client_init(void)
 
     esp_err_t error = nvs_flash_init();
     if (error != ESP_OK) {
+        s_client.bond_store_error = error;
         ESP_LOGE(TAG,
                  "NVS initialization failed; bond data was not erased: %s",
                  esp_err_to_name(error));
@@ -2277,29 +2520,32 @@ esp_err_t ancs_client_request_enroll(void)
     taskENTER_CRITICAL(&s_shared_state_lock);
     const bool initialized = s_client.initialized;
     const esp_timer_handle_t enroll_timer = s_client.enroll_timer;
-    const bool repair_required = s_client.pairing_repair_required;
+    const bool busy = s_client.connected || s_client.replace_pending;
     taskEXIT_CRITICAL(&s_shared_state_lock);
-    if (!initialized || enroll_timer == NULL) {
-        ESP_LOGW(TAG, "enrollment requested before ANCS initialization completed");
+    if (!initialized || enroll_timer == NULL || busy) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (repair_required) {
-        ESP_LOGW(TAG,
-                 "enrollment blocked until Replace enrollment clears stale pairing data");
-        return ESP_ERR_INVALID_STATE;
+    const int count = sync_existing_ble_bond();
+    if (count < 0) {
+        return ESP_FAIL;
     }
-    if (current_bond_count() > 0 || ancs_client_has_bond()) {
+    if (count > 0) {
+        /* Existing peers may reconnect; do not silently replace their bond. */
         (void)esp_timer_stop(enroll_timer);
         taskENTER_CRITICAL(&s_shared_state_lock);
         ble_enroll_close_window(&s_enroll);
         taskEXIT_CRITICAL(&s_shared_state_lock);
-        load_existing_ble_bond();
         start_advertising();
         return ESP_OK;
     }
-
     const int64_t now = now_ms();
     taskENTER_CRITICAL(&s_shared_state_lock);
+    if (s_client.connected || s_client.replace_pending) {
+        taskEXIT_CRITICAL(&s_shared_state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    /* Only this explicit request clears the no-peer authentication guard. */
+    clear_auth_failure_guard_locked();
     const esp_err_t error = ble_enroll_open_window(&s_enroll, now);
     taskEXIT_CRITICAL(&s_shared_state_lock);
     if (error != ESP_OK) {
@@ -2307,16 +2553,28 @@ esp_err_t ancs_client_request_enroll(void)
     }
     (void)esp_timer_stop(enroll_timer);
     const esp_err_t timer_error = esp_timer_start_once(
-        enroll_timer,
-        (uint64_t)CONFIG_ANCS_ENROLL_WINDOW_MS * 1000U);
+        enroll_timer, (uint64_t)CONFIG_ANCS_ENROLL_WINDOW_MS * 1000U);
     if (timer_error != ESP_OK) {
         taskENTER_CRITICAL(&s_shared_state_lock);
-        ble_enroll_close_window(&s_enroll);
+        if (s_enroll.window_deadline_ms == now + CONFIG_ANCS_ENROLL_WINDOW_MS) {
+            ble_enroll_close_window(&s_enroll);
+        }
         taskEXIT_CRITICAL(&s_shared_state_lock);
         return timer_error;
     }
     start_advertising();
     return ESP_OK;
+}
+
+static esp_err_t open_replacement_window(void)
+{
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool connected = s_client.connected;
+    if (connected) {
+        s_client.reopen_after_disconnect = true;
+    }
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    return connected ? ESP_OK : ancs_client_request_enroll();
 }
 
 esp_err_t ancs_client_replace_enrollment(bool confirmed)
@@ -2343,15 +2601,16 @@ esp_err_t ancs_client_replace_enrollment(bool confirmed)
     taskENTER_CRITICAL(&s_shared_state_lock);
     s_client.last_replace_error = ESP_OK;
     taskEXIT_CRITICAL(&s_shared_state_lock);
-    if (bond_count > 0) {
-        taskENTER_CRITICAL(&s_shared_state_lock);
-        s_client.replace_pending = true;
-        connected = s_client.connected;
-        memcpy(connected_peer, s_client.remote_bda, sizeof(connected_peer));
-        taskEXIT_CRITICAL(&s_shared_state_lock);
-        if (connected) {
-            (void)esp_ble_gap_disconnect(connected_peer);
-        }
+    if (bond_count < 0) {
+        return ESP_FAIL;
+    }
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    s_client.replace_pending = bond_count > 0;
+    connected = s_client.connected;
+    memcpy(connected_peer, s_client.remote_bda, sizeof(connected_peer));
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (connected) {
+        (void)esp_ble_gap_disconnect(connected_peer);
     }
     stop_advertising();
     const esp_err_t error = remove_all_ble_bonds();
@@ -2366,11 +2625,11 @@ esp_err_t ancs_client_replace_enrollment(bool confirmed)
         }
         return error;
     }
-    if (esp_ble_get_bond_device_num() <= 0) {
+    if (esp_ble_get_bond_device_num() == 0) {
         taskENTER_CRITICAL(&s_shared_state_lock);
         s_client.replace_pending = false;
         taskEXIT_CRITICAL(&s_shared_state_lock);
-        const esp_err_t enroll_error = ancs_client_request_enroll();
+        const esp_err_t enroll_error = open_replacement_window();
         taskENTER_CRITICAL(&s_shared_state_lock);
         s_client.last_replace_error = enroll_error;
         taskEXIT_CRITICAL(&s_shared_state_lock);
@@ -2387,7 +2646,10 @@ uint32_t ancs_client_ble_passkey(void)
 ancs_client_enrollment_status_t ancs_client_get_enrollment_status(void)
 {
     const int64_t now = now_ms();
-    const int bond_count = current_bond_count();
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool initialized = s_client.initialized;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    const int bond_count = initialized ? current_bond_count() : -1;
     taskENTER_CRITICAL(&s_shared_state_lock);
     const ancs_client_enrollment_status_t status = {
         .enroll_active = ble_enroll_window_active(&s_enroll, now),
@@ -2399,6 +2661,24 @@ ancs_client_enrollment_status_t ancs_client_get_enrollment_status(void)
         .auth_error = s_client.auth_error,
         .bond_count = bond_count,
         .last_replace_error = s_client.last_replace_error,
+        .bond_store_known = initialized && bond_count >= 0 && s_client.bond_store_error == ESP_OK,
+        .bond_store_error = bond_count < 0 && initialized ? ESP_FAIL : s_client.bond_store_error,
+        .boot_bond_count = s_client.boot_bond_count,
+        .session_authenticated = s_client.session_authenticated,
+        .link_encrypted = s_client.link_encrypted,
+        .ancs_service_found = s_client.service_found,
+        .data_source_subscribed = s_client.data_source_subscribed,
+        .notification_source_subscribed = s_client.notification_source_subscribed,
+        .ancs_ready = s_client.connected && !s_client.closing &&
+            s_client.session_authenticated && s_client.link_encrypted &&
+            s_client.service_found && s_client.data_source_subscribed &&
+            s_client.notification_source_subscribed && s_client.ready,
+        .enrollment_remaining_seconds = ble_enroll_window_active(&s_enroll, now)
+            ? (uint32_t)((s_enroll.window_deadline_ms - now + 999) / 1000) : 0,
+        .last_stage_error = s_client.last_stage_error,
+        .last_disconnect_reason = s_client.last_disconnect_reason,
+        .state = s_client.state,
+        .generation = s_client.generation,
     };
     taskEXIT_CRITICAL(&s_shared_state_lock);
     return status;

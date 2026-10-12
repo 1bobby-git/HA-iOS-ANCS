@@ -16,6 +16,20 @@ typedef struct {
     int auth_error;
     int bond_count;
     esp_err_t last_replace_error;
+    bool bond_store_known;
+    esp_err_t bond_store_error;
+    int boot_bond_count;
+    bool session_authenticated;
+    bool link_encrypted;
+    bool ancs_service_found;
+    bool data_source_subscribed;
+    bool notification_source_subscribed;
+    bool ancs_ready;
+    uint32_t enrollment_remaining_seconds;
+    int last_stage_error;
+    int last_disconnect_reason;
+    ancs_client_state_t state;
+    uint32_t generation;
 } ancs_client_enrollment_status_t;
 
 typedef void (*ancs_client_boot_held_callback_t)(void *context);

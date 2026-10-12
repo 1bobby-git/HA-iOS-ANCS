@@ -14,6 +14,8 @@ from homeassistant.const import EntityCategory, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .connection import AncsConnectionEntity
+from .diagnostics import notification_ready
 from .device import device_info
 from .entity import AncsNotificationEntity, as_boolean, nested_value
 from .runtime import AncsRuntime
@@ -117,6 +119,7 @@ async def async_setup_entry(
                 for description in BINARY_SENSOR_DESCRIPTIONS
             ),
             AncsBleConnectionBinarySensor(entry, runtime),
+            AncsNotificationReadyBinarySensor(entry, runtime),
         ]
     )
 
@@ -208,3 +211,22 @@ class AncsBleConnectionBinarySensor(BinarySensorEntity):
             return
         self._attr_available = available
         self.async_write_ha_state()
+
+
+class AncsNotificationReadyBinarySensor(AncsConnectionEntity, BinarySensorEntity):
+    """Only authenticated, encrypted ANCS with both subscriptions is ready."""
+    _attr_translation_key = "notification_ready"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    entity_description = BinarySensorEntityDescription(key="notification_ready")
+
+    def __init__(self, entry, runtime) -> None:
+        super().__init__(entry, runtime, Platform.BINARY_SENSOR.value, "notification_ready")
+
+    @property
+    def available(self) -> bool:
+        return self._runtime.available is not False
+
+    @property
+    def is_on(self) -> bool | None:
+        return notification_ready(getattr(self._runtime, "diagnostics", {}),
+                                  getattr(self._runtime, "diagnostics_fresh", False))

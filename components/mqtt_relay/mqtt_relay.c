@@ -15,6 +15,7 @@
 #include "relay_policy.h"
 
 #define MQTT_RELAY_WORKER_STACK 4096
+#define MQTT_RELAY_STATE_PAYLOAD_MAX 3072
 #define MQTT_RELAY_WORKER_PRIORITY 5
 #define MQTT_RELAY_DISCOVERY_PAYLOAD_MAX 1536
 #define MQTT_RELAY_MQTT_BUFFER_SIZE 2048
@@ -31,6 +32,8 @@ typedef struct {
     provision_config_t config;
     mqtt_relay_device_info_t device_info;
     mqtt_relay_wifi_status_t wifi_status;
+    mqtt_relay_diagnostics_t diagnostics;
+    uint64_t last_notification_uptime_ms;
     esp_mqtt_client_handle_t client;
     QueueHandle_t queue;
     SemaphoreHandle_t lock;
@@ -1132,6 +1135,69 @@ static esp_err_t mqtt_relay_format_uptime(uint64_t seconds,
                                                         : ESP_OK;
 }
 
+/* Diagnostic keys are fixed literals. Values are typed scalars, not log text. */
+static esp_err_t append_diagnostics(char **cursor, size_t *remaining,
+                                    const mqtt_relay_runtime_status_t *runtime)
+{
+    const mqtt_relay_diagnostics_t *d = &runtime->diagnostics;
+    if (!d->valid) {
+        return ESP_OK; /* Omitted means unknown, not a false legacy default. */
+    }
+    int written = snprintf(*cursor, *remaining, ",\"diagnostics_version\":1");
+    if (written < 0 || (size_t)written >= *remaining) return ESP_ERR_INVALID_SIZE;
+    *cursor += written;
+    *remaining -= (size_t)written;
+#define DIAG_BOOL(key, value) do { \
+    written = snprintf(*cursor, *remaining, ",\"" key "\":%s", (value) ? "true" : "false"); \
+    if (written < 0 || (size_t)written >= *remaining) return ESP_ERR_INVALID_SIZE; \
+    *cursor += written; *remaining -= (size_t)written; \
+} while (0)
+#define DIAG_INT(key, value) do { \
+    written = snprintf(*cursor, *remaining, ",\"" key "\":%" PRId64, (int64_t)(value)); \
+    if (written < 0 || (size_t)written >= *remaining) return ESP_ERR_INVALID_SIZE; \
+    *cursor += written; *remaining -= (size_t)written; \
+} while (0)
+    DIAG_INT("wifi_retry_attempts", d->wifi_retry_attempts);
+    DIAG_INT("wifi_retry_in_ms", d->wifi_retry_in_ms);
+    DIAG_INT("wifi_generation", d->wifi_generation);
+    DIAG_INT("wifi_disconnect_reason", d->wifi_disconnect_reason);
+    DIAG_INT("wifi_connect_error", d->wifi_connect_error);
+    DIAG_BOOL("automatic_recovery_ap", d->automatic_recovery_ap);
+    DIAG_BOOL("wifi_retry_paused", d->wifi_retry_paused);
+    DIAG_BOOL("bond_store_known", d->bond_store_known);
+    DIAG_INT("stored_peer_count", d->stored_peer_count);
+    DIAG_INT("bond_store_error", d->bond_store_error);
+    DIAG_INT("boot_peer_count", d->boot_peer_count);
+    DIAG_BOOL("session_authenticated", d->session_authenticated);
+    DIAG_BOOL("link_encrypted", d->link_encrypted);
+    DIAG_BOOL("ancs_service_found", d->ancs_service_found);
+    DIAG_BOOL("data_source_subscribed", d->data_source_subscribed);
+    DIAG_BOOL("notification_source_subscribed", d->notification_source_subscribed);
+    DIAG_BOOL("ancs_ready", d->ancs_ready);
+    DIAG_BOOL("enrollment_active", d->enrollment_active);
+    DIAG_INT("enrollment_remaining_seconds", d->enrollment_remaining_seconds);
+    DIAG_BOOL("authentication_protection", d->authentication_protection);
+    DIAG_INT("auth_failure_count", d->auth_failure_count);
+    DIAG_INT("auth_error", d->auth_error);
+    DIAG_INT("ble_stage_error", d->ble_stage_error);
+    DIAG_INT("ble_disconnect_reason", d->ble_disconnect_reason);
+    DIAG_INT("ble_generation", d->ble_generation);
+    DIAG_INT("mqtt_error_type", d->mqtt_error_type);
+    DIAG_INT("mqtt_esp_error", d->mqtt_esp_error);
+    DIAG_INT("mqtt_tls_error", d->mqtt_tls_error);
+    DIAG_INT("mqtt_socket_errno", d->mqtt_socket_errno);
+    DIAG_INT("mqtt_connect_return_code", d->mqtt_connect_return_code);
+    DIAG_INT("mqtt_retry_in_ms", d->mqtt_retry_in_ms);
+    DIAG_INT("reset_reason", d->reset_reason);
+    DIAG_BOOL("notification_ready", runtime->wifi.connected && runtime->mqtt_connected && d->ancs_ready);
+    DIAG_INT("last_notification_uptime_ms", runtime->last_notification_uptime_ms);
+#undef DIAG_BOOL
+#undef DIAG_INT
+    esp_err_t err = json_write_literal(cursor, remaining, ",\"firmware_elf_sha256\":");
+    if (err == ESP_OK) err = json_write_string(cursor, remaining, d->firmware_elf_sha256);
+    return err;
+}
+
 esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
                                          const mqtt_relay_runtime_status_t *runtime,
                                          const mqtt_relay_device_info_t *device_info,
@@ -1248,6 +1314,9 @@ esp_err_t mqtt_relay_build_state_payload(const mqtt_relay_counters_t *counters,
     }
     if (err == ESP_OK) {
         err = json_write_string(&cursor, &remaining, device_info->hw_version);
+    }
+    if (err == ESP_OK) {
+        err = append_diagnostics(&cursor, &remaining, runtime);
     }
     if (err == ESP_OK) {
         err = json_write_literal(&cursor, &remaining, "}");
@@ -1574,6 +1643,8 @@ static esp_err_t mqtt_relay_publish_state_snapshot(void)
     runtime.mqtt_connected = s_ctx.mqtt_connected;
     runtime.ble_connected = s_ctx.ble_connected;
     runtime.ble_bonded = s_ctx.ble_bonded;
+    runtime.diagnostics = s_ctx.diagnostics;
+    runtime.last_notification_uptime_ms = s_ctx.last_notification_uptime_ms;
     device_info = s_ctx.device_info;
     (void)strlcpy(state_topic, s_ctx.state_topic, sizeof(state_topic));
     mqtt_relay_unlock();
@@ -1583,24 +1654,30 @@ static esp_err_t mqtt_relay_publish_state_snapshot(void)
     }
     runtime.uptime_seconds = (uint64_t)(esp_timer_get_time() / 1000000);
 
-    char state[1024];
+    char *state = malloc(MQTT_RELAY_STATE_PAYLOAD_MAX);
+    if (state == NULL) return ESP_ERR_NO_MEM;
     esp_err_t err = mqtt_relay_build_state_payload(&counters,
                                                    &runtime,
                                                    &device_info,
                                                    state,
-                                                   sizeof(state));
-    if (err != ESP_OK) {
-        return err;
+                                                   MQTT_RELAY_STATE_PAYLOAD_MAX);
+    if (err == ESP_OK) {
+        /* QOS 0 state is not a notification ACK. Never block the coordinator
+         * for the 30-second discovery drain timeout on a broker outage. */
+        err = mqtt_relay_enqueue_raw(state_topic, state, MQTT_RELAY_RETAINED_QOS,
+                                    MQTT_RELAY_RETAINED_RETAIN) >= 0 ? ESP_OK : ESP_FAIL;
     }
-    return mqtt_relay_publish_retained_once(state_topic, state) ? ESP_OK
-                                                                : ESP_FAIL;
+    free(state);
+    return err;
 }
 
 static void mqtt_relay_publish_retained_status(void)
 {
     provision_config_t *discovery_config = calloc(1, sizeof(*discovery_config));
     char *discovery = calloc(1, MQTT_RELAY_DISCOVERY_PAYLOAD_MAX);
-    if (discovery_config == NULL || discovery == NULL) {
+    char *state = malloc(MQTT_RELAY_STATE_PAYLOAD_MAX);
+    if (discovery_config == NULL || discovery == NULL || state == NULL) {
+        free(state);
         free(discovery);
         free(discovery_config);
         return;
@@ -1628,6 +1705,8 @@ static void mqtt_relay_publish_retained_status(void)
     runtime.mqtt_connected = s_ctx.mqtt_connected;
     runtime.ble_connected = s_ctx.ble_connected;
     runtime.ble_bonded = s_ctx.ble_bonded;
+    runtime.diagnostics = s_ctx.diagnostics;
+    runtime.last_notification_uptime_ms = s_ctx.last_notification_uptime_ms;
     (void)strlcpy(notification_topic, s_ctx.notification_topic, sizeof(notification_topic));
     (void)strlcpy(availability_topic, s_ctx.availability_topic, sizeof(availability_topic));
     (void)strlcpy(state_topic, s_ctx.state_topic, sizeof(state_topic));
@@ -1649,7 +1728,6 @@ static void mqtt_relay_publish_retained_status(void)
     mqtt_relay_unlock();
     runtime.uptime_seconds = (uint64_t)(esp_timer_get_time() / 1000000);
 
-    char state[1024];
     if (!mqtt_relay_publish_retained_once(availability_topic, "online")) {
         goto cleanup;
     }
@@ -1657,7 +1735,7 @@ static void mqtt_relay_publish_retained_status(void)
                                        &runtime,
                                        &device_info,
                                        state,
-                                       sizeof(state)) == ESP_OK) {
+                                       MQTT_RELAY_STATE_PAYLOAD_MAX) == ESP_OK) {
         if (!mqtt_relay_publish_retained_once(state_topic, state)) {
             goto cleanup;
         }
@@ -1755,6 +1833,7 @@ static void mqtt_relay_publish_retained_status(void)
         }
     }
 cleanup:
+    free(state);
     free(discovery);
     free(discovery_config);
 }
@@ -2531,6 +2610,19 @@ esp_err_t mqtt_relay_update_ble_status(bool connected, bool bonded)
     return mqtt_relay_publish_state_snapshot();
 }
 
+esp_err_t mqtt_relay_update_diagnostics(const mqtt_relay_diagnostics_t *status)
+{
+    if (status == NULL ||
+        memchr(status->firmware_elf_sha256, '\0', sizeof(status->firmware_elf_sha256)) == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    mqtt_relay_lock();
+    const bool changed = memcmp(&s_ctx.diagnostics, status, sizeof(*status)) != 0;
+    s_ctx.diagnostics = *status;
+    mqtt_relay_unlock();
+    return changed ? mqtt_relay_publish_state_snapshot() : ESP_OK;
+}
+
 esp_err_t mqtt_relay_refresh_state(void)
 {
     return mqtt_relay_publish_state_snapshot();
@@ -2632,6 +2724,10 @@ void mqtt_relay_observe_notification(const ancs_notification_t *notification,
     }
     relay_policy_mark_recent(&s_ctx.recent, relay_id);
     s_ctx.counters.accepted++;
+    if (notification->complete && notification->session_id != 0 &&
+        notification->event_id <= 1 && (notification->event_flags & 0x04U) == 0) {
+        s_ctx.last_notification_uptime_ms = (uint64_t)esp_timer_get_time() / 1000U;
+    }
     mqtt_relay_unlock();
     mqtt_relay_notify_worker();
 }
@@ -2671,7 +2767,7 @@ esp_err_t mqtt_relay_publish_test_notification(const char *device_name)
                   sizeof(notification.title));
     (void)strlcpy(
         notification.message,
-        "ESP32 → MQTT → Home Assistant 전달 경로가 정상입니다.",
+        "ESP32 테스트 알림입니다. Home Assistant에서 수신 여부를 확인하세요.",
         sizeof(notification.message));
     (void)snprintf(notification.message_size_raw,
                    sizeof(notification.message_size_raw),

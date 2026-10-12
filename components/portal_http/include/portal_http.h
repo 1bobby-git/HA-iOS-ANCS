@@ -28,6 +28,16 @@ typedef struct {
     uint64_t mqtt_last_error_at_ms;
     bool ble_bonded;
     bool ble_connected;
+    bool bond_store_known;
+    int stored_peer_count;
+    int bond_store_error;
+    bool session_authenticated;
+    bool link_encrypted;
+    bool ancs_service_found;
+    bool data_source_subscribed;
+    bool notification_source_subscribed;
+    bool ancs_ready;
+    uint32_t enrollment_remaining_seconds;
     bool enroll_window_open;
     uint32_t ble_passkey;
     bool ble_pairing_repair_required;

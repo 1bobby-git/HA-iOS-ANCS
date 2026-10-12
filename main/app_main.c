@@ -54,6 +54,8 @@ typedef struct {
     mqtt_relay_event_t mqtt;
     provision_config_t *config;
     uint32_t sta_attempt_generation;
+    uint32_t mqtt_generation;
+    uint64_t retry_due_ms;
 } app_event_msg_t;
 
 typedef struct {
@@ -66,6 +68,8 @@ typedef struct {
     uint32_t active_sta_attempt_generation;
     uint8_t mqtt_retry_attempt;
     uint32_t mqtt_retry_delay_ms;
+    uint32_t mqtt_generation;
+    uint64_t mqtt_retry_due_ms;
 } app_coordinator_state_t;
 
 typedef struct {
@@ -166,10 +170,10 @@ static void provisioning_event_callback(const provisioning_runtime_event_t *runt
 
 static void mqtt_event_callback(mqtt_relay_event_t event, void *context)
 {
-    (void)context;
     const app_event_msg_t message = {
         .type = APP_EVENT_MQTT,
         .mqtt = event,
+        .mqtt_generation = (uint32_t)(uintptr_t)context,
     };
     if (!app_post(&message)) {
         ESP_LOGW(TAG, "coordinator queue full mqtt_event=%d", event);
@@ -191,9 +195,13 @@ static void recovery_timer_callback(TimerHandle_t timer)
 static void mqtt_retry_timer_callback(TimerHandle_t timer)
 {
     (void)timer;
+    app_state_lock();
     const app_event_msg_t message = {
         .type = APP_EVENT_MQTT_RETRY,
+        .mqtt_generation = s_app.mqtt_generation,
+        .retry_due_ms = s_app.mqtt_retry_due_ms,
     };
+    app_state_unlock();
     (void)app_post(&message);
 }
 
@@ -269,6 +277,16 @@ static esp_err_t portal_status(portal_http_system_status_t *out, void *context)
         .mqtt_last_socket_errno = mqtt.last_socket_errno,
         .mqtt_connect_return_code = mqtt.connect_return_code,
         .mqtt_last_error_at_ms = mqtt.last_error_at_ms,
+        .bond_store_known = ble.bond_store_known,
+        .stored_peer_count = ble.bond_store_known ? ble.bond_count : -1,
+        .bond_store_error = ble.bond_store_error,
+        .session_authenticated = ble.session_authenticated,
+        .link_encrypted = ble.link_encrypted,
+        .ancs_service_found = ble.ancs_service_found,
+        .data_source_subscribed = ble.data_source_subscribed,
+        .notification_source_subscribed = ble.notification_source_subscribed,
+        .ancs_ready = ble.ancs_ready,
+        .enrollment_remaining_seconds = ble.enrollment_remaining_seconds,
         .ble_bonded = ble.has_bond,
         .ble_connected = ble.connected,
         .enroll_window_open = ble.enroll_active,
@@ -436,13 +454,26 @@ static void apply_reducer_requirements(provisioning_state_t state)
     }
 }
 
+static void cancel_mqtt_retry(void)
+{
+    app_state_lock();
+    s_app.mqtt_retry_due_ms = 0;
+    s_app.mqtt_retry_delay_ms = 0;
+    app_state_unlock();
+    if (s_mqtt_retry_timer != NULL) {
+        (void)xTimerStop(s_mqtt_retry_timer, 0);
+    }
+}
+
 static void stop_mqtt(void)
 {
+    cancel_mqtt_retry();
     if (s_wifi_status_timer != NULL) {
         (void)xTimerStop(s_wifi_status_timer, 0);
     }
     app_state_lock();
     const bool initialized = s_app.mqtt_initialized;
+    ++s_app.mqtt_generation; /* Invalidate queued events from the old client. */
     s_app.mqtt_started = false;
     s_app.mqtt_initialized = false;
     app_state_unlock();
@@ -477,7 +508,10 @@ static void reset_mqtt_retry_backoff(void)
 
 static void schedule_mqtt_retry(void)
 {
-    if (s_mqtt_retry_timer == NULL ||
+    provisioning_runtime_status_t runtime = {0};
+    if (provisioning_runtime_get_status(&runtime) != ESP_OK ||
+        !runtime.sta_has_ip || runtime.retry_paused ||
+        s_mqtt_retry_timer == NULL ||
         xTimerIsTimerActive(s_mqtt_retry_timer) != pdFALSE) {
         return;
     }
@@ -490,6 +524,7 @@ static void schedule_mqtt_retry(void)
         ++s_app.mqtt_retry_attempt;
     }
     s_app.mqtt_retry_delay_ms = delay_ms;
+    s_app.mqtt_retry_due_ms = app_now_ms() + delay_ms;
     app_state_unlock();
 
     (void)xTimerChangePeriod(s_mqtt_retry_timer,
@@ -515,8 +550,64 @@ static esp_err_t refresh_wifi_status(void)
     return snapshot_error != ESP_OK ? snapshot_error : update_error;
 }
 
+static esp_err_t refresh_diagnostics(void)
+{
+    provisioning_runtime_status_t wifi = {0};
+    (void)provisioning_runtime_get_status(&wifi);
+    const ancs_client_enrollment_status_t ble = ancs_client_get_enrollment_status();
+    mqtt_relay_connection_status_t mqtt = {0};
+    mqtt_relay_get_connection_status(&mqtt);
+    const uint64_t now = app_now_ms();
+    app_state_lock();
+    const uint64_t mqtt_due = s_app.mqtt_retry_due_ms;
+    app_state_unlock();
+    mqtt_relay_diagnostics_t d = {0};
+    d.valid = true;
+    d.wifi_retry_attempts = wifi.retry_attempts;
+    d.wifi_retry_in_ms = wifi.retry_in_ms;
+    d.wifi_generation = wifi.sta_attempt_generation;
+    d.wifi_disconnect_reason = wifi.last_wifi_disconnect_reason;
+    d.wifi_connect_error = wifi.last_wifi_connect_error;
+    d.automatic_recovery_ap = wifi.automatic_recovery_ap;
+    d.wifi_retry_paused = wifi.retry_paused;
+    d.bond_store_known = ble.bond_store_known;
+    d.stored_peer_count = ble.bond_store_known ? ble.bond_count : -1;
+    d.bond_store_error = ble.bond_store_error;
+    d.boot_peer_count = ble.boot_bond_count;
+    d.session_authenticated = ble.session_authenticated;
+    d.link_encrypted = ble.link_encrypted;
+    d.ancs_service_found = ble.ancs_service_found;
+    d.data_source_subscribed = ble.data_source_subscribed;
+    d.notification_source_subscribed = ble.notification_source_subscribed;
+    d.ancs_ready = ble.ancs_ready;
+    d.enrollment_active = ble.enroll_active;
+    /* Five-second diagnostic buckets avoid publishing a timer every second. */
+    d.enrollment_remaining_seconds = (ble.enrollment_remaining_seconds + 4U) / 5U * 5U;
+    d.authentication_protection = ble.pairing_repair_required;
+    d.auth_failure_count = ble.auth_failure_count;
+    d.auth_error = ble.auth_error;
+    d.ble_stage_error = ble.last_stage_error;
+    d.ble_disconnect_reason = ble.last_disconnect_reason;
+    d.ble_generation = ble.generation;
+    d.mqtt_error_type = mqtt.error_type;
+    d.mqtt_esp_error = mqtt.last_esp_error;
+    d.mqtt_tls_error = mqtt.last_tls_error;
+    d.mqtt_socket_errno = mqtt.last_socket_errno;
+    d.mqtt_connect_return_code = mqtt.connect_return_code;
+    d.mqtt_retry_in_ms = mqtt_due > now ? (uint32_t)(mqtt_due - now) : 0;
+    d.reset_reason = (int)esp_reset_reason();
+    const esp_app_desc_t *desc = esp_app_get_description();
+    if (desc != NULL) {
+        for (size_t i = 0; i < sizeof(desc->app_elf_sha256); ++i) {
+            (void)snprintf(d.firmware_elf_sha256 + i * 2, 3, "%02x", desc->app_elf_sha256[i]);
+        }
+    }
+    return mqtt_relay_update_diagnostics(&d);
+}
+
 static esp_err_t refresh_ble_status(void)
 {
+    (void)refresh_diagnostics();
     const ancs_client_enrollment_status_t status =
         ancs_client_get_enrollment_status();
     return mqtt_relay_update_ble_status(status.connected, status.has_bond);
@@ -525,7 +616,10 @@ static esp_err_t refresh_ble_status(void)
 static esp_err_t start_or_reconnect_mqtt(void)
 {
     const app_runtime_snapshot_t app = app_runtime_snapshot();
-    if (!app.config_valid || !app.state.wifi_connected) {
+    provisioning_runtime_status_t runtime = {0};
+    if (!app.config_valid || !app.state.wifi_connected ||
+        provisioning_runtime_get_status(&runtime) != ESP_OK ||
+        !runtime.sta_has_ip || runtime.retry_paused) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -539,7 +633,11 @@ static esp_err_t start_or_reconnect_mqtt(void)
     if (!app.mqtt_initialized) {
         error = mqtt_relay_init(&s_app.config, &s_app.device_info);
         if (error == ESP_OK) {
-            error = mqtt_relay_register_event_callback(mqtt_event_callback, NULL);
+            app_state_lock();
+            const uint32_t generation = ++s_app.mqtt_generation;
+            app_state_unlock();
+            error = mqtt_relay_register_event_callback(
+                mqtt_event_callback, (void *)(uintptr_t)generation);
         }
         if (error == ESP_OK) {
             error = refresh_ble_status();
@@ -597,39 +695,50 @@ static provisioning_state_t reduce_app_state(provisioning_event_t event)
     return next;
 }
 
-static void enter_wifi_timeout_recovery(void)
+static void suspend_mqtt_for_wifi(void)
 {
-    app_state_lock();
-    s_app.active_sta_attempt_generation = 0;
-    app_state_unlock();
-    esp_err_t recovery_error = provisioning_runtime_enter_stable_recovery();
-    if (recovery_error != ESP_OK) {
-        ESP_LOGW(TAG,
-                 "stable recovery entry failed: %s",
-                 esp_err_to_name(recovery_error));
+    cancel_mqtt_retry();
+    if (s_wifi_status_timer != NULL) {
+        (void)xTimerStop(s_wifi_status_timer, 0);
     }
     mqtt_relay_set_wifi_connected(false);
     app_state_lock();
-    const bool mqtt_initialized = s_app.mqtt_initialized;
+    const bool mqtt_started = s_app.mqtt_started;
     s_app.mqtt_started = false;
     app_state_unlock();
-    if (mqtt_initialized) {
-        (void)mqtt_relay_stop();
+    if (mqtt_started) {
+        (void)mqtt_relay_stop(); /* Keep one initialized client for IP recovery. */
     }
+}
+
+static void enter_wifi_timeout_recovery(void)
+{
+    /* This is an automatic AP, not a user request to stop STA. */
+    esp_err_t recovery_error = provisioning_runtime_enter_stable_recovery();
+    if (recovery_error != ESP_OK) {
+        ESP_LOGW(TAG, "automatic recovery AP failed: %s",
+                 esp_err_to_name(recovery_error));
+    }
+    suspend_mqtt_for_wifi();
 }
 
 static void handle_provisioning_event(provisioning_event_t event,
                                       uint32_t sta_attempt_generation)
 {
-    if (event == PROVISION_EVENT_WIFI_TIMEOUT) {
-        app_state_lock();
-        const uint32_t active_generation = s_app.active_sta_attempt_generation;
-        app_state_unlock();
-        if (sta_attempt_generation == 0 ||
-            sta_attempt_generation != active_generation) {
-            ESP_LOGW(TAG, "stale Wi-Fi timeout ignored");
-            return;
+    if (event == PROVISION_EVENT_WIFI_TIMEOUT ||
+        event == PROVISION_EVENT_WIFI_CONNECTED ||
+        event == PROVISION_EVENT_WIFI_DISCONNECTED) {
+        provisioning_runtime_status_t runtime = {0};
+        if (provisioning_runtime_get_status(&runtime) != ESP_OK ||
+            sta_attempt_generation == 0 ||
+            sta_attempt_generation != runtime.sta_attempt_generation ||
+            runtime.retry_paused ||
+            (event == PROVISION_EVENT_WIFI_CONNECTED) != runtime.sta_has_ip) {
+            return; /* Cancelled generation or a superseded queued event. */
         }
+        app_state_lock();
+        s_app.active_sta_attempt_generation = runtime.sta_attempt_generation;
+        app_state_unlock();
     }
 
     provisioning_state_t state = reduce_app_state(event);
@@ -648,15 +757,17 @@ static void handle_provisioning_event(provisioning_event_t event,
         (void)start_or_reconnect_mqtt();
         break;
 
+    case PROVISION_EVENT_WIFI_DISCONNECTED:
+        suspend_mqtt_for_wifi();
+        break;
+
     case PROVISION_EVENT_WIFI_TIMEOUT: {
         enter_wifi_timeout_recovery();
         break;
     }
 
     case PROVISION_EVENT_MQTT_CONNECTED:
-        if (s_mqtt_retry_timer != NULL) {
-            (void)xTimerStop(s_mqtt_retry_timer, 0);
-        }
+        cancel_mqtt_retry();
         reset_mqtt_retry_backoff();
         break;
 
@@ -708,6 +819,14 @@ static void handle_mqtt_event(mqtt_relay_event_t event)
         return;
     }
 
+    mqtt_relay_connection_status_t connection = {0};
+    mqtt_relay_get_connection_status(&connection);
+    provisioning_runtime_status_t runtime = {0};
+    if (provisioning_runtime_get_status(&runtime) != ESP_OK ||
+        !runtime.sta_has_ip || runtime.retry_paused ||
+        (event == MQTT_RELAY_EVENT_CONNECTED) != connection.connected) {
+        return; /* A late disconnect must not overwrite a new connection. */
+    }
     if (event == MQTT_RELAY_EVENT_CONNECTED) {
         handle_provisioning_event(PROVISION_EVENT_MQTT_CONNECTED, 0);
         if (s_wifi_status_timer != NULL) {
@@ -725,6 +844,9 @@ static void handle_config_changed(provision_config_t *config)
         return;
     }
 
+    /* Freeze the old profile before the HTTP response handoff delay. */
+    (void)provisioning_runtime_pause_retries();
+    cancel_mqtt_retry();
     vTaskDelay(pdMS_TO_TICKS(APP_CONFIG_HANDOFF_DELAY_MS));
 
     stop_mqtt();
@@ -784,8 +906,48 @@ static void handle_reset_provisioning(void)
     handle_provisioning_event(PROVISION_EVENT_BOOT_NO_CONFIG, 0);
 }
 
+static void reconcile_network_state(void)
+{
+    provisioning_runtime_status_t runtime = {0};
+    if (provisioning_runtime_get_status(&runtime) != ESP_OK ||
+        !runtime.sta_started || runtime.retry_paused) {
+        return;
+    }
+    const app_runtime_snapshot_t app = app_runtime_snapshot();
+    if (runtime.sta_has_ip != app.state.wifi_connected) {
+        handle_provisioning_event(runtime.sta_has_ip
+                                    ? PROVISION_EVENT_WIFI_CONNECTED
+                                    : PROVISION_EVENT_WIFI_DISCONNECTED,
+                                  runtime.sta_attempt_generation);
+    }
+    if (runtime.automatic_recovery_due && !runtime.automatic_recovery_ap) {
+        handle_provisioning_event(PROVISION_EVENT_WIFI_TIMEOUT,
+                                  runtime.sta_attempt_generation);
+    }
+    if (runtime.sta_has_ip) {
+        mqtt_relay_connection_status_t connection = {0};
+        mqtt_relay_get_connection_status(&connection);
+        if (connection.connected != app.state.mqtt_connected) {
+            handle_mqtt_event(connection.connected ? MQTT_RELAY_EVENT_CONNECTED
+                                                   : MQTT_RELAY_EVENT_FAILED);
+        } else if (!connection.connected && !connection.connecting) {
+            app_state_lock();
+            const uint64_t due_ms = s_app.mqtt_retry_due_ms;
+            app_state_unlock();
+            if (due_ms != 0 && app_now_ms() >= due_ms) {
+                cancel_mqtt_retry();
+                (void)start_or_reconnect_mqtt();
+            } else if (due_ms == 0) {
+                schedule_mqtt_retry();
+            }
+        }
+    }
+}
+
 static void handle_bond_poll(void)
 {
+    reconcile_network_state();
+    (void)refresh_diagnostics();
     const ancs_client_enrollment_status_t ble =
         ancs_client_get_enrollment_status();
     const bool has_bond = ble.has_bond;
@@ -819,14 +981,30 @@ static void coordinator_task(void *argument)
                                       message.sta_attempt_generation);
             break;
         case APP_EVENT_MQTT:
-            handle_mqtt_event(message.mqtt);
+            app_state_lock();
+            const bool current_client = message.mqtt_generation == s_app.mqtt_generation;
+            app_state_unlock();
+            if (current_client) {
+                handle_mqtt_event(message.mqtt);
+            }
             break;
         case APP_EVENT_CONFIG_CHANGED:
             handle_config_changed(message.config);
             break;
-        case APP_EVENT_MQTT_RETRY:
-            (void)start_or_reconnect_mqtt();
+        case APP_EVENT_MQTT_RETRY: {
+            app_state_lock();
+            const bool current_retry =
+                message.mqtt_generation == s_app.mqtt_generation &&
+                message.retry_due_ms != 0 &&
+                message.retry_due_ms == s_app.mqtt_retry_due_ms &&
+                app_now_ms() >= message.retry_due_ms;
+            app_state_unlock();
+            if (current_retry) {
+                cancel_mqtt_retry();
+                (void)start_or_reconnect_mqtt();
+            }
             break;
+        }
         case APP_EVENT_BOND_POLL:
             handle_bond_poll();
             break;

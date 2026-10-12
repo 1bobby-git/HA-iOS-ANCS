@@ -66,12 +66,11 @@ function updateEnrollmentControls(system, blePasskey) {
 
   let label = 'iPhone 기기 등록';
   let unavailable = false;
-  if (system.ble_pairing_repair_required) {
-    label = '등록 교체 필요';
-    unavailable = true;
-  } else if (system.ble_connected) {
+  if (system.ble_connected) {
     label = 'iPhone 연결됨';
     unavailable = true;
+  } else if (system.ble_pairing_repair_required) {
+    label = 'PIN 확인 후 등록 재시도';
   } else if (windowOpen) {
     label = '등록 신호 다시 보내기';
   } else if (system.ble_bonded) {
@@ -213,6 +212,10 @@ function applyStatus(status) {
     updateTile('status-wifi', 'ready', '연결됨', config.wifi_ssid || 'IP 주소를 받았습니다');
   } else if (runtime.sta_connecting) {
     updateTile('status-wifi', 'pending', '연결 중', config.wifi_ssid || 'Wi-Fi 응답을 기다리는 중');
+  } else if (runtime.sta_started && !runtime.retry_paused) {
+    const seconds = Math.ceil(Number(runtime.retry_in_ms || 0) / 1000);
+    updateTile('status-wifi', 'pending', '자동 복구 대기',
+      `${seconds}초 후 재시도 · 단절 원인 ${Number(runtime.last_wifi_disconnect_reason || 0)}`);
   } else {
     updateTile('status-wifi', 'pending', '설정 필요', runtime.ap_started ? '아래에서 Wi-Fi를 선택하세요' : 'Wi-Fi 연결 없음');
   }
@@ -230,17 +233,22 @@ function applyStatus(status) {
   }
 
   if (system.ble_connected) {
-    updateTile('status-ble', 'ready', '연결됨', 'iPhone 알림 공유 준비 완료');
-    $('ble-guidance').textContent = '등록된 iPhone이 연결되어 있습니다. 전원을 다시 켜도 자동으로 재연결됩니다.';
+    const ready = system.ancs_ready === true;
+    updateTile('status-ble', ready ? 'ready' : 'pending',
+      ready ? '알림 수신 준비 완료' : '연결됨 · 준비 중',
+      ready ? '인증과 두 ANCS 구독 완료' : '인증·서비스 발견·알림 구독 상태를 확인 중');
+    $('ble-guidance').textContent = ready
+      ? '새 알림을 보내 전달을 확인하세요. 마지막 알림과 현재 연결 상태는 별개입니다.'
+      : '연결만으로 알림 준비가 완료되지는 않습니다. iPhone의 시스템 알림 공유를 확인하세요.';
   } else if (system.ble_pairing_repair_required) {
     updateTile(
       'status-ble',
       'error',
       '등록 복구 필요',
-      `인증 오류 ${Number(system.ble_auth_error || 0)} · iPhone의 기존 Bluetooth 등록을 지우세요`,
+      `인증 오류 ${Number(system.ble_auth_error || 0)} · PIN 확인 후 등록을 다시 요청하세요`,
     );
     $('ble-guidance').textContent =
-      '반복 인증 실패로 자동 재연결을 중지했습니다. iPhone 설정 > Bluetooth에서 기존 IOS-ANCS 항목을 지운 뒤, 아래의 iPhone 등록 교체를 실행하세요.';
+      '반복 인증 실패로 신규 등록을 일시 중지했습니다. PIN을 확인하고 등록 재시도를 누르세요. 기존 iPhone 항목이 새 등록을 막는 경우에만 해당 항목을 지우세요. 등록 교체는 별도 동작입니다.';
   } else if (system.enroll_window_open) {
     updateTile(
       'status-ble',
@@ -265,7 +273,7 @@ function applyStatus(status) {
 
   const published = Number(system.notifications_published || 0);
   const dropStats = relayDropBreakdown(system);
-  const relayReady = runtime.sta_has_ip && system.mqtt_connected && system.ble_connected;
+  const relayReady = runtime.sta_has_ip && system.mqtt_connected && system.ancs_ready === true;
   const relayState = relayReady
     ? 'ready'
     : system.mqtt_connected || system.mqtt_connecting

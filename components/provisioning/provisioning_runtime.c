@@ -1,12 +1,16 @@
 #include "provisioning_runtime.h"
+#include "provisioning_retry.h"
 
 #include <stdio.h>
+#include <inttypes.h>
 #include <string.h>
 
 #include "esp_check.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_random.h"
+#include "esp_timer.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "esp_wifi_default.h"
@@ -41,6 +45,12 @@ static bool s_ap_started;
 static bool s_sta_started;
 static bool s_sta_connecting;
 static bool s_sta_has_ip;
+static bool s_sta_interface_ready;
+static bool s_sta_stop_pending;
+static bool s_automatic_recovery_ap;
+static provisioning_retry_t s_retry;
+static char s_expected_ssid[33];
+static esp_err_t s_last_wifi_connect_error;
 static uint32_t s_last_wifi_disconnect_reason;
 static int32_t s_last_wifi_disconnect_rssi;
 static esp_event_handler_instance_t s_wifi_handler_instance;
@@ -160,41 +170,72 @@ static void cancel_wifi_timeout(void)
     schedule_wifi_timeout(0);
 }
 
+/* The existing timeout task is the only owner of esp_wifi_connect().
+ * Notifications merely wake it; deadlines live in the clock-only policy, so a
+ * queued cancellation or an old wakeup cannot arm a new connection generation. */
+static bool current_station_has_ip(void)
+{
+    wifi_ap_record_t ap = {0};
+    esp_netif_ip_info_t ip = {0};
+    return s_sta_netif != NULL &&
+           esp_wifi_sta_get_ap_info(&ap) == ESP_OK &&
+           strncmp((const char *)ap.ssid, s_expected_ssid, sizeof(ap.ssid)) == 0 &&
+           esp_netif_get_ip_info(s_sta_netif, &ip) == ESP_OK && ip.ip.addr != 0;
+}
+
 static void wifi_timeout_task(void *arg)
 {
     (void)arg;
-    uint32_t pending_generation = 0;
     for (;;) {
         uint32_t notification = 0;
-        if (pending_generation == 0) {
-            (void)xTaskNotifyWait(0, UINT32_MAX, &notification, portMAX_DELAY);
-            pending_generation = notification;
+        (void)xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(250));
+        if (!s_initialized || lock_wifi_operation() != ESP_OK) {
             continue;
         }
-
-        if (xTaskNotifyWait(0,
-                            UINT32_MAX,
-                            &notification,
-                            pdMS_TO_TICKS(PROVISIONING_RUNTIME_WIFI_TIMEOUT_MS)) == pdTRUE) {
-            pending_generation = notification;
-            continue;
-        }
-
-        const uint32_t expired_generation = pending_generation;
-        pending_generation = 0;
-        bool dispatch_timeout = false;
+        const uint64_t now = (uint64_t)esp_timer_get_time() / 1000U;
+        const uint32_t random_value = esp_random();
         lock_state();
-        if (s_active_sta_attempt_generation == expired_generation &&
-            s_sta_started && s_sta_connecting) {
-            s_sta_started = false;
-            s_sta_connecting = false;
-            s_sta_has_ip = false;
-            s_active_sta_attempt_generation = 0;
-            dispatch_timeout = true;
+        const uint32_t generation = s_active_sta_attempt_generation;
+        unsigned actions = 0;
+        if (s_sta_started && s_sta_interface_ready && !s_sta_stop_pending) {
+            actions = provisioning_retry_poll(&s_retry, now, random_value);
+            s_sta_connecting = s_retry.in_flight;
         }
         unlock_state();
-        if (dispatch_timeout) {
-            dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, expired_generation);
+
+        /* Reconcile a real IP before aborting. The operation mutex also
+         * serializes a processed GOT_IP callback with this timeout action. */
+        if ((actions & PROVISION_RETRY_ABORT) && current_station_has_ip()) {
+            lock_state();
+            provisioning_retry_connected(&s_retry, now);
+            s_sta_has_ip = true;
+            s_sta_connecting = false;
+            unlock_state();
+            actions = 0;
+            dispatch_event_with_generation(PROVISION_EVENT_WIFI_CONNECTED, generation);
+        } else if (actions & PROVISION_RETRY_ABORT) {
+            const esp_err_t err = esp_wifi_disconnect();
+            if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_CONNECT) {
+                ESP_LOGW(TAG, "STA attempt cancellation error=%s", esp_err_to_name(err));
+            }
+        }
+        if (actions & PROVISION_RETRY_CONNECT) {
+            const esp_err_t err = esp_wifi_connect();
+            lock_state();
+            s_last_wifi_connect_error = err;
+            if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
+                provisioning_retry_failed(&s_retry, now, false, random_value);
+                s_sta_connecting = s_retry.in_flight;
+            }
+            unlock_state();
+            if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
+                ESP_LOGW(TAG, "STA connect start error=%s generation=%" PRIu32,
+                         esp_err_to_name(err), generation);
+            }
+        }
+        unlock_wifi_operation();
+        if (actions & PROVISION_RETRY_OPEN_AP) {
+            dispatch_event_with_generation(PROVISION_EVENT_WIFI_TIMEOUT, generation);
         }
     }
 }
@@ -336,74 +377,69 @@ static void wifi_event_handler(void *arg,
                                void *event_data)
 {
     (void)arg;
-
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        const wifi_event_sta_disconnected_t *disconnected = event_data;
-        bool reconnect = false;
-        bool start_reconnect_timeout = false;
+    if (lock_wifi_operation() != ESP_OK) {
+        return;
+    }
+    uint32_t generation = 0;
+    provisioning_event_t publish = PROVISION_EVENT_BOOT_NO_CONFIG;
+    bool notify = false;
+    const uint64_t now = (uint64_t)esp_timer_get_time() / 1000U;
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         lock_state();
-        const bool had_ip = s_sta_has_ip;
-        const uint32_t attempt_generation = s_active_sta_attempt_generation;
-        s_sta_has_ip = false;
-        if (disconnected != NULL) {
-            s_last_wifi_disconnect_reason = disconnected->reason;
-            s_last_wifi_disconnect_rssi = disconnected->rssi;
-        } else {
-            s_last_wifi_disconnect_reason = 0;
-            s_last_wifi_disconnect_rssi = 0;
-        }
-        if (had_ip) {
-            if (s_sta_started) {
-                s_sta_connecting = true;
-                reconnect = true;
-                start_reconnect_timeout = true;
-            }
-        } else if (s_sta_started && s_sta_connecting) {
-            s_sta_connecting = true;
-            reconnect = true;
+        s_sta_interface_ready = !s_sta_stop_pending;
+        unlock_state();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_STOP) {
+        lock_state();
+        s_sta_interface_ready = false;
+        s_sta_stop_pending = false;
+        unlock_state();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        const wifi_event_sta_disconnected_t *disconnected = event_data;
+        const uint32_t reason = disconnected != NULL ? disconnected->reason : 0;
+        const bool auth_failure = reason == WIFI_REASON_AUTH_FAIL ||
+                                  reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT ||
+                                  reason == WIFI_REASON_HANDSHAKE_TIMEOUT;
+        /* Native events carry no application generation. A STOP/START fence
+         * protects reconfiguration; live driver state rejects a late failure. */
+        const bool live_ip = current_station_has_ip();
+        lock_state();
+        generation = s_active_sta_attempt_generation;
+        if (s_sta_started && !s_sta_stop_pending && !live_ip &&
+            (s_retry.in_flight || s_retry.online)) {
+            const bool had_ip = s_sta_has_ip;
+            s_sta_has_ip = false;
+            s_last_wifi_disconnect_reason = reason;
+            s_last_wifi_disconnect_rssi = disconnected != NULL ? disconnected->rssi : 0;
+            provisioning_retry_failed(&s_retry, now, auth_failure, 0);
+            s_sta_connecting = s_retry.in_flight;
+            notify = had_ip;
+            publish = PROVISION_EVENT_WIFI_DISCONNECTED;
         }
         unlock_state();
-        ESP_LOGW(TAG, "STA disconnected reason=%u rssi=%d",
-                 (unsigned)s_last_wifi_disconnect_reason,
-                 (int)s_last_wifi_disconnect_rssi);
-        if (start_reconnect_timeout) {
-            schedule_wifi_timeout(attempt_generation);
-        }
-        if (reconnect) {
-            if (lock_wifi_operation() != ESP_OK) {
-                return;
-            }
-            lock_state();
-            const bool reconnect_still_valid =
-                s_sta_started && s_sta_connecting &&
-                s_active_sta_attempt_generation == attempt_generation;
-            unlock_state();
-            if (reconnect_still_valid) {
-                const esp_err_t reconnect_error = esp_wifi_connect();
-                if (reconnect_error != ESP_OK &&
-                    reconnect_error != ESP_ERR_WIFI_CONN) {
-                    ESP_LOGW(TAG,
-                             "STA reconnect start failed: %s",
-                             esp_err_to_name(reconnect_error));
-                }
-            }
-            unlock_wifi_operation();
+        if (notify) {
+            ESP_LOGW(TAG, "STA disconnected reason=%u", (unsigned)reason);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        const ip_event_got_ip_t *ip_event = event_data;
+        const bool live_ip = ip_event != NULL && ip_event->esp_netif == s_sta_netif &&
+                             current_station_has_ip();
         lock_state();
-        const bool accept_ip = s_sta_started && s_sta_connecting;
-        const uint32_t attempt_generation = s_active_sta_attempt_generation;
-        if (!accept_ip) {
-            unlock_state();
-            return;
+        generation = s_active_sta_attempt_generation;
+        if (s_sta_started && s_sta_interface_ready && !s_sta_stop_pending &&
+            provisioning_retry_matches(&s_retry, generation) && live_ip) {
+            provisioning_retry_connected(&s_retry, now);
+            s_sta_connecting = false;
+            s_sta_has_ip = true;
+            s_last_wifi_connect_error = ESP_OK;
+            notify = true;
+            publish = PROVISION_EVENT_WIFI_CONNECTED;
         }
-        s_sta_connecting = false;
-        s_sta_has_ip = true;
-        s_last_wifi_disconnect_reason = 0;
-        s_last_wifi_disconnect_rssi = 0;
         unlock_state();
-        cancel_wifi_timeout();
-        dispatch_event_with_generation(PROVISION_EVENT_WIFI_CONNECTED, attempt_generation);
+    }
+    unlock_wifi_operation();
+    cancel_wifi_timeout(); /* Wake the owner; no timer is re-armed here. */
+    if (notify) {
+        dispatch_event_with_generation(publish, generation);
     }
 }
 
@@ -593,14 +629,6 @@ static esp_err_t ensure_wifi_started_unlocked(void)
     return ESP_OK;
 }
 
-static esp_err_t ensure_wifi_started(void)
-{
-    ESP_RETURN_ON_ERROR(lock_wifi_operation(), TAG, "lock wifi operation");
-    esp_err_t err = ensure_wifi_started_unlocked();
-    unlock_wifi_operation();
-    return err;
-}
-
 static wifi_mode_t select_wifi_mode_from_flags(void)
 {
     lock_state();
@@ -747,6 +775,7 @@ esp_err_t provisioning_runtime_stop_ap(void)
     }
     lock_state();
     s_ap_started = false;
+    s_automatic_recovery_ap = false;
     unlock_state();
     err = apply_wifi_mode_unlocked();
     unlock_wifi_operation();
@@ -767,6 +796,14 @@ esp_err_t provisioning_runtime_start_sta(const provision_config_t *config)
         return err;
     }
 
+    lock_state();
+    const bool already_started = s_sta_started;
+    unlock_state();
+    if (already_started) {
+        unlock_wifi_operation();
+        return ESP_ERR_INVALID_STATE;
+    }
+
     wifi_config_t sta_config = {0};
     strlcpy((char *)sta_config.sta.ssid, config->wifi_ssid, sizeof(sta_config.sta.ssid));
     strlcpy((char *)sta_config.sta.password, config->wifi_password, sizeof(sta_config.sta.password));
@@ -780,9 +817,12 @@ esp_err_t provisioning_runtime_start_sta(const provision_config_t *config)
     lock_state();
     const uint32_t attempt_generation = next_sta_attempt_generation();
     s_sta_started = true;
-    s_sta_connecting = true;
+    s_sta_connecting = false;
     s_sta_has_ip = false;
     s_active_sta_attempt_generation = attempt_generation;
+    provisioning_retry_start(&s_retry, attempt_generation,
+                             (uint64_t)esp_timer_get_time() / 1000U);
+    strlcpy(s_expected_ssid, config->wifi_ssid, sizeof(s_expected_ssid));
     s_last_wifi_disconnect_reason = 0;
     s_last_wifi_disconnect_rssi = 0;
     unlock_state();
@@ -803,6 +843,7 @@ esp_err_t provisioning_runtime_start_sta(const provision_config_t *config)
     }
     if (err != ESP_OK) {
         lock_state();
+        provisioning_retry_stop(&s_retry);
         s_sta_started = false;
         s_sta_connecting = false;
         s_sta_has_ip = false;
@@ -813,21 +854,8 @@ esp_err_t provisioning_runtime_start_sta(const provision_config_t *config)
         return err;
     }
     schedule_wifi_timeout(attempt_generation);
-    err = esp_wifi_connect();
-    if (err != ESP_OK) {
-        cancel_wifi_timeout();
-        lock_state();
-        s_sta_started = false;
-        s_sta_connecting = false;
-        s_sta_has_ip = false;
-        s_active_sta_attempt_generation = 0;
-        unlock_state();
-        (void)apply_wifi_mode_unlocked();
-        unlock_wifi_operation();
-        return err;
-    }
     unlock_wifi_operation();
-    ESP_LOGI(TAG, "STA connect started ssid=%s", config->wifi_ssid);
+    ESP_LOGI(TAG, "STA profile scheduled generation=%" PRIu32, attempt_generation);
     return ESP_OK;
 }
 
@@ -835,36 +863,61 @@ esp_err_t provisioning_runtime_stop_sta(void)
 {
     ESP_RETURN_ON_ERROR(lock_wifi_operation(), TAG, "lock wifi operation");
     lock_state();
-    bool sta_started = s_sta_started;
+    const bool sta_started = s_sta_started;
+    provisioning_retry_stop(&s_retry);
+    s_sta_started = false;
+    s_sta_connecting = false;
+    s_sta_has_ip = false;
+    s_active_sta_attempt_generation = 0;
+    s_sta_interface_ready = false;
+    if (sta_started) {
+        s_sta_stop_pending = true;
+    }
     unlock_state();
     if (!sta_started) {
         unlock_wifi_operation();
         return ESP_OK;
     }
-
     cancel_wifi_timeout();
-    lock_state();
-    s_sta_started = false;
-    s_sta_connecting = false;
-    s_sta_has_ip = false;
-    s_active_sta_attempt_generation = 0;
-    unlock_state();
     esp_err_t err = esp_wifi_disconnect();
     if (err == ESP_ERR_WIFI_NOT_CONNECT) {
         err = ESP_OK;
     }
-    esp_err_t mode_err = apply_wifi_mode_unlocked();
+    const esp_err_t mode_err = apply_wifi_mode_unlocked();
+    if (mode_err != ESP_OK) {
+        ESP_LOGE(TAG, "STA teardown failed; automatic retries remain stopped");
+    }
     unlock_wifi_operation();
     return err == ESP_OK ? mode_err : err;
 }
 
+esp_err_t provisioning_runtime_pause_retries(void)
+{
+    ESP_RETURN_ON_ERROR(lock_wifi_operation(), TAG, "lock wifi operation");
+    lock_state();
+    const bool connecting = s_retry.in_flight;
+    provisioning_retry_pause(&s_retry);
+    s_retry.in_flight = false;
+    s_sta_connecting = false;
+    unlock_state();
+    if (connecting) {
+        (void)esp_wifi_disconnect();
+    }
+    unlock_wifi_operation();
+    cancel_wifi_timeout();
+    return ESP_OK;
+}
+
 esp_err_t provisioning_runtime_enter_stable_recovery(void)
 {
-    ESP_RETURN_ON_ERROR(ensure_runtime_ready(), TAG, "runtime ready");
-    ESP_RETURN_ON_ERROR(ensure_wifi_started(), TAG, "wifi started");
-
-    ESP_RETURN_ON_ERROR(provisioning_runtime_stop_sta(), TAG, "stop STA for recovery");
-    return provisioning_runtime_start_ap();
+    /* An automatic recovery AP is not a request to stop the station. */
+    const esp_err_t err = provisioning_runtime_start_ap();
+    if (err == ESP_OK) {
+        lock_state();
+        s_automatic_recovery_ap = true;
+        unlock_state();
+    }
+    return err;
 }
 
 static esp_err_t finish_scan_restore_if_needed(bool restore_ap_only, esp_err_t primary_err)
@@ -992,6 +1045,14 @@ esp_err_t provisioning_runtime_get_status(provisioning_runtime_status_t *out)
     out->last_wifi_disconnect_rssi = s_last_wifi_disconnect_rssi;
     out->event_overflow_count = s_event_overflow_count;
     out->sta_attempt_generation = s_active_sta_attempt_generation;
+    out->retry_paused = s_retry.paused;
+    out->retry_attempts = s_retry.attempts;
+    out->retry_in_ms = provisioning_retry_remaining_ms(
+        &s_retry, (uint64_t)esp_timer_get_time() / 1000U);
+    out->automatic_recovery_due = s_retry.enabled && !s_retry.paused &&
+                                 !s_retry.online && s_retry.recovery_announced;
+    out->automatic_recovery_ap = s_automatic_recovery_ap && s_ap_started;
+    out->last_wifi_connect_error = s_last_wifi_connect_error;
     strlcpy(out->ap_ssid, s_ap_ssid, sizeof(out->ap_ssid));
     unlock_state();
     return ESP_OK;
