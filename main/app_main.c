@@ -20,6 +20,7 @@
 #include "nvs_flash.h"
 #include "platform_identity.h"
 #include "portal_http.h"
+#include "provision_policy.h"
 #include "provision_store.h"
 #include "provisioning_runtime.h"
 #include "provisioning_state.h"
@@ -46,6 +47,7 @@ typedef enum {
     APP_EVENT_BOND_POLL,
     APP_EVENT_WIFI_STATUS_REFRESH,
     APP_EVENT_RESET_PROVISIONING,
+    APP_EVENT_MQTT_CONNECT_NOW,
 } app_event_type_t;
 
 typedef struct {
@@ -70,6 +72,8 @@ typedef struct {
     uint32_t mqtt_retry_delay_ms;
     uint32_t mqtt_generation;
     uint64_t mqtt_retry_due_ms;
+    /* Fingerprint of the last MQTT settings that connected (0: none). */
+    uint32_t mqtt_verified_fingerprint;
 } app_coordinator_state_t;
 
 typedef struct {
@@ -324,8 +328,9 @@ static esp_err_t portal_mqtt_test(void *context)
         return ESP_OK;
     }
 
+    /* A user test connects now instead of waiting for the backoff timer. */
     const app_event_msg_t message = {
-        .type = APP_EVENT_MQTT_RETRY,
+        .type = APP_EVENT_MQTT_CONNECT_NOW,
     };
     return app_post(&message) ? ESP_OK : ESP_ERR_TIMEOUT;
 }
@@ -703,6 +708,47 @@ static provisioning_state_t reduce_app_state(provisioning_event_t event)
     return next;
 }
 
+static bool stored_mqtt_settings_verified(void)
+{
+    app_state_lock();
+    const uint32_t stored = s_app.mqtt_verified_fingerprint;
+    app_state_unlock();
+    return stored != 0U &&
+           stored == provision_config_mqtt_fingerprint(&s_app.config);
+}
+
+static void remember_verified_mqtt_settings(void)
+{
+    const uint32_t fingerprint = provision_config_mqtt_fingerprint(&s_app.config);
+    app_state_lock();
+    const bool known = fingerprint == s_app.mqtt_verified_fingerprint;
+    app_state_unlock();
+    if (known) {
+        return; /* Write NVS only for the first connection of new settings. */
+    }
+    const esp_err_t error = provision_store_save_mqtt_verified(fingerprint);
+    if (error != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "MQTT settings marker not saved: %s",
+                 esp_err_to_name(error));
+        return;
+    }
+    app_state_lock();
+    s_app.mqtt_verified_fingerprint = fingerprint;
+    app_state_unlock();
+}
+
+static bool mqtt_settings_rejected(const mqtt_relay_connection_status_t *connection)
+{
+    /* Only an answering broker that refuses these settings counts. "Server
+     * unavailable" and every transport error mean the broker or network is
+     * down, which proven settings simply retry. */
+    return connection->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED &&
+           connection->connect_return_code != MQTT_CONNECTION_ACCEPTED &&
+           connection->connect_return_code !=
+               MQTT_CONNECTION_REFUSE_SERVER_UNAVAILABLE;
+}
+
 static void suspend_mqtt_for_wifi(void)
 {
     cancel_mqtt_retry();
@@ -750,6 +796,11 @@ static void handle_provisioning_event(provisioning_event_t event,
     }
 
     provisioning_state_t state = reduce_app_state(event);
+    if (event == PROVISION_EVENT_BOOT_VALID_CONFIG &&
+        stored_mqtt_settings_verified()) {
+        /* Saved settings that connected before keep the retry-only rule. */
+        state = reduce_app_state(PROVISION_EVENT_MQTT_SETTINGS_VERIFIED);
+    }
 
     switch (event) {
     case PROVISION_EVENT_BOOT_NO_CONFIG:
@@ -780,6 +831,7 @@ static void handle_provisioning_event(provisioning_event_t event,
         break;
 
     case PROVISION_EVENT_MQTT_FAILED:
+    case PROVISION_EVENT_MQTT_REJECTED:
         if (s_wifi_status_timer != NULL) {
             (void)xTimerStop(s_wifi_status_timer, 0);
         }
@@ -837,13 +889,18 @@ static void handle_mqtt_event(mqtt_relay_event_t event)
     }
     if (event == MQTT_RELAY_EVENT_CONNECTED) {
         handle_provisioning_event(PROVISION_EVENT_MQTT_CONNECTED, 0);
+        remember_verified_mqtt_settings();
         if (s_wifi_status_timer != NULL) {
             (void)xTimerReset(s_wifi_status_timer, 0);
         }
         return;
     }
 
-    handle_provisioning_event(PROVISION_EVENT_MQTT_FAILED, 0);
+    handle_provisioning_event(event == MQTT_RELAY_EVENT_FAILED &&
+                                      mqtt_settings_rejected(&connection)
+                                  ? PROVISION_EVENT_MQTT_REJECTED
+                                  : PROVISION_EVENT_MQTT_FAILED,
+                              0);
 }
 
 static void handle_config_changed(provision_config_t *config)
@@ -870,6 +927,10 @@ static void handle_config_changed(provision_config_t *config)
 
     provisioning_state_t state =
         reduce_app_state(PROVISION_EVENT_BOOT_VALID_CONFIG);
+    if (stored_mqtt_settings_verified()) {
+        /* A Wi-Fi-only change keeps MQTT settings that already connected. */
+        state = reduce_app_state(PROVISION_EVENT_MQTT_SETTINGS_VERIFIED);
+    }
     apply_reducer_requirements(state);
 
     esp_err_t error = provisioning_runtime_start_sta(&s_app.config);
@@ -909,6 +970,7 @@ static void handle_reset_provisioning(void)
     s_app.config = (provision_config_t) {0};
     s_app.config_valid = false;
     s_app.active_sta_attempt_generation = 0;
+    s_app.mqtt_verified_fingerprint = 0U; /* Erased with the partition. */
     app_state_unlock();
 
     handle_provisioning_event(PROVISION_EVENT_BOOT_NO_CONFIG, 0);
@@ -1028,6 +1090,10 @@ static void coordinator_task(void *argument)
         case APP_EVENT_RESET_PROVISIONING:
             handle_reset_provisioning();
             break;
+        case APP_EVENT_MQTT_CONNECT_NOW:
+            cancel_mqtt_retry();
+            (void)start_or_reconnect_mqtt();
+            break;
         default:
             free(message.config);
             break;
@@ -1139,8 +1205,14 @@ void app_main(void)
         provision_error == ESP_OK &&
         provision_store_load(&s_app.config) == ESP_OK &&
         provision_config_validate(&s_app.config) == PROVISION_CONFIG_OK;
+    uint32_t verified_fingerprint = 0U;
+    if (provision_error != ESP_OK ||
+        provision_store_load_mqtt_verified(&verified_fingerprint) != ESP_OK) {
+        verified_fingerprint = 0U;
+    }
     app_state_lock();
     s_app.config_valid = config_valid;
+    s_app.mqtt_verified_fingerprint = verified_fingerprint;
     app_state_unlock();
 
     error = notification_sink_register_observer(

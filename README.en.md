@@ -36,21 +36,30 @@ The project bridges iOS notifications into local Home Assistant automations thro
 
 Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
-## Supported Boards And v0.3.9 Build Facts
+From firmware 0.4.0 the relay remembers MQTT settings once they have connected.
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.9 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+- If the broker then stops, restarts, or becomes unreachable, the relay does not open the setup AP; it reconnects after 5, 15 and 30 seconds and then every 60 seconds.
+- The setup AP opens only if the broker answers and refuses the saved settings (username, password, ACL, Client ID) on every attempt for 10 minutes. If the broker stops answering in between, the 10 minutes start again.
+- Settings that never connected (first setup, a typo) still open the setup AP when the connection fails, and a blank password field still keeps the stored password while you fix them.
+- To change the host, port, or CA certificate of a working broker, hold BOOT for 3 seconds to open the setup portal. A connection that fails because the certificate no longer matches is also only retried.
+- Changing the host or port of settings that connected before requires entering the MQTT password again.
+- Devices updated from 0.3.9 follow these rules after their first successful MQTT connection on 0.4.0.
 
-| Target | Typical module/board | Factory image | v0.3.9 status |
+## Supported Boards And v0.4.0 Build Facts
+
+The shared firmware uses a 4 MB minimum flash layout. All v0.4.0 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+
+| Target | Typical module/board | Factory image | v0.4.0 status |
 | --- | --- | ---: | --- |
-| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,450,048 bytes | Build verified; this version not hardware validated |
-| `esp32c2` | ESP32-C2 | 1,472,176 bytes | Build verified; this version not hardware validated |
-| `esp32c3` | ESP32-C3 | 1,661,200 bytes | Build verified; this version not hardware validated |
-| `esp32c5` | ESP32-C5 | 1,806,464 bytes | Build verified; this version not hardware validated |
-| `esp32c6` | ESP32-C6 | 1,807,104 bytes | Build verified; this version not hardware validated |
-| `esp32c61` | ESP32-C61 | 1,749,472 bytes | Build verified; this version not hardware validated |
-| `esp32s3` | ESP32-S3 | 1,432,592 bytes | Build verified; this version not hardware validated |
+| `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,451,936 bytes | Build verified; this version not hardware validated |
+| `esp32c2` | ESP32-C2 | 1,474,224 bytes | Build verified; this version not hardware validated |
+| `esp32c3` | ESP32-C3 | 1,663,232 bytes | Build verified; this version not hardware validated |
+| `esp32c5` | ESP32-C5 | 1,808,480 bytes | Build verified; this version not hardware validated |
+| `esp32c6` | ESP32-C6 | 1,809,136 bytes | Build verified; this version not hardware validated |
+| `esp32c61` | ESP32-C61 | 1,751,520 bytes | Build verified; this version not hardware validated |
+| `esp32s3` | ESP32-S3 | 1,434,416 bytes | Build verified; this version not hardware validated |
 
-The table describes the published v0.3.9 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
+The table describes the published v0.4.0 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
 ## Home Assistant And HACS
 
@@ -106,7 +115,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 
 - The firmware does not use an iOS app, Apple account credentials, or iCloud credentials.
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
-- Empty secret fields preserve already stored values.
+- Empty secret fields preserve already stored values, except that changing the host or port of MQTT settings that connected before never sends the stored MQTT password to the new address; enter it again. This check looks at the host and port only. With TLS off, someone who reaches the setup portal can point Wi-Fi at their own network that answers on the same broker address and receive the password, so use TLS with a CA certificate to protect it.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
 - Deleting the iOS ANCS integration entry in Home Assistant also deletes the last notification the integration saved. Files left by entries deleted with 0.6.13 or earlier are deleted at the next start while at least one enabled iOS ANCS entry exists, or when you add or enable one; without an enabled entry, delete the `.storage/ha_ios_ancs.*.last_notification` files yourself.
 - Pairing uses the fixed PIN `123456` shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.

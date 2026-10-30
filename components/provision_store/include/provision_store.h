@@ -79,6 +79,13 @@ esp_err_t provision_store_init(void);
 esp_err_t provision_store_load(provision_config_t *out);
 esp_err_t provision_store_save_atomic(const provision_config_t *config);
 esp_err_t provision_store_reset(void);
+/*
+ * Fingerprint (provision_config_mqtt_fingerprint) of the last MQTT settings
+ * that connected. Kept next to the settings, so a reset erases it as well.
+ * Load returns ESP_ERR_NVS_NOT_FOUND and 0 when nothing is stored.
+ */
+esp_err_t provision_store_load_mqtt_verified(uint32_t *fingerprint);
+esp_err_t provision_store_save_mqtt_verified(uint32_t fingerprint);
 
 esp_err_t provision_store_encode_for_test(
     const provision_config_t *config,

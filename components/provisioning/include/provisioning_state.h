@@ -8,6 +8,13 @@ extern "C" {
 #endif
 
 #define PROVISION_RECOVERY_WINDOW_MS UINT64_C(600000)
+/* Proven MQTT settings that the broker keeps refusing open the setup AP only
+ * after this long; brokers that authenticate against Home Assistant refuse
+ * logins while Home Assistant restarts. */
+#define PROVISION_MQTT_REJECTED_RECOVERY_MS UINT64_C(600000)
+/* A refused attempt ends with a disconnect right after the refusal. A failure
+ * this soon after a refusal belongs to the same attempt (retries are >= 5 s). */
+#define PROVISION_MQTT_REFUSAL_PAIR_MS UINT64_C(3000)
 
 typedef enum {
     PROVISION_EVENT_BOOT_NO_CONFIG = 0,
@@ -15,12 +22,17 @@ typedef enum {
     PROVISION_EVENT_WIFI_CONNECTED,
     PROVISION_EVENT_WIFI_TIMEOUT,
     PROVISION_EVENT_MQTT_CONNECTED,
+    /* The broker or the network is unreachable. */
     PROVISION_EVENT_MQTT_FAILED,
     PROVISION_EVENT_BOND_PRESENT,
     PROVISION_EVENT_BOND_REMOVED,
     PROVISION_EVENT_BOOT_HELD_3S,
     PROVISION_EVENT_PORTAL_IDLE_TIMEOUT,
     PROVISION_EVENT_WIFI_DISCONNECTED,
+    /* The broker answered and refused these settings. */
+    PROVISION_EVENT_MQTT_REJECTED,
+    /* The saved MQTT settings connected before (stored marker). */
+    PROVISION_EVENT_MQTT_SETTINGS_VERIFIED,
 } provisioning_event_t;
 
 typedef struct {
@@ -32,7 +44,15 @@ typedef struct {
     bool recovery_window;
     bool ap_required;
     bool sta_required;
+    /* These MQTT settings connected at least once. */
+    bool mqtt_settings_verified;
+    /* The broker has refused every attempt since the last outage or success. */
+    bool mqtt_rejecting;
+    /* Ten minutes of refusals opened the AP; it stays until settings work. */
+    bool mqtt_refusal_recovery;
     uint64_t recovery_deadline_ms;
+    uint64_t mqtt_rejected_since_ms;
+    uint64_t mqtt_last_rejected_ms;
 } provisioning_state_t;
 
 provisioning_state_t provisioning_initial(void);

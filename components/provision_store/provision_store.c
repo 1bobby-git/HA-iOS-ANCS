@@ -13,6 +13,7 @@
 #define PROVISION_SLOT_A "slot_a"
 #define PROVISION_SLOT_B "slot_b"
 #define PROVISION_ACTIVE_KEY "active"
+#define PROVISION_MQTT_VERIFIED_KEY "mqtt_ok"
 #define PROVISION_ACTIVE_A 0U
 #define PROVISION_ACTIVE_B 1U
 
@@ -29,6 +30,8 @@ static bool s_test_active_valid;
 static bool s_test_fail_next_commit;
 static bool s_test_fail_next_readback;
 static bool s_test_fail_next_active_commit;
+static uint32_t s_test_mqtt_verified;
+static bool s_test_mqtt_verified_valid;
 #endif
 
 typedef struct {
@@ -681,6 +684,8 @@ esp_err_t provision_store_reset(void)
         memset(s_test_slot_valid, 0, sizeof(s_test_slot_valid));
         s_test_active = PROVISION_ACTIVE_A;
         s_test_active_valid = false;
+        s_test_mqtt_verified = 0;
+        s_test_mqtt_verified_valid = false;
         return ESP_OK;
     }
 #endif
@@ -692,6 +697,60 @@ esp_err_t provision_store_reset(void)
     }
     s_initialized = false;
     return nvs_flash_erase_partition(PROVISION_PARTITION);
+}
+
+esp_err_t provision_store_load_mqtt_verified(uint32_t *fingerprint)
+{
+    if (fingerprint == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *fingerprint = 0;
+#if CONFIG_PROVISION_STORE_TEST_BACKEND
+    if (s_test_backend) {
+        if (!s_test_mqtt_verified_valid) {
+            return ESP_ERR_NVS_NOT_FOUND;
+        }
+        *fingerprint = s_test_mqtt_verified;
+        return ESP_OK;
+    }
+#endif
+    nvs_handle_t handle = 0;
+    esp_err_t err = open_namespace(NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    uint32_t stored = 0;
+    err = nvs_get_u32(handle, PROVISION_MQTT_VERIFIED_KEY, &stored);
+    nvs_close(handle);
+    if (err == ESP_OK) {
+        *fingerprint = stored;
+    }
+    return err;
+}
+
+esp_err_t provision_store_save_mqtt_verified(uint32_t fingerprint)
+{
+#if CONFIG_PROVISION_STORE_TEST_BACKEND
+    if (s_test_backend) {
+        s_test_mqtt_verified = fingerprint;
+        s_test_mqtt_verified_valid = true;
+        return ESP_OK;
+    }
+#endif
+    nvs_handle_t handle = 0;
+    esp_err_t err = open_namespace(NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = nvs_set_u32(handle, PROVISION_MQTT_VERIFIED_KEY, fingerprint);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "MQTT verified marker save failed: %s", esp_err_to_name(err));
+    }
+    return err;
 }
 
 #if CONFIG_PROVISION_STORE_TEST_BACKEND
@@ -706,6 +765,8 @@ void provision_store_test_reset_backend_state(void)
     s_test_fail_next_commit = false;
     s_test_fail_next_readback = false;
     s_test_fail_next_active_commit = false;
+    s_test_mqtt_verified = 0;
+    s_test_mqtt_verified_valid = false;
 }
 
 const char *provision_store_test_last_erased_partition(void)

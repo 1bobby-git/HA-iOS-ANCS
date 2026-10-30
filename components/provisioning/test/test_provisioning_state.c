@@ -54,10 +54,92 @@ TEST_CASE("wifi timeout and mqtt failure require recovery AP",
     state = provisioning_reduce(state, PROVISION_EVENT_MQTT_CONNECTED, 6);
     TEST_ASSERT_FALSE(state.ap_required);
 
-    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_FAILED, 7);
+    /* Settings that never connected (first install, typo) open the AP. */
+    state = provisioning_reduce(state, PROVISION_EVENT_BOOT_VALID_CONFIG, 7);
+    state = provisioning_reduce(state, PROVISION_EVENT_WIFI_CONNECTED, 8);
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_FAILED, 9);
     TEST_ASSERT_TRUE(state.ap_required);
     TEST_ASSERT_TRUE(state.wifi_connected);
     TEST_ASSERT_FALSE(state.mqtt_connected);
+}
+
+TEST_CASE("proven mqtt settings only retry while the broker is down",
+          "[provisioning_state]")
+{
+    provisioning_state_t state =
+        provisioning_reduce(provisioning_initial(),
+                            PROVISION_EVENT_BOOT_VALID_CONFIG,
+                            0);
+    state = provisioning_reduce(state, PROVISION_EVENT_WIFI_CONNECTED, 1);
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_CONNECTED, 2);
+    TEST_ASSERT_TRUE(state.mqtt_settings_verified);
+
+    for (uint64_t now = 3; now < 3 + 60ULL * 60ULL * 1000ULL; now += 60000ULL) {
+        state = provisioning_reduce(state, PROVISION_EVENT_MQTT_FAILED, now);
+        TEST_ASSERT_FALSE(state.ap_required);
+    }
+
+    state = provisioning_reduce(provisioning_initial(),
+                                PROVISION_EVENT_BOOT_VALID_CONFIG,
+                                0);
+    state = provisioning_reduce(state,
+                                PROVISION_EVENT_MQTT_SETTINGS_VERIFIED,
+                                0);
+    state = provisioning_reduce(state, PROVISION_EVENT_WIFI_CONNECTED, 1);
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_FAILED, 2);
+    TEST_ASSERT_FALSE(state.ap_required);
+}
+
+TEST_CASE("refused proven mqtt settings open the AP after ten minutes",
+          "[provisioning_state]")
+{
+    provisioning_state_t state =
+        provisioning_reduce(provisioning_initial(),
+                            PROVISION_EVENT_BOOT_VALID_CONFIG,
+                            0);
+    state = provisioning_reduce(state, PROVISION_EVENT_WIFI_CONNECTED, 1);
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_CONNECTED, 2);
+
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_REJECTED, 1000);
+    TEST_ASSERT_FALSE(state.ap_required);
+    state = provisioning_reduce(state,
+                                PROVISION_EVENT_MQTT_REJECTED,
+                                1000 + PROVISION_MQTT_REJECTED_RECOVERY_MS - 1);
+    TEST_ASSERT_FALSE(state.ap_required);
+    state = provisioning_reduce(state,
+                                PROVISION_EVENT_MQTT_REJECTED,
+                                1000 + PROVISION_MQTT_REJECTED_RECOVERY_MS);
+    TEST_ASSERT_TRUE(state.ap_required);
+
+    state = provisioning_reduce(state,
+                                PROVISION_EVENT_MQTT_CONNECTED,
+                                2000 + PROVISION_MQTT_REJECTED_RECOVERY_MS);
+    TEST_ASSERT_FALSE(state.ap_required);
+    TEST_ASSERT_FALSE(state.mqtt_rejecting);
+}
+
+TEST_CASE("a broker outage after a refusal only retries",
+          "[provisioning_state]")
+{
+    provisioning_state_t state =
+        provisioning_reduce(provisioning_initial(),
+                            PROVISION_EVENT_BOOT_VALID_CONFIG,
+                            0);
+    state = provisioning_reduce(state, PROVISION_EVENT_WIFI_CONNECTED, 1);
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_CONNECTED, 2);
+
+    /* A refused attempt is a refusal plus the disconnect that ends it. */
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_REJECTED, 60000);
+    state = provisioning_reduce(state, PROVISION_EVENT_MQTT_FAILED, 60005);
+    TEST_ASSERT_TRUE(state.mqtt_rejecting);
+    TEST_ASSERT_FALSE(state.ap_required);
+
+    /* The broker then stops answering: the refusal streak ends. */
+    for (uint64_t now = 120000; now <= 30ULL * 60000ULL; now += 60000ULL) {
+        state = provisioning_reduce(state, PROVISION_EVENT_MQTT_FAILED, now);
+        TEST_ASSERT_FALSE(state.ap_required);
+    }
+    TEST_ASSERT_FALSE(state.mqtt_rejecting);
 }
 
 TEST_CASE("bond removal does not reopen the setup AP",
