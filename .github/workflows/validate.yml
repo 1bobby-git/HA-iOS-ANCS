@@ -32,12 +32,14 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
+          cache-dependency-path: requirements_test.txt
       - name: Install test dependencies
         env:
           HOMEASSISTANT_VERSION: ${{ matrix.homeassistant }}
         run: |
           sed "s/^homeassistant==.*/homeassistant==${HOMEASSISTANT_VERSION}/" requirements_test.txt > "${RUNNER_TEMP}/requirements_test.txt"
           python -m pip install --disable-pip-version-check -r "${RUNNER_TEMP}/requirements_test.txt"
+          python -c "import os, homeassistant.const as c; assert c.__version__ == os.environ['HOMEASSISTANT_VERSION'], c.__version__"
       - name: Compile Home Assistant integration
         run: python -m compileall -q custom_components/ha_ios_ancs
       - name: Run source and integration tests

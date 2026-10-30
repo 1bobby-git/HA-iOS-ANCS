@@ -7,8 +7,9 @@ from .device import device_info
 from .diagnostics import USER_ACTIONS, connection_state
 
 # Values that change with every 60-second status sample or notification. They
-# stay in the live state; their history is already recorded on the firmware's
-# MQTT status entity, so recording them here only adds a row per minute.
+# stay in the live state. Excluding them lets the recorder reuse one attribute
+# row instead of storing a new one per sample (each sample still adds a small
+# state row); the firmware's MQTT status entity records their history.
 VOLATILE_DIAGNOSTIC_ATTRIBUTES = frozenset({
     "uptime_seconds", "last_notification_uptime_ms", "accepted", "published_ack",
     "dropped_offline", "dropped_enqueue", "dropped_policy",

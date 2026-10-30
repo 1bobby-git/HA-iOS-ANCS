@@ -2,26 +2,35 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 import json
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
-from homeassistant.const import Platform
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigEntryDisabler,
+    ConfigEntryState,
+)
+from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE, Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.ha_ios_ancs.const import CONF_BASE_TOPIC, DOMAIN
+from custom_components.ha_ios_ancs.const import (
+    CONF_BASE_TOPIC,
+    CONF_MQTT_DEVICE_IDENTIFIER,
+    CONF_SOURCE_ENTITY_UNIQUE_ID,
+    DOMAIN,
+)
 
-from tests.helpers import EMPTY_DISCOVERY_KEYS
+from tests.helpers import EMPTY_DISCOVERY_KEYS, async_register_mqtt_ancs_source
 
 BASE_TOPIC = "ios_ancs/lifecycle"
-# Long enough that unload/remove finish first, short enough for a fast test.
-SAVE_DELAY_SECONDS = 0.4
+# Far longer than any test: a pending save is written only by an explicit
+# flush or by Home Assistant's final write, never by wall-clock timing.
+SAVE_DELAY_SECONDS = 60.0
 VOLATILE_DIAGNOSTICS = {
     "uptime_seconds",
     "last_notification_uptime_ms",
@@ -84,6 +93,24 @@ def make_entry() -> ConfigEntry:
     )
 
 
+def make_source_entry() -> ConfigEntry:
+    return ConfigEntry(
+        version=4,
+        minor_version=1,
+        domain=DOMAIN,
+        title="iOS ANCS (ios_ancs_A1B2C3)",
+        data={
+            CONF_SOURCE_ENTITY_UNIQUE_ID: "ios_ancs_A1B2C3_last_notification",
+            CONF_MQTT_DEVICE_IDENTIFIER: "ios_ancs_A1B2C3",
+        },
+        source="user",
+        unique_id="ios_ancs_A1B2C3",
+        discovery_keys=MappingProxyType({}),
+        options={},
+        subentries_data={},
+    )
+
+
 def notification(relay_id: str) -> dict[str, Any]:
     return {
         "relay_id": relay_id,
@@ -118,8 +145,22 @@ def status(uptime: int) -> dict[str, Any]:
     }
 
 
-def storage_path(hass: HomeAssistant, entry: ConfigEntry) -> Path:
-    return Path(hass.config.path(".storage", f"{DOMAIN}.{entry.entry_id}.last_notification"))
+def storage_path(hass: HomeAssistant, entry_id: str) -> Path:
+    return Path(hass.config.path(".storage", f"{DOMAIN}.{entry_id}.last_notification"))
+
+
+def saved_relay_id(hass: HomeAssistant, entry_id: str) -> str | None:
+    path = storage_path(hass, entry_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))["data"]["relay_id"]
+
+
+async def async_final_write(hass: HomeAssistant) -> None:
+    """Run pending delayed Store writes now, as Home Assistant does at stop."""
+
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+    await hass.async_block_till_done()
 
 
 async def async_setup_loaded_entry(
@@ -161,18 +202,18 @@ def test_removing_entry_deletes_saved_notification(
     hass = registry_hass
     entry = make_entry()
 
-    async def scenario(mqtt_api: FakeMqttApi) -> tuple[bool, bool]:
+    async def scenario(mqtt_api: FakeMqttApi) -> tuple[str | None, bool]:
         await async_setup_loaded_entry(hass, entry)
         mqtt_api.fire("notification", notification("saved"))
-        await asyncio.sleep(SAVE_DELAY_SECONDS + 0.3)
         await hass.async_block_till_done()
-        saved = storage_path(hass, entry).exists()
+        await async_final_write(hass)
+        saved = saved_relay_id(hass, entry.entry_id)
         await hass.config_entries.async_remove(entry.entry_id)
-        await hass.async_block_till_done()
-        return saved, storage_path(hass, entry).exists()
+        await async_final_write(hass)
+        return saved, storage_path(hass, entry.entry_id).exists()
 
     saved, left_after_remove = run_scenario(run, scenario)
-    assert saved is True
+    assert saved == "saved"
     assert left_after_remove is False
 
 
@@ -186,11 +227,11 @@ def test_removing_entry_during_pending_save_leaves_no_file(
         await async_setup_loaded_entry(hass, entry)
         mqtt_api.fire("notification", notification("pending"))
         await hass.async_block_till_done()
+        assert not storage_path(hass, entry.entry_id).exists()
         await hass.config_entries.async_remove(entry.entry_id)
-        # Let the delay of a save scheduled before removal run out.
-        await asyncio.sleep(SAVE_DELAY_SECONDS + 0.3)
-        await hass.async_block_till_done()
-        return storage_path(hass, entry).exists()
+        # A write still pending in a setup-time Store would land here.
+        await async_final_write(hass)
+        return storage_path(hass, entry.entry_id).exists()
 
     assert run_scenario(run, scenario) is False
 
@@ -210,6 +251,7 @@ def test_reload_during_pending_save_restores_newest_notification(
         restored = entry.runtime_data.latest_notification
         title_state = hass.states.get(entity_id_for(hass, Platform.SENSOR, "title"))
         assert title_state is not None
+        await hass.config_entries.async_unload(entry.entry_id)
         return (None if restored is None else restored["relay_id"]), title_state.state
 
     relay_id, title = run_scenario(run, scenario)
@@ -227,9 +269,161 @@ def test_reload_without_new_notification_does_not_write_storage(
         await async_setup_loaded_entry(hass, entry)
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
-        return storage_path(hass, entry).exists()
+        await hass.config_entries.async_unload(entry.entry_id)
+        await async_final_write(hass)
+        return storage_path(hass, entry.entry_id).exists()
 
     assert run_scenario(run, scenario) is False
+
+
+def test_failed_setup_writes_pending_notification_and_stops_runtime(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = make_entry()
+
+    async def scenario(mqtt_api: FakeMqttApi) -> tuple[Any, str | None, list[str]]:
+        hass.config.components.add("mqtt")
+
+        async def failing_forward(_entry: ConfigEntry, _platforms: Any) -> None:
+            mqtt_api.fire("notification", notification("during-setup"))
+            raise RuntimeError("platform setup failed")
+
+        with patch.object(
+            hass.config_entries, "async_forward_entry_setups", failing_forward
+        ):
+            await hass.config_entries.async_add(entry)
+            await hass.async_block_till_done()
+        return entry.state, saved_relay_id(hass, entry.entry_id), sorted(mqtt_api.subscriptions)
+
+    state, saved, subscriptions = run_scenario(run, scenario)
+    assert state is ConfigEntryState.SETUP_ERROR
+    assert saved == "during-setup"
+    assert subscriptions == []
+
+
+def test_removing_entry_after_failed_unload_stops_runtime_and_leaves_no_file(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = make_entry()
+
+    async def scenario(mqtt_api: FakeMqttApi) -> tuple[Any, list[str], bool]:
+        await async_setup_loaded_entry(hass, entry)
+        mqtt_api.fire("notification", notification("pending"))
+        await hass.async_block_till_done()
+        with patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            AsyncMock(return_value=False),
+        ):
+            result = await hass.config_entries.async_remove(entry.entry_id)
+        await hass.async_block_till_done()
+        await async_final_write(hass)
+        return result, sorted(mqtt_api.subscriptions), storage_path(hass, entry.entry_id).exists()
+
+    result, subscriptions, file_left = run_scenario(run, scenario)
+    assert result["require_restart"] is True
+    assert subscriptions == []
+    assert file_left is False
+
+
+def test_removing_disabled_entry_deletes_notification_saved_at_disable(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = make_entry()
+
+    async def scenario(mqtt_api: FakeMqttApi) -> tuple[str | None, bool]:
+        await async_setup_loaded_entry(hass, entry)
+        mqtt_api.fire("notification", notification("before-disable"))
+        await hass.async_block_till_done()
+        await hass.config_entries.async_set_disabled_by(
+            entry.entry_id, ConfigEntryDisabler.USER
+        )
+        await hass.async_block_till_done()
+        saved_at_disable = saved_relay_id(hass, entry.entry_id)
+        await hass.config_entries.async_remove(entry.entry_id)
+        await async_final_write(hass)
+        return saved_at_disable, storage_path(hass, entry.entry_id).exists()
+
+    saved_at_disable, file_left = run_scenario(run, scenario)
+    assert saved_at_disable == "before-disable"
+    assert file_left is False
+
+
+def test_source_entry_reload_and_removal(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = make_source_entry()
+
+    async def scenario(mqtt_api: FakeMqttApi) -> tuple[str | None, bool]:
+        registered = await async_register_mqtt_ancs_source(
+            hass, "ios_ancs_A1B2C3", device_name="Kitchen Relay"
+        )
+        source_id = registered.entity.entity_id
+        hass.states.async_set(source_id, "unknown")
+        await async_setup_loaded_entry(hass, entry)
+        hass.states.async_set(source_id, "relay-1", notification("relay-1"))
+        await hass.async_block_till_done()
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        restored = entry.runtime_data.latest_notification
+        hass.states.async_set(source_id, "relay-2", notification("relay-2"))
+        await hass.async_block_till_done()
+        await hass.config_entries.async_remove(entry.entry_id)
+        await async_final_write(hass)
+        return (
+            None if restored is None else restored["relay_id"],
+            storage_path(hass, entry.entry_id).exists(),
+        )
+
+    restored, file_left = run_scenario(run, scenario)
+    assert restored == "relay-1"
+    assert file_left is False
+
+
+def test_setup_removes_saved_notifications_of_deleted_entries(
+    registry_hass: HomeAssistant, run
+) -> None:
+    hass = registry_hass
+    entry = make_entry()
+    storage = Path(hass.config.path(".storage"))
+    storage.mkdir(parents=True, exist_ok=True)
+
+    def write_store(name: str, relay_id: str) -> Path:
+        path = storage / name
+        key = name
+        path.write_text(
+            json.dumps(
+                {"version": 1, "minor_version": 1, "key": key, "data": notification(relay_id)}
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    own = write_store(f"{DOMAIN}.{entry.entry_id}.last_notification", "own")
+    orphan = write_store(f"{DOMAIN}.01J0RPHANENTRY000000000000.last_notification", "orphan")
+    old_style = write_store(f"{DOMAIN}.0123456789abcdef0123456789abcdef.last_notification", "old")
+    unrelated = [
+        write_store("other_domain.01J0RPHANENTRY000000000000.last_notification", "x"),
+        write_store(f"{DOMAIN}.01J0RPHANENTRY000000000000.last_notification.bak", "x"),
+        write_store(f"{DOMAIN}.settings", "x"),
+    ]
+
+    async def scenario(mqtt_api: FakeMqttApi) -> str | None:
+        await async_setup_loaded_entry(hass, entry)
+        restored = entry.runtime_data.latest_notification
+        await hass.config_entries.async_unload(entry.entry_id)
+        return None if restored is None else restored["relay_id"]
+
+    assert run_scenario(run, scenario) == "own"
+    assert own.exists()
+    assert not orphan.exists()
+    assert not old_style.exists()
+    for path in unrelated:
+        assert path.exists(), path.name
 
 
 def test_connection_entities_skip_recording_volatile_diagnostics(
