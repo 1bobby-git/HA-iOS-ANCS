@@ -386,9 +386,15 @@ def test_setup_entry_moves_only_companion_entities_to_owned_device(
         hass.config_entries.async_forward_entry_setups = AsyncMock()
         assert run(async_setup_entry(hass, entry)) is True
 
-    companion_device = dr.async_get(hass).async_get_device_by_identifier(
-        (DOMAIN, entry.entry_id), entry.entry_id
-    )
+    device_registry = dr.async_get(hass)
+    if hasattr(device_registry, "async_get_device_by_identifier"):
+        companion_device = device_registry.async_get_device_by_identifier(
+            (DOMAIN, entry.entry_id), entry.entry_id
+        )
+    else:  # Home Assistant 2026.7-2026.8, the oldest versions in hacs.json.
+        companion_device = device_registry.async_get_device(
+            identifiers={(DOMAIN, entry.entry_id)}
+        )
     assert companion_device is not None
     assert companion_device.name == "iOS ANCS (ios_ancs_A1B2C3)"
     assert companion_device.id != registered.device.id

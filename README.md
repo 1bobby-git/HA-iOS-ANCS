@@ -102,7 +102,7 @@ HACS 통합을 추가할 때 MQTT 기본 토픽을 입력하지 않습니다. �
 
 `알림` 이벤트 엔티티와 상세 엔티티는 MQTT 장치와 분리된 별도 `iOS ANCS (...)` 장치에 등록됩니다. MQTT 장치를 `via_device`로 연결하지 않으며 같은 물리 장치를 나타내더라도 두 통합의 기기와 엔티티는 독립적으로 유지됩니다. 통합은 마지막 완전한 알림을 전용 저장소에 보관하므로 MQTT 알림이 retained가 아니어도 Home Assistant 재시작 뒤 상세 센서가 복원됩니다. 이벤트 엔티티는 새 알림만 표시하며 저장된 세부정보를 새 이벤트로 재생하지 않습니다. 기존 수동 토픽 항목은 통합의 **재구성**에서 MQTT 소스 장치를 선택하면 엔티티 ID와 기록을 보존한 채 별도 iOS ANCS 장치로 이동합니다.
 
-동반 통합은 기존 MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다. 별도 iOS ANCS 장치에 알림 이벤트, 목적별 센서 23개와 엄격한 바이너리 센서 12개, 진단용 `원본 알림` 센서를 추가합니다. 별도 `iOS ANCS (...)` 장치에는 진단용 BLE 연결 바이너리 센서도 표시됩니다. 이 상태는 Home Assistant에 이미 등록된 MQTT Discovery 장치 상태 엔티티를 통해 파생되며, MQTT 장치와 엔티티는 분리된 상태로 활성화되고 변경되지 않습니다. 이 HACS 업데이트에는 ESP32 펌웨어 재플래시가 필요하지 않습니다. 텍스트 센서 상태는 최대 255자로 제한되며 긴 값은 `full_value` 속성에, 전체 원본 JSON은 속성에 유지됩니다. 알림 제목과 내용 같은 개인정보는 Home Assistant Recorder에 기록될 수 있으므로 기록이 필요하지 않으면 해당 엔터티를 Recorder에서 제외하세요.
+동반 통합은 기존 MQTT Discovery 엔터티를 변경하거나 비활성화하지 않습니다. 별도 iOS ANCS 장치에 알림 이벤트, 목적별 센서 23개와 엄격한 바이너리 센서 12개, 진단용 `원본 알림` 센서를 추가합니다. 별도 `iOS ANCS (...)` 장치에는 진단용 BLE 연결 바이너리 센서도 표시됩니다. 이 상태는 Home Assistant에 이미 등록된 MQTT Discovery 장치 상태 엔티티를 통해 파생되며, MQTT 장치와 엔티티는 분리된 상태로 활성화되고 변경되지 않습니다. 이 HACS 업데이트에는 ESP32 펌웨어 재플래시가 필요하지 않습니다. 텍스트 센서 상태는 최대 255자로 제한되며 긴 값은 `full_value` 속성에, 전체 원본 JSON은 속성에 유지됩니다. 알림 제목과 내용 같은 개인정보는 Home Assistant Recorder에 기록될 수 있으므로 기록이 필요하지 않으면 해당 엔터티를 Recorder에서 제외하세요. 진단 엔티티 `연결 복구 상태`와 `알림 수신 준비`는 1분마다 바뀌는 가동 시간·알림 카운터·재시도 대기 시간 속성을 Recorder에 기록하지 않습니다. 현재 값은 그대로 보이며, 같은 값의 기록은 MQTT 장치 상태 엔티티에 남습니다. 상태 기록은 1분마다 짧은 한 줄씩 계속 남으므로, 이것도 원하지 않으면 두 엔티티를 Recorder에서 제외하세요.
 
 MQTT Discovery의 compact model은 `최근 알림`, `알림 제목`, `알림 내용`, `앱 이름`, `장치 상태`, `장치 재시작` 엔티티를 중심으로 구성됩니다. 상태 속성에는 `ready`, `uptime_seconds`, `ble_connected`, `wifi_ssid` 같은 진단 값이 포함됩니다.
 
@@ -136,6 +136,7 @@ homeassistant/automation_ios_ancs_baemin_delivery_tts.yaml
 - Wi-Fi password, MQTT password, TLS CA 본문은 상태 API, Discovery, retained state, 보고서에 평문으로 노출하지 않습니다.
 - 빈 secret 입력은 저장된 기존 값을 보존합니다.
 - iOS 알림 제목, 본문, 앱 이름, 앱 ID는 MQTT 브로커와 Home Assistant에 게시될 수 있으므로 broker 접근 권한을 제한하세요.
+- Home Assistant에서 iOS ANCS 통합 항목을 삭제하면 통합이 저장해 둔 마지막 알림도 함께 지웁니다. 0.6.13 이하에서 삭제한 항목의 파일은 활성화된 통합 항목이 하나라도 있으면 다음 시작 때, 또는 항목을 추가하거나 활성화할 때 지웁니다. 활성화된 항목이 없으면 `.storage/ha_ios_ancs.*.last_notification` 파일을 직접 지우세요.
 - 고정 PIN `123456`은 로컬 등록 창에서만 사용하고, 기기를 양도하기 전에는 전체 erase와 새 등록을 수행하세요.
 
 ## 개발자 참고
@@ -143,6 +144,8 @@ homeassistant/automation_ios_ancs_baemin_delivery_tts.yaml
 ```powershell
 python -m pip install -r tools/requirements.txt
 python -m pytest tools/tests -q
+# Home Assistant 테스트(requirements_test.txt)는 Python 3.14.2 이상이 필요합니다.
+python -m pip install -r requirements_test.txt
 python -m pytest tests -q
 .\tools\build.ps1 -Target esp32c6
 .\tools\flash.ps1 -Port COMx
@@ -165,9 +168,6 @@ python -m pytest tests -q
 
 `automation_ios_ancs_baemin_delivery_tts.yaml`은 iOS 앱 ID `com.jawebs.baedal`과 앱 이름 `배달의민족`이 모두 정확히 일치하는 완전한 신규 알림만 처리합니다. 제목이 `곧 도착합니다!`이면 라이더 도착 준비 안내를, `문앞으로 배달이 완료되었습니다.`이면 문앞 보관 및 빠른 수령 안내를 방송하며 쿠폰·광고 알림은 무시합니다. 이벤트 엔티티, TTS 엔티티와 스피커 엔티티를 실제 Home Assistant 값으로 교체하세요.
 
-## 통합 업데이트 0.6.10
+## 변경 이력
 
-- 초기화·첫 알림 저장·플랫폼 등록 실패 및 취소 시 런타임 구독 정리
-- 알림 이벤트·중복 방지·MQTT 토픽·엔티티 식별자는 변경하지 않음
-
-변경 내용, 검증 범위 및 롤백 방법: [최적화 문서](docs/OPTIMIZATION_2026-09-06.md). 펌웨어·브리지 앱은 변경하지 않으며, 운영 HA 설치·실기기 검증은 별도입니다.
+버전별 변경 사항, 검증 범위와 펌웨어 포함 여부는 [CHANGELOG.md](CHANGELOG.md)와 [GitHub Releases](https://github.com/1bobby-git/HA-iOS-ANCS/releases)에 있습니다.

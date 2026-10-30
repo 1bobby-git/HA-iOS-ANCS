@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from collections.abc import Callable, Coroutine
+import logging
+import os
+from pathlib import Path
+import re
+from typing import Any, NamedTuple
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.storage import Store
+from homeassistant.helpers.storage import STORAGE_DIR, Store
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.util.hass_dict import HassKey
 
 from .const import (
     CONFIG_ENTRY_VERSION,
@@ -21,22 +29,83 @@ from .const import (
 from .device import async_ensure_integration_device, entry_title
 from .runtime import AncsMqttRuntime, AncsRuntime, AncsSourceRuntime
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.EVENT]
+_LOGGER = logging.getLogger(__name__)
 _STORAGE_VERSION = 1
 _STORAGE_SAVE_DELAY_SECONDS = 2.0
+_STORE_FILE_PATTERN = re.compile(
+    rf"^{re.escape(DOMAIN)}\.([0-9A-Za-z]+)\.last_notification$"
+)
+
+
+class _EntryNotificationStore(NamedTuple):
+    """The Store a set-up entry writes through and its unload flush."""
+
+    store: Store[dict[str, Any]]
+    flush: Callable[[], Coroutine[Any, Any, None]]
+
+
+# Removal after a failed unload must finish this instance's pending or
+# in-progress write before deleting the file.
+_ENTRY_STORES: HassKey[dict[str, _EntryNotificationStore]] = HassKey(
+    f"{DOMAIN}_notification_stores"
+)
 
 
 def _notification_store(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant, entry_id: str
 ) -> Store[dict[str, Any]]:
     """Return the per-entry last-notification store."""
 
     return Store(
         hass,
         _STORAGE_VERSION,
-        f"{DOMAIN}.{entry.entry_id}.last_notification",
+        f"{DOMAIN}.{entry_id}.last_notification",
         private=True,
     )
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Delete saved notifications of entries removed before 0.6.14."""
+
+    await _async_remove_orphaned_notifications(hass)
+    return True
+
+
+async def _async_remove_orphaned_notifications(hass: HomeAssistant) -> None:
+    """Remove last-notification files whose config entry no longer exists."""
+
+    current = {
+        entry.entry_id
+        for entry in hass.config_entries.async_entries(
+            DOMAIN, include_ignore=True, include_disabled=True
+        )
+    }
+    storage_dir = Path(hass.config.path(STORAGE_DIR))
+
+    def find_orphans() -> list[str]:
+        try:
+            names = os.listdir(storage_dir)
+        except OSError:
+            return []
+        return [
+            match.group(1)
+            for name in names
+            if (match := _STORE_FILE_PATTERN.match(name))
+            and match.group(1) not in current
+        ]
+
+    for entry_id in await hass.async_add_executor_job(find_orphans):
+        try:
+            await _notification_store(hass, entry_id).async_remove()
+        except OSError as err:  # Best-effort cleanup must not block setup.
+            _LOGGER.warning(
+                "Could not delete saved notification %s.%s.last_notification: %s",
+                DOMAIN,
+                entry_id,
+                err,
+            )
 
 
 async def async_migrate_entry(
@@ -86,21 +155,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up iOS ANCS from a config entry."""
 
     async_ensure_integration_device(hass, entry)
-    store = _notification_store(hass, entry)
+    store = _notification_store(hass, entry.entry_id)
     stored_notification = await store.async_load()
     runtime = _runtime_from_entry(hass, entry)
 
     restored_notification = runtime.restore_notification(stored_notification)
+    latest_snapshot: dict[str, Any] | None = None
+    entry_stores = hass.data.setdefault(_ENTRY_STORES, {})
 
     def persist_notification(notification: dict[str, Any]) -> None:
         """Persist accepted details without delaying entity updates."""
 
+        nonlocal latest_snapshot
         snapshot = dict(notification)
+        latest_snapshot = snapshot
         store.async_delay_save(
             lambda: snapshot,
             _STORAGE_SAVE_DELAY_SECONDS,
         )
 
+    async def async_flush_notification() -> None:
+        """Write a still-delayed save before reload or removal continues."""
+
+        try:
+            # async_save waits for a write in progress and cancels this Store's
+            # pending delayed and final writes, so a removed entry's file is not
+            # recreated and a reload restores the newest notification.
+            if latest_snapshot is not None:
+                await store.async_save(latest_snapshot)
+        finally:
+            # Keep the registration until the write is done, so a removal that
+            # starts while this flush is still writing waits for it as well.
+            registered = entry_stores.get(entry.entry_id)
+            if registered is not None and registered.store is store:
+                del entry_stores[entry.entry_id]
+
+    entry_stores[entry.entry_id] = _EntryNotificationStore(
+        store, async_flush_notification
+    )
+    entry.async_on_unload(async_flush_notification)
     runtime.async_add_notification_listener(
         persist_notification,
         replay_pending=False,
@@ -141,3 +234,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await runtime.async_stop()
     entry.runtime_data = None
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the saved last notification when the entry is deleted."""
+
+    # A normal unload already stopped the runtime and flushed its Store. After
+    # a failed unload both are still live: stop the runtime so it cannot
+    # schedule another save, then finish the setup Store's pending or
+    # in-progress write through its flush before deleting the file.
+    if (runtime := getattr(entry, "runtime_data", None)) is not None:
+        await runtime.async_stop()
+        entry.runtime_data = None
+    if (registered := hass.data.get(_ENTRY_STORES, {}).pop(entry.entry_id, None)) is not None:
+        await registered.flush()
+        store = registered.store
+    else:
+        store = _notification_store(hass, entry.entry_id)
+    await store.async_remove()
