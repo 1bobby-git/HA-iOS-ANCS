@@ -12,6 +12,7 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "platform_identity.h"
+#include "provision_policy.h"
 
 #define PORTAL_HTTP_MAX_POST_BODY 8192
 #define PORTAL_HTTP_JSON_TYPE "application/json"
@@ -619,6 +620,12 @@ static esp_err_t handle_config_post(httpd_req_t *req)
     cJSON_Delete(json);
 
     if (provision_store_load(existing) == ESP_OK) {
+        if (provision_config_mqtt_password_required(existing, update)) {
+            /* Never send the stored password to a different broker. */
+            free(update);
+            free(existing);
+            return send_error_json(req, "400 Bad Request", "mqtt_password_required");
+        }
         err = provision_config_merge_preserving_secrets(existing, update, update);
     } else {
         err = provision_config_validate(update) == PROVISION_CONFIG_OK ? ESP_OK

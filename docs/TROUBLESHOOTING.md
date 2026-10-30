@@ -35,10 +35,10 @@ The portal stores Wi-Fi and MQTT settings only. It does not store Home Assistant
 
 - Check Wi-Fi SSID and password exactly as entered.
 - Check MQTT host, port, username, password, TLS mode, CA certificate, broker ACL, and duplicate Client ID.
-- Empty secret fields preserve existing stored values.
+- Empty secret fields preserve existing stored values, except that a changed MQTT host or port needs the MQTT password again.
 - TLS mode requires a CA certificate.
 
-The setup AP should remain available while Wi-Fi or MQTT is unhealthy so settings can be corrected.
+The setup AP opens while Wi-Fi is unhealthy (after 45 seconds) and while MQTT settings that never connected keep failing, so settings can be corrected. MQTT settings that connected before are kept: while the broker is down or restarting, the relay only retries (after 5, 15 and 30 seconds, then every 60 seconds) and does not open the setup AP. If the broker keeps refusing those settings for more than 10 minutes, the setup AP opens. To change a working broker address, hold BOOT for 3 seconds.
 
 ## Home Assistant Entities Are Missing
 

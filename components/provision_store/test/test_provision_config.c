@@ -2,6 +2,7 @@
 
 #include "esp_err.h"
 #include "nvs.h"
+#include "provision_policy.h"
 #include "provision_store.h"
 #include "provision_store_test.h"
 #include "unity.h"
@@ -80,6 +81,49 @@ void test_blank_secret_fields_preserve_existing_values(void)
     TEST_ASSERT_EQUAL_STRING("new-ssid", merged.wifi_ssid);
     TEST_ASSERT_EQUAL_STRING("old-secret", merged.wifi_password);
     TEST_ASSERT_EQUAL_STRING("old-mqtt-secret", merged.mqtt_password);
+}
+
+void test_new_mqtt_server_never_receives_the_stored_password(void)
+{
+    provision_config_t existing = valid_config();
+    strcpy(existing.mqtt_password, "old-mqtt-secret");
+
+    provision_config_t update = valid_config();
+    strcpy(update.mqtt_host, "other.example");
+    update.mqtt_password[0] = '\0';
+    TEST_ASSERT_TRUE(provision_config_mqtt_password_required(&existing, &update));
+
+    update.mqtt_username[0] = '\0';
+    TEST_ASSERT_FALSE(provision_config_mqtt_password_required(&existing, &update));
+    provision_config_t merged = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, provision_config_merge_preserving_secrets(&existing, &update, &merged));
+    TEST_ASSERT_EQUAL_STRING("", merged.mqtt_password);
+
+    update = valid_config();
+    update.mqtt_password[0] = '\0';
+    TEST_ASSERT_FALSE(provision_config_mqtt_password_required(&existing, &update));
+}
+
+void test_mqtt_verified_marker_follows_the_settings(void)
+{
+    provision_store_test_reset_backend_state();
+    provision_config_t config = valid_config();
+    uint32_t marker = 1;
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_NOT_FOUND, provision_store_load_mqtt_verified(&marker));
+    TEST_ASSERT_EQUAL_UINT32(0, marker);
+
+    const uint32_t fingerprint = provision_config_mqtt_fingerprint(&config);
+    TEST_ASSERT_EQUAL(ESP_OK, provision_store_save_mqtt_verified(fingerprint));
+    TEST_ASSERT_EQUAL(ESP_OK, provision_store_load_mqtt_verified(&marker));
+    TEST_ASSERT_EQUAL_UINT32(fingerprint, marker);
+
+    strcpy(config.wifi_ssid, "other");
+    TEST_ASSERT_EQUAL_UINT32(fingerprint, provision_config_mqtt_fingerprint(&config));
+    config.mqtt_port = 8883;
+    TEST_ASSERT_NOT_EQUAL(fingerprint, provision_config_mqtt_fingerprint(&config));
+
+    TEST_ASSERT_EQUAL(ESP_OK, provision_store_reset());
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_NOT_FOUND, provision_store_load_mqtt_verified(&marker));
 }
 
 void test_provision_store_decode_rejects_corrupt_crc(void)
@@ -315,6 +359,16 @@ TEST_CASE("provision config requires mqtt client id and base topic", "[provision
 TEST_CASE("provision config blank secret fields preserve existing values", "[provision_store]")
 {
     test_blank_secret_fields_preserve_existing_values();
+}
+
+TEST_CASE("provision config never sends stored mqtt password to a new server", "[provision_store]")
+{
+    test_new_mqtt_server_never_receives_the_stored_password();
+}
+
+TEST_CASE("provision store mqtt verified marker follows the settings", "[provision_store]")
+{
+    test_mqtt_verified_marker_follows_the_settings();
 }
 
 TEST_CASE("provision store decode rejects corrupt crc", "[provision_store]")

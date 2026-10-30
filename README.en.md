@@ -36,11 +36,13 @@ The project bridges iOS notifications into local Home Assistant automations thro
 
 Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
-## Supported Boards And v0.3.9 Build Facts
+From firmware 0.4.0 the relay remembers MQTT settings once they have connected. If the broker then stops, restarts, or becomes unreachable, the relay does not open the setup AP; it reconnects after 5, 15 and 30 seconds and then every 60 seconds. The setup AP opens only if the broker keeps refusing the saved username and password for more than 10 minutes. Settings that never connected (first setup, a typo) still open the setup AP when the connection fails. To move a working relay to a different broker address, hold BOOT for 3 seconds to open the setup portal; changing the MQTT host or port also requires entering the MQTT password again.
 
-The shared firmware uses a 4 MB minimum flash layout. All v0.3.9 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+## Supported Boards And v0.4.0 Build Facts
 
-| Target | Typical module/board | Factory image | v0.3.9 status |
+The shared firmware uses a 4 MB minimum flash layout. All v0.4.0 images shown in the installer are compile, link, partition, and merged-image verified. ESP32-S2 is excluded because it has no BLE. ESP32-H2 is excluded because it has no Wi-Fi, and ESP32-P4 has no integrated Wi-Fi/BLE radio.
+
+| Target | Typical module/board | Factory image | v0.4.0 status |
 | --- | --- | ---: | --- |
 | `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,450,048 bytes | Build verified; this version not hardware validated |
 | `esp32c2` | ESP32-C2 | 1,472,176 bytes | Build verified; this version not hardware validated |
@@ -50,7 +52,7 @@ The shared firmware uses a 4 MB minimum flash layout. All v0.3.9 images shown in
 | `esp32c61` | ESP32-C61 | 1,749,472 bytes | Build verified; this version not hardware validated |
 | `esp32s3` | ESP32-S3 | 1,432,592 bytes | Build verified; this version not hardware validated |
 
-The table describes the published v0.3.9 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
+The table describes the published v0.4.0 images. Build verification, physical flashing, BLE enrollment, and live iPhone notification capture are separate validation scopes; boards without physical-device evidence are labeled as build verified only.
 
 ## Home Assistant And HACS
 
@@ -106,7 +108,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 
 - The firmware does not use an iOS app, Apple account credentials, or iCloud credentials.
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
-- Empty secret fields preserve already stored values.
+- Empty secret fields preserve already stored values, except that changing the MQTT host or port never sends the stored MQTT password to the new server; enter it again.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
 - Deleting the iOS ANCS integration entry in Home Assistant also deletes the last notification the integration saved. Files left by entries deleted with 0.6.13 or earlier are deleted at the next start while at least one enabled iOS ANCS entry exists, or when you add or enable one; without an enabled entry, delete the `.storage/ha_ios_ancs.*.last_notification` files yourself.
 - Pairing uses the fixed PIN `123456` shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.

@@ -58,15 +58,17 @@ BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저�
 
 설정 AP와 `http://192.168.4.1` 포털은 Wi-Fi와 MQTT 설정만 저장합니다. `IOS-ANCS-SETUP-XXXXXX`의 `XXXXXX`는 기본 Wi-Fi MAC 주소의 마지막 6자리이며, SSID에는 대문자, `ancs-xxxxxx` 또는 일반 형식 `ancs-<lowercase_suffix>` 비밀번호에는 소문자를 사용합니다. Home Assistant 장치는 MQTT Discovery로 생성됩니다.
 
+펌웨어 0.4.0부터 MQTT 서버에 한 번 연결된 설정은 기억해 둡니다. 그 뒤 브로커가 꺼지거나 재시작하거나 네트워크가 끊기면 설정 AP를 열지 않고 5초, 15초, 30초, 이후 60초 간격으로 계속 다시 연결합니다. 브로커가 저장된 아이디와 비밀번호를 10분 넘게 계속 거부할 때만 설정을 고칠 수 있도록 설정 AP를 엽니다. 한 번도 연결된 적이 없는 설정(첫 설치, 오타)은 지금처럼 연결에 실패하면 설정 AP가 열립니다. 잘 쓰던 MQTT 서버 주소를 바꿔야 하면 BOOT 버튼을 3초 눌러 설정 포털을 여세요. 서버 주소나 포트를 바꿀 때는 MQTT 비밀번호도 다시 입력해야 합니다.
+
 ## iPhone 등록
 
 설정 포털의 **iPhone 기기 등록** 버튼, Home Assistant의 **iPhone 등록 시작** 버튼 또는 BOOT 버튼 3초 누르기로 120초 등록 창을 엽니다. 설정 포털에 표시되는 고정 PIN `123456`를 iOS Bluetooth 설정에 입력하고 알림 공유를 허용합니다. 저장된 기존 iPhone 페어링 정보가 있으면 같은 동작은 기존 iPhone 재연결만 요청합니다.
 
-## 지원 보드와 v0.3.9 빌드 사실
+## 지원 보드와 v0.4.0 빌드 사실
 
 공통 펌웨어는 최소 4 MB 플래시 레이아웃을 사용합니다. ESP32-S2는 BLE가 없고, ESP32-H2는 Wi-Fi가 없으며, ESP32-P4는 내장 Wi-Fi/BLE 라디오가 없어 제외됩니다.
 
-| Target | 일반 모듈/보드 | Factory 이미지 | v0.3.9 상태 |
+| Target | 일반 모듈/보드 | Factory 이미지 | v0.4.0 상태 |
 | --- | --- | ---: | --- |
 | `esp32` | ESP32-WROOM-32 / WROOM-D32 | 1,450,048 bytes | 빌드 검증 · 이 버전 실기기 미검증 |
 | `esp32c2` | ESP32-C2 | 1,472,176 bytes | 빌드 검증 · 이 버전 실기기 미검증 |
@@ -76,7 +78,7 @@ BOOT 버튼을 3초 눌러 설정 AP 또는 iPhone 등록 창을 엽니다. 저�
 | `esp32c61` | ESP32-C61 | 1,749,472 bytes | 빌드 검증 · 이 버전 실기기 미검증 |
 | `esp32s3` | ESP32-S3 | 1,432,592 bytes | 빌드 검증 · 이 버전 실기기 미검증 |
 
-표의 상태는 공개된 v0.3.9 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
+표의 상태는 공개된 v0.4.0 이미지 기준입니다. 빌드 검증, 실제 보드 플래시, BLE 등록, iPhone 알림 수신은 서로 다른 검증 범위이며 보드별 실기기 결과가 없는 항목은 빌드 검증으로만 표시합니다.
 
 ## Home Assistant와 HACS
 
@@ -134,7 +136,7 @@ homeassistant/automation_ios_ancs_baemin_delivery_tts.yaml
 
 - iOS 앱, Apple 계정, iCloud credential을 사용하지 않습니다.
 - Wi-Fi password, MQTT password, TLS CA 본문은 상태 API, Discovery, retained state, 보고서에 평문으로 노출하지 않습니다.
-- 빈 secret 입력은 저장된 기존 값을 보존합니다.
+- 빈 secret 입력은 저장된 기존 값을 보존합니다. 단, MQTT 서버 주소나 포트를 바꾸면 저장된 MQTT 비밀번호를 새 서버로 보내지 않으므로 다시 입력해야 합니다.
 - iOS 알림 제목, 본문, 앱 이름, 앱 ID는 MQTT 브로커와 Home Assistant에 게시될 수 있으므로 broker 접근 권한을 제한하세요.
 - Home Assistant에서 iOS ANCS 통합 항목을 삭제하면 통합이 저장해 둔 마지막 알림도 함께 지웁니다. 0.6.13 이하에서 삭제한 항목의 파일은 활성화된 통합 항목이 하나라도 있으면 다음 시작 때, 또는 항목을 추가하거나 활성화할 때 지웁니다. 활성화된 항목이 없으면 `.storage/ha_ios_ancs.*.last_notification` 파일을 직접 지우세요.
 - 고정 PIN `123456`은 로컬 등록 창에서만 사용하고, 기기를 양도하기 전에는 전체 erase와 새 등록을 수행하세요.

@@ -10,6 +10,22 @@ static void reconcile_requirements(provisioning_state_t *state)
                          state->recovery_window;
 }
 
+static bool mqtt_rejection_established(const provisioning_state_t *state,
+                                       uint64_t now_ms)
+{
+    return state->mqtt_rejecting &&
+           now_ms >= state->mqtt_rejected_since_ms &&
+           now_ms - state->mqtt_rejected_since_ms >=
+               PROVISION_MQTT_REJECTED_RECOVERY_MS;
+}
+
+static void forget_mqtt_settings(provisioning_state_t *state)
+{
+    state->mqtt_settings_verified = false;
+    state->mqtt_rejecting = false;
+    state->mqtt_rejected_since_ms = 0;
+}
+
 provisioning_state_t provisioning_initial(void)
 {
     provisioning_state_t state;
@@ -29,6 +45,7 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
         current.recovery_required = false;
         current.recovery_window = false;
         current.recovery_deadline_ms = 0;
+        forget_mqtt_settings(&current);
         break;
 
     case PROVISION_EVENT_BOOT_VALID_CONFIG:
@@ -38,6 +55,7 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
         current.recovery_required = false;
         current.recovery_window = false;
         current.recovery_deadline_ms = 0;
+        forget_mqtt_settings(&current);
         break;
 
     case PROVISION_EVENT_WIFI_CONNECTED:
@@ -59,12 +77,43 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
         current.mqtt_connected = current.wifi_connected;
         if (current.mqtt_connected) {
             current.recovery_required = false;
+            current.mqtt_settings_verified = true;
+            current.mqtt_rejecting = false;
+            current.mqtt_rejected_since_ms = 0;
         }
         break;
 
     case PROVISION_EVENT_MQTT_FAILED:
         current.mqtt_connected = false;
-        current.recovery_required = true;
+        if (!current.mqtt_settings_verified) {
+            /* Settings that never connected may be a typo: let the user fix them. */
+            current.recovery_required = true;
+        } else if (current.wifi_connected) {
+            /* Proven settings over working Wi-Fi: the broker side is down. Keep
+             * retrying without the AP unless a refusal is already established. */
+            current.recovery_required =
+                mqtt_rejection_established(&current, now_ms);
+        }
+        break;
+
+    case PROVISION_EVENT_MQTT_REJECTED:
+        current.mqtt_connected = false;
+        if (!current.mqtt_settings_verified) {
+            current.recovery_required = true;
+            break;
+        }
+        if (!current.mqtt_rejecting) {
+            current.mqtt_rejecting = true;
+            current.mqtt_rejected_since_ms = now_ms;
+        }
+        if (current.wifi_connected) {
+            current.recovery_required =
+                mqtt_rejection_established(&current, now_ms);
+        }
+        break;
+
+    case PROVISION_EVENT_MQTT_SETTINGS_VERIFIED:
+        current.mqtt_settings_verified = current.valid_config;
         break;
 
     case PROVISION_EVENT_BOND_PRESENT:

@@ -1,0 +1,92 @@
+name: Firmware
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "components/**"
+      - "main/**"
+      - "test/**"
+      - "test_app/**"
+      - "CMakeLists.txt"
+      - "partitions.csv"
+      - "sdkconfig.defaults*"
+      - "dependencies.lock"
+      - "tools/build.sh"
+      - "tools/package_firmware.py"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "components/**"
+      - "main/**"
+      - "test/**"
+      - "test_app/**"
+      - "CMakeLists.txt"
+      - "partitions.csv"
+      - "sdkconfig.defaults*"
+      - "dependencies.lock"
+      - "tools/build.sh"
+      - "tools/package_firmware.py"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: espressif/idf:v6.0.2
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32, esp32c2, esp32c3, esp32c5, esp32c6, esp32c61, esp32s3]
+    steps:
+      - name: Check out the source commit
+        uses: actions/checkout@v4
+        with:
+          # Pull requests build their head commit instead of the temporary
+          # merge commit, so the package metadata names a commit in history.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build firmware
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -o pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash tools/build.sh 2>&1 | tee "build-${TARGET}.log"
+      - name: Package and fingerprint images
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh" > /dev/null
+          python tools/package_firmware.py --target "$TARGET" --build-dir "build-${TARGET}" --output "artifacts/${TARGET}"
+      - name: Build on-device unit tests
+        if: matrix.target == 'esp32c6'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh" > /dev/null
+          # test_app reuses managed_components fetched by the firmware build.
+          idf.py -C test_app -B test_app/build build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.target }}
+          path: artifacts/${{ matrix.target }}
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firmware-build-log-${{ matrix.target }}
+          path: build-${{ matrix.target }}.log
+          retention-days: 7
