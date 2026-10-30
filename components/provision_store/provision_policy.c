@@ -72,12 +72,17 @@ bool provision_config_mqtt_server_changed(const provision_config_t *existing,
                    sizeof(existing->mqtt_host)) != 0;
 }
 
-bool provision_config_mqtt_password_required(const provision_config_t *existing,
-                                             const provision_config_t *update)
+provision_mqtt_password_rule_t provision_config_mqtt_password_rule(
+    const provision_config_t *existing,
+    const provision_config_t *update,
+    bool existing_verified)
 {
-    return existing != NULL && update != NULL &&
-           existing->mqtt_password[0] != '\0' &&
-           update->mqtt_password[0] == '\0' &&
-           update->mqtt_username[0] != '\0' &&
-           provision_config_mqtt_server_changed(existing, update);
+    if (existing == NULL || update == NULL || !existing_verified ||
+        update->mqtt_password[0] != '\0' ||
+        existing->mqtt_password[0] == '\0' ||
+        !provision_config_mqtt_server_changed(existing, update)) {
+        return PROVISION_MQTT_PASSWORD_KEEP;
+    }
+    return update->mqtt_username[0] != '\0' ? PROVISION_MQTT_PASSWORD_REQUIRED
+                                            : PROVISION_MQTT_PASSWORD_DROP;
 }

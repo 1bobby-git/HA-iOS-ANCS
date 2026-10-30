@@ -796,6 +796,11 @@ static void handle_provisioning_event(provisioning_event_t event,
     }
 
     provisioning_state_t state = reduce_app_state(event);
+    if (event == PROVISION_EVENT_BOOT_VALID_CONFIG &&
+        stored_mqtt_settings_verified()) {
+        /* Saved settings that connected before keep the retry-only rule. */
+        state = reduce_app_state(PROVISION_EVENT_MQTT_SETTINGS_VERIFIED);
+    }
 
     switch (event) {
     case PROVISION_EVENT_BOOT_NO_CONFIG:
@@ -1227,11 +1232,6 @@ void app_main(void)
             app_state_lock();
             s_app.active_sta_attempt_generation = runtime.sta_attempt_generation;
             app_state_unlock();
-        }
-        if (stored_mqtt_settings_verified()) {
-            /* Queued after BOOT_VALID_CONFIG: these settings connected before,
-             * so a broker outage after this boot only retries. */
-            app_post_provisioning(PROVISION_EVENT_MQTT_SETTINGS_VERIFIED, 0);
         }
     }
 

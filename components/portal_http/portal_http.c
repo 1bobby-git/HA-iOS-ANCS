@@ -586,6 +586,14 @@ static esp_err_t handle_wifi_scan_get(httpd_req_t *req)
     return err;
 }
 
+static bool stored_mqtt_settings_verified(const provision_config_t *existing)
+{
+    uint32_t marker = 0;
+    return provision_store_load_mqtt_verified(&marker) == ESP_OK &&
+           marker != 0U &&
+           marker == provision_config_mqtt_fingerprint(existing);
+}
+
 static esp_err_t handle_config_post(httpd_req_t *req)
 {
     esp_err_t guard_err = require_ap_local_request(req);
@@ -620,13 +628,20 @@ static esp_err_t handle_config_post(httpd_req_t *req)
     cJSON_Delete(json);
 
     if (provision_store_load(existing) == ESP_OK) {
-        if (provision_config_mqtt_password_required(existing, update)) {
-            /* Never send the stored password to a different broker. */
+        const provision_mqtt_password_rule_t password_rule =
+            provision_config_mqtt_password_rule(
+                existing, update, stored_mqtt_settings_verified(existing));
+        if (password_rule == PROVISION_MQTT_PASSWORD_REQUIRED) {
+            /* Working settings never send their password to another address. */
             free(update);
             free(existing);
             return send_error_json(req, "400 Bad Request", "mqtt_password_required");
         }
         err = provision_config_merge_preserving_secrets(existing, update, update);
+        if (err == ESP_OK && password_rule == PROVISION_MQTT_PASSWORD_DROP) {
+            /* A new broker without a username gets no stored password. */
+            memset(update->mqtt_password, 0, sizeof(update->mqtt_password));
+        }
     } else {
         err = provision_config_validate(update) == PROVISION_CONFIG_OK ? ESP_OK
                                                                        : ESP_ERR_INVALID_ARG;

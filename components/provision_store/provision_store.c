@@ -6,7 +6,6 @@
 #include "esp_check.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "provision_policy.h"
 #include "sdkconfig.h"
 
 #define PROVISION_PARTITION "provision"
@@ -150,9 +149,7 @@ esp_err_t provision_config_merge_preserving_secrets(
     if (out->wifi_password[0] == '\0') {
         strlcpy(out->wifi_password, existing->wifi_password, sizeof(out->wifi_password));
     }
-    /* A stored MQTT password is only reused for the broker it was saved for. */
-    if (out->mqtt_password[0] == '\0' &&
-        !provision_config_mqtt_server_changed(existing, out)) {
+    if (out->mqtt_password[0] == '\0') {
         strlcpy(out->mqtt_password, existing->mqtt_password, sizeof(out->mqtt_password));
     }
     if (out->mqtt_ca[0] == '\0' && existing->mqtt_ca[0] != '\0') {

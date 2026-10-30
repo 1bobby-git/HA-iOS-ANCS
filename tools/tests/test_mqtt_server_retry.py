@@ -78,27 +78,63 @@ int main(void)
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, 2);
     assert(s.mqtt_settings_verified && !s.ap_required);
 
-    /* A broker refusing proven settings opens the AP after 10 minutes. */
+    /* Continuous refusals of proven settings open the AP after 10 minutes.
+     * Each refused attempt is a refusal plus the disconnect that ends it. */
     s = verified_online(1);
     const uint64_t start = 5 * MINUTE_MS;
-    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, start);
-    assert(!s.ap_required && s.mqtt_rejecting);
-    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, start + 3 * MINUTE_MS);
-    assert(!s.ap_required && s.mqtt_rejecting);
-    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED,
-                            start + PROVISION_MQTT_REJECTED_RECOVERY_MS - 1);
-    assert(!s.ap_required);
+    for (uint64_t t = start; t < start + PROVISION_MQTT_REJECTED_RECOVERY_MS;
+         t += MINUTE_MS) {
+        s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, t);
+        s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, t + 5);
+        assert(!s.ap_required && s.mqtt_rejecting);
+    }
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED,
                             start + PROVISION_MQTT_REJECTED_RECOVERY_MS);
+    assert(s.ap_required && s.mqtt_refusal_recovery);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED,
+                            start + PROVISION_MQTT_REJECTED_RECOVERY_MS + 5);
     assert(s.ap_required);
-    /* Once refusal is established, later outages keep the AP open. */
+    /* Once ten minutes of refusals opened it, a later outage keeps it open. */
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED,
                             start + PROVISION_MQTT_REJECTED_RECOVERY_MS + MINUTE_MS);
     assert(s.ap_required);
-    /* A successful connection closes it and restarts the 10-minute rule. */
+    /* A successful connection closes it and restarts the rule. */
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_CONNECTED, start + 20 * MINUTE_MS);
-    assert(!s.ap_required && !s.mqtt_rejecting);
-    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, start + 21 * MINUTE_MS);
+    assert(!s.ap_required && !s.mqtt_rejecting && !s.mqtt_refusal_recovery);
+
+    /* One refusal followed by a plain outage never opens the AP. */
+    s = verified_online(1);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, MINUTE_MS);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, MINUTE_MS + 5);
+    for (uint64_t t = 2 * MINUTE_MS; t <= 30 * MINUTE_MS; t += MINUTE_MS) {
+        s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, t);
+        assert(!s.ap_required);
+    }
+    assert(!s.mqtt_rejecting);
+
+    /* An outage between refusals restarts the ten minutes. */
+    s = verified_online(1);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, 2);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, 7);
+    for (uint64_t t = MINUTE_MS; t <= 8 * MINUTE_MS; t += MINUTE_MS) {
+        s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, t);
+    }
+    for (uint64_t t = 9 * MINUTE_MS; t < 19 * MINUTE_MS; t += MINUTE_MS) {
+        s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, t);
+        s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, t + 5);
+        assert(!s.ap_required);
+    }
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, 19 * MINUTE_MS);
+    assert(s.ap_required);
+
+    /* A refusal before a Wi-Fi outage does not hold the AP open afterwards. */
+    s = verified_online(1);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, MINUTE_MS);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, MINUTE_MS + 5);
+    s = provisioning_reduce(s, PROVISION_EVENT_WIFI_TIMEOUT, 2 * MINUTE_MS);
+    assert(s.ap_required);
+    s = provisioning_reduce(s, PROVISION_EVENT_WIFI_CONNECTED, 15 * MINUTE_MS);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, 15 * MINUTE_MS);
     assert(!s.ap_required);
 
     /* A refusal at uptime 0 still starts the timer. */
@@ -107,6 +143,7 @@ int main(void)
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_SETTINGS_VERIFIED, 0);
     s = provisioning_reduce(s, PROVISION_EVENT_WIFI_CONNECTED, 0);
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED, 0);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, 5);
     assert(!s.ap_required && s.mqtt_rejecting);
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_REJECTED,
                             PROVISION_MQTT_REJECTED_RECOVERY_MS);
@@ -122,6 +159,18 @@ int main(void)
     s = provisioning_reduce(s, PROVISION_EVENT_WIFI_CONNECTED, 4);
     s = provisioning_reduce(s, PROVISION_EVENT_MQTT_FAILED, 5);
     assert(!s.ap_required);
+
+    /* Boot events in either order on the coordinator end verified: the
+     * coordinator re-applies the stored marker after BOOT_VALID_CONFIG. */
+    s = provisioning_reduce(
+        provisioning_initial(), PROVISION_EVENT_BOOT_VALID_CONFIG, 0);
+    assert(!s.mqtt_settings_verified);
+    s = provisioning_reduce(s, PROVISION_EVENT_MQTT_SETTINGS_VERIFIED, 0);
+    assert(s.mqtt_settings_verified);
+    s = provisioning_reduce(
+        provisioning_initial(), PROVISION_EVENT_MQTT_SETTINGS_VERIFIED, 0);
+    assert(!s.mqtt_settings_verified); /* No valid config yet: ignored. */
+    s = verified_online(1);
 
     /* BOOT 3 s and the post-save verification window still open it. */
     s = provisioning_reduce(s, PROVISION_EVENT_BOOT_HELD_3S, 10);
@@ -319,33 +368,43 @@ int main(void)
     provision_config_t update = base();
     update.mqtt_password[0] = '\0';
     assert(!provision_config_mqtt_server_changed(&stored, &update));
-    assert(!provision_config_mqtt_password_required(&stored, &update));
+    assert(provision_config_mqtt_password_rule(&stored, &update, true) ==
+           PROVISION_MQTT_PASSWORD_KEEP);
 
-    /* New host or port with a username: the password must be typed again. */
+    /* Proven settings, new host or port, username set: type it again. */
     strcpy(update.mqtt_host, "attacker.example");
     assert(provision_config_mqtt_server_changed(&stored, &update));
-    assert(provision_config_mqtt_password_required(&stored, &update));
+    assert(provision_config_mqtt_password_rule(&stored, &update, true) ==
+           PROVISION_MQTT_PASSWORD_REQUIRED);
+    /* Settings that never connected keep the first-install shortcut. */
+    assert(provision_config_mqtt_password_rule(&stored, &update, false) ==
+           PROVISION_MQTT_PASSWORD_KEEP);
     update = base();
     update.mqtt_password[0] = '\0';
     update.mqtt_port = 1884;
-    assert(provision_config_mqtt_password_required(&stored, &update));
+    assert(provision_config_mqtt_password_rule(&stored, &update, true) ==
+           PROVISION_MQTT_PASSWORD_REQUIRED);
 
     /* Typed password, anonymous broker, nothing stored, first install. */
     update = base();
     strcpy(update.mqtt_host, "new.local");
-    assert(!provision_config_mqtt_password_required(&stored, &update));
+    assert(provision_config_mqtt_password_rule(&stored, &update, true) ==
+           PROVISION_MQTT_PASSWORD_KEEP);
     update.mqtt_password[0] = '\0';
     update.mqtt_username[0] = '\0';
-    assert(!provision_config_mqtt_password_required(&stored, &update));
+    assert(provision_config_mqtt_password_rule(&stored, &update, true) ==
+           PROVISION_MQTT_PASSWORD_DROP);
     provision_config_t no_secret = base();
     no_secret.mqtt_password[0] = '\0';
     update = base();
     strcpy(update.mqtt_host, "new.local");
     update.mqtt_password[0] = '\0';
-    assert(!provision_config_mqtt_password_required(&no_secret, &update));
-    assert(!provision_config_mqtt_password_required(NULL, &update));
+    assert(provision_config_mqtt_password_rule(&no_secret, &update, true) ==
+           PROVISION_MQTT_PASSWORD_KEEP);
+    assert(provision_config_mqtt_password_rule(NULL, &update, true) ==
+           PROVISION_MQTT_PASSWORD_KEEP);
 
-    /* Merge keeps secrets for the same server only. */
+    /* The merge itself is unchanged: blank fields keep stored secrets. */
     provision_config_t merged;
     memset(&merged, 0, sizeof(merged));
     update = base();
@@ -354,24 +413,11 @@ int main(void)
     assert(provision_config_merge_preserving_secrets(&stored, &update, &merged) == ESP_OK);
     assert(strcmp(merged.mqtt_password, "mqtt-secret") == 0);
     assert(strcmp(merged.wifi_password, "wifi-secret") == 0);
-
     update = base();
     strcpy(update.mqtt_host, "new.local");
-    update.mqtt_username[0] = '\0';
-    update.mqtt_password[0] = '\0';
-    update.wifi_password[0] = '\0';
-    memset(&merged, 0, sizeof(merged));
-    assert(provision_config_merge_preserving_secrets(&stored, &update, &merged) == ESP_OK);
-    assert(merged.mqtt_password[0] == '\0');
-    assert(strcmp(merged.wifi_password, "wifi-secret") == 0);
-
-    /* In place, as the portal calls it. */
-    update = base();
-    update.mqtt_port = 8883;
-    update.mqtt_username[0] = '\0';
     update.mqtt_password[0] = '\0';
     assert(provision_config_merge_preserving_secrets(&stored, &update, &update) == ESP_OK);
-    assert(update.mqtt_password[0] == '\0');
+    assert(strcmp(update.mqtt_password, "mqtt-secret") == 0);
 
     /* The verified marker round-trips and is erased with the settings. */
     uint32_t marker = 1;
@@ -440,10 +486,19 @@ def test_coordinator_classifies_mqtt_failures_and_remembers_proven_settings():
 def test_stored_marker_is_applied_at_boot_and_after_a_settings_change():
     app = _read("main/app_main.c")
     boot = app.split("void app_main(void)", 1)[1]
-    assert "provision_store_load_mqtt_verified(&verified_fingerprint)" in boot
-    assert boot.index("provisioning_runtime_init(") < boot.index(
-        "app_post_provisioning(PROVISION_EVENT_MQTT_SETTINGS_VERIFIED, 0)"
+    # The marker is read before the runtime queues BOOT_VALID_CONFIG.
+    assert boot.index("provision_store_load_mqtt_verified(&verified_fingerprint)") < boot.index(
+        "error = provisioning_runtime_init(config_valid ? &s_app.config : NULL,"
     )
+    assert "PROVISION_EVENT_MQTT_SETTINGS_VERIFIED" not in boot
+
+    # The coordinator re-applies it right after reducing BOOT_VALID_CONFIG, so
+    # the order of the two queues cannot lose it.
+    provisioning = _section(app, "static void handle_provisioning_event", "static void handle_mqtt_event")
+    reduced = provisioning.index("provisioning_state_t state = reduce_app_state(event);")
+    reapplied = provisioning.index("reduce_app_state(PROVISION_EVENT_MQTT_SETTINGS_VERIFIED)")
+    assert reduced < reapplied < provisioning.index("switch (event)")
+    assert "event == PROVISION_EVENT_BOOT_VALID_CONFIG" in provisioning
 
     changed = _section(app, "static void handle_config_changed", "static void handle_reset_provisioning")
     valid = changed.index("reduce_app_state(PROVISION_EVENT_BOOT_VALID_CONFIG)")
@@ -472,21 +527,20 @@ def test_portal_requires_the_mqtt_password_for_a_new_server():
     script = _read("components/portal_http/portal.js")
     html = _read("components/portal_http/portal.html")
     handler = _section(portal, "static esp_err_t handle_config_post", "static esp_err_t handle_empty_action_post")
+    verified = _section(portal, "static bool stored_mqtt_settings_verified", "static esp_err_t handle_config_post")
 
-    required = handler.index("provision_config_mqtt_password_required(existing, update)")
+    rule = handler.index("provision_config_mqtt_password_rule(")
     merge = handler.index("provision_config_merge_preserving_secrets(existing, update, update)")
-    assert required < merge
+    drop = handler.index("password_rule == PROVISION_MQTT_PASSWORD_DROP")
+    assert rule < merge < drop
+    assert "stored_mqtt_settings_verified(existing)" in handler
     assert '"400 Bad Request", "mqtt_password_required"' in handler
+    assert "memset(update->mqtt_password, 0, sizeof(update->mqtt_password))" in handler
+    assert "provision_store_load_mqtt_verified(&marker)" in verified
+    assert "provision_config_mqtt_fingerprint(existing)" in verified
     assert "mqtt_password_required:" in script
     assert "API_ERROR_MESSAGES[body.error]" in script
-    assert "MQTT 서버 주소나 포트를 바꾸면 MQTT 비밀번호는 다시 입력해야 합니다." in html
+    assert "연결된 적이 있는 MQTT 서버의 주소나 포트를 바꿀 때는 MQTT 비밀번호를 다시 입력해야 합니다." in html
 
-    store = _read("components/provision_store/provision_store.c")
-    merge_body = _section(
-        store,
-        "esp_err_t provision_config_merge_preserving_secrets(",
-        "esp_err_t provision_config_redact_status(",
-    )
-    assert "!provision_config_mqtt_server_changed(existing, out)" in merge_body
     cmake = _read("components/provision_store/CMakeLists.txt")
     assert '"provision_policy.c"' in cmake

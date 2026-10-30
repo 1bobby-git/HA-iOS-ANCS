@@ -21,7 +21,7 @@ function setBusy(id, busy, busyLabel) {
 // Server error keys that need a Korean explanation instead of the raw key.
 const API_ERROR_MESSAGES = {
   mqtt_password_required:
-    'MQTT 서버 주소나 포트를 바꾸면 저장된 비밀번호를 새 서버로 보내지 않습니다. MQTT 비밀번호를 다시 입력하세요.',
+    '연결된 적이 있는 MQTT 서버의 주소나 포트를 바꾸면 저장된 비밀번호를 새 서버로 보내지 않습니다. MQTT 비밀번호를 다시 입력하세요.',
 };
 
 async function api(path, options = {}) {
@@ -311,7 +311,7 @@ function applyStatus(status) {
     ? '저장된 비밀번호가 있습니다. 변경할 때만 새로 입력하세요.'
     : '암호가 없는 네트워크는 비워 두세요.';
   $('mqtt-password-help').textContent = config.mqtt_password_configured
-    ? '저장된 비밀번호가 있습니다. 변경할 때만 새로 입력하세요. 서버 주소나 포트를 바꾸면 다시 입력해야 합니다.'
+    ? '저장된 비밀번호가 있습니다. 변경할 때만 새로 입력하세요. 연결된 적이 있는 서버의 주소나 포트를 바꾸면 다시 입력해야 합니다.'
     : '브로커에 비밀번호가 없으면 비워 두세요.';
   $('mqtt-ca-help').textContent = config.mqtt_ca_configured
     ? '저장된 CA 인증서가 있습니다. 변경할 때만 새로 입력하세요.'

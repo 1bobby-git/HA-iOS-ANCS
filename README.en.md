@@ -36,7 +36,14 @@ The project bridges iOS notifications into local Home Assistant automations thro
 
 Holding BOOT for 3 seconds opens the setup AP or iPhone enrollment recovery window. If a BLE bond already exists, enrollment actions request reconnect to the known iPhone only and do not allow a new phone to pair.
 
-From firmware 0.4.0 the relay remembers MQTT settings once they have connected. If the broker then stops, restarts, or becomes unreachable, the relay does not open the setup AP; it reconnects after 5, 15 and 30 seconds and then every 60 seconds. The setup AP opens only if the broker keeps refusing the saved username and password for more than 10 minutes. Settings that never connected (first setup, a typo) still open the setup AP when the connection fails. To move a working relay to a different broker address, hold BOOT for 3 seconds to open the setup portal; changing the MQTT host or port also requires entering the MQTT password again.
+From firmware 0.4.0 the relay remembers MQTT settings once they have connected.
+
+- If the broker then stops, restarts, or becomes unreachable, the relay does not open the setup AP; it reconnects after 5, 15 and 30 seconds and then every 60 seconds.
+- The setup AP opens only if the broker answers and refuses the saved settings (username, password, ACL, Client ID) on every attempt for 10 minutes. If the broker stops answering in between, the 10 minutes start again.
+- Settings that never connected (first setup, a typo) still open the setup AP when the connection fails, and a blank password field still keeps the stored password while you fix them.
+- To change the host, port, or CA certificate of a working broker, hold BOOT for 3 seconds to open the setup portal. A connection that fails because the certificate no longer matches is also only retried.
+- Changing the host or port of settings that connected before requires entering the MQTT password again.
+- Devices updated from 0.3.9 follow these rules after their first successful MQTT connection on 0.4.0.
 
 ## Supported Boards And v0.4.0 Build Facts
 
@@ -108,7 +115,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 
 - The firmware does not use an iOS app, Apple account credentials, or iCloud credentials.
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
-- Empty secret fields preserve already stored values, except that changing the MQTT host or port never sends the stored MQTT password to the new server; enter it again.
+- Empty secret fields preserve already stored values, except that changing the host or port of MQTT settings that connected before never sends the stored MQTT password to the new address; enter it again. This check looks at the host and port only. With TLS off, someone who reaches the setup portal can point Wi-Fi at their own network that answers on the same broker address and receive the password, so use TLS with a CA certificate to protect it.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
 - Deleting the iOS ANCS integration entry in Home Assistant also deletes the last notification the integration saved. Files left by entries deleted with 0.6.13 or earlier are deleted at the next start while at least one enabled iOS ANCS entry exists, or when you add or enable one; without an enabled entry, delete the `.storage/ha_ios_ancs.*.last_notification` files yourself.
 - Pairing uses the fixed PIN `123456` shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.

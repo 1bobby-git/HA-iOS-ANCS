@@ -35,10 +35,14 @@ The portal stores Wi-Fi and MQTT settings only. It does not store Home Assistant
 
 - Check Wi-Fi SSID and password exactly as entered.
 - Check MQTT host, port, username, password, TLS mode, CA certificate, broker ACL, and duplicate Client ID.
-- Empty secret fields preserve existing stored values, except that a changed MQTT host or port needs the MQTT password again.
+- Empty secret fields preserve existing stored values, except that changing the host or port of MQTT settings that connected before needs the MQTT password again.
 - TLS mode requires a CA certificate.
 
-The setup AP opens while Wi-Fi is unhealthy (after 45 seconds) and while MQTT settings that never connected keep failing, so settings can be corrected. MQTT settings that connected before are kept: while the broker is down or restarting, the relay only retries (after 5, 15 and 30 seconds, then every 60 seconds) and does not open the setup AP. If the broker keeps refusing those settings for more than 10 minutes, the setup AP opens. To change a working broker address, hold BOOT for 3 seconds.
+The setup AP opens while Wi-Fi is unhealthy (after 45 seconds) and while MQTT settings that never connected keep failing, so settings can be corrected. MQTT settings that connected before are kept: while the broker is down, restarting, or unreachable, the relay only retries (after 5, 15 and 30 seconds, then every 60 seconds) and does not open the setup AP. The setup AP opens only if the broker answers and refuses those settings on every attempt for 10 minutes; an attempt that cannot reach the broker starts the 10 minutes again.
+
+TLS failures, including a CA certificate that no longer matches the broker, count as an unreachable broker and are only retried. After you change the broker host, port, or certificate, hold BOOT for 3 seconds to open the setup portal and update the relay.
+
+Moving settings that connected before to a broker that takes a username without a password needs two saves, because a blank password field means "keep the stored password": first save the new host or port without the username, which drops the stored password, then save again with the username.
 
 ## Home Assistant Entities Are Missing
 

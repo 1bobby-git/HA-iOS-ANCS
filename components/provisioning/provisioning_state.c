@@ -10,20 +10,26 @@ static void reconcile_requirements(provisioning_state_t *state)
                          state->recovery_window;
 }
 
-static bool mqtt_rejection_established(const provisioning_state_t *state,
-                                       uint64_t now_ms)
+static void forget_mqtt_refusal(provisioning_state_t *state)
 {
-    return state->mqtt_rejecting &&
-           now_ms >= state->mqtt_rejected_since_ms &&
-           now_ms - state->mqtt_rejected_since_ms >=
-               PROVISION_MQTT_REJECTED_RECOVERY_MS;
+    state->mqtt_rejecting = false;
+    state->mqtt_refusal_recovery = false;
+    state->mqtt_rejected_since_ms = 0;
+    state->mqtt_last_rejected_ms = 0;
 }
 
 static void forget_mqtt_settings(provisioning_state_t *state)
 {
     state->mqtt_settings_verified = false;
-    state->mqtt_rejecting = false;
-    state->mqtt_rejected_since_ms = 0;
+    forget_mqtt_refusal(state);
+}
+
+static bool ends_refused_attempt(const provisioning_state_t *state,
+                                 uint64_t now_ms)
+{
+    return state->mqtt_rejecting &&
+           now_ms >= state->mqtt_last_rejected_ms &&
+           now_ms - state->mqtt_last_rejected_ms <= PROVISION_MQTT_REFUSAL_PAIR_MS;
 }
 
 provisioning_state_t provisioning_initial(void)
@@ -78,8 +84,7 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
         if (current.mqtt_connected) {
             current.recovery_required = false;
             current.mqtt_settings_verified = true;
-            current.mqtt_rejecting = false;
-            current.mqtt_rejected_since_ms = 0;
+            forget_mqtt_refusal(&current);
         }
         break;
 
@@ -88,12 +93,18 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
         if (!current.mqtt_settings_verified) {
             /* Settings that never connected may be a typo: let the user fix them. */
             current.recovery_required = true;
-        } else if (current.wifi_connected) {
-            /* Proven settings over working Wi-Fi: the broker side is down. Keep
-             * retrying without the AP unless a refusal is already established. */
-            current.recovery_required =
-                mqtt_rejection_established(&current, now_ms);
+            break;
         }
+        if (!current.wifi_connected || ends_refused_attempt(&current, now_ms)) {
+            break; /* Wi-Fi rules apply, or this closes a refused attempt. */
+        }
+        /* Proven settings over working Wi-Fi: the broker or network is down.
+         * Only retry. This ends a refusal streak, but an AP that ten minutes
+         * of refusals opened stays until the settings connect. */
+        if (!current.mqtt_refusal_recovery) {
+            forget_mqtt_refusal(&current);
+        }
+        current.recovery_required = current.mqtt_refusal_recovery;
         break;
 
     case PROVISION_EVENT_MQTT_REJECTED:
@@ -106,9 +117,14 @@ provisioning_state_t provisioning_reduce(provisioning_state_t current,
             current.mqtt_rejecting = true;
             current.mqtt_rejected_since_ms = now_ms;
         }
+        current.mqtt_last_rejected_ms = now_ms;
+        if (now_ms >= current.mqtt_rejected_since_ms &&
+            now_ms - current.mqtt_rejected_since_ms >=
+                PROVISION_MQTT_REJECTED_RECOVERY_MS) {
+            current.mqtt_refusal_recovery = true;
+        }
         if (current.wifi_connected) {
-            current.recovery_required =
-                mqtt_rejection_established(&current, now_ms);
+            current.recovery_required = current.mqtt_refusal_recovery;
         }
         break;
 

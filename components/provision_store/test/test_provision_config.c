@@ -83,25 +83,48 @@ void test_blank_secret_fields_preserve_existing_values(void)
     TEST_ASSERT_EQUAL_STRING("old-mqtt-secret", merged.mqtt_password);
 }
 
-void test_new_mqtt_server_never_receives_the_stored_password(void)
+void test_proven_mqtt_password_is_not_reused_for_a_new_server(void)
 {
     provision_config_t existing = valid_config();
     strcpy(existing.mqtt_password, "old-mqtt-secret");
 
+    /* Same server: a blank password keeps the stored one. */
     provision_config_t update = valid_config();
-    strcpy(update.mqtt_host, "other.example");
     update.mqtt_password[0] = '\0';
-    TEST_ASSERT_TRUE(provision_config_mqtt_password_required(&existing, &update));
+    TEST_ASSERT_EQUAL(PROVISION_MQTT_PASSWORD_KEEP,
+                      provision_config_mqtt_password_rule(&existing, &update, true));
 
-    update.mqtt_username[0] = '\0';
-    TEST_ASSERT_FALSE(provision_config_mqtt_password_required(&existing, &update));
-    provision_config_t merged = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, provision_config_merge_preserving_secrets(&existing, &update, &merged));
-    TEST_ASSERT_EQUAL_STRING("", merged.mqtt_password);
+    /* Settings that connected: a new host with a username needs the password. */
+    strcpy(update.mqtt_host, "other.example");
+    TEST_ASSERT_EQUAL(PROVISION_MQTT_PASSWORD_REQUIRED,
+                      provision_config_mqtt_password_rule(&existing, &update, true));
+    /* Settings that never connected keep the one-step typo fix. */
+    TEST_ASSERT_EQUAL(PROVISION_MQTT_PASSWORD_KEEP,
+                      provision_config_mqtt_password_rule(&existing, &update, false));
 
     update = valid_config();
     update.mqtt_password[0] = '\0';
-    TEST_ASSERT_FALSE(provision_config_mqtt_password_required(&existing, &update));
+    update.mqtt_port = 8883;
+    TEST_ASSERT_EQUAL(PROVISION_MQTT_PASSWORD_REQUIRED,
+                      provision_config_mqtt_password_rule(&existing, &update, true));
+
+    /* A new broker without a username is saved without a password. */
+    update.mqtt_username[0] = '\0';
+    TEST_ASSERT_EQUAL(PROVISION_MQTT_PASSWORD_DROP,
+                      provision_config_mqtt_password_rule(&existing, &update, true));
+
+    /* A typed password is used as typed. */
+    strcpy(update.mqtt_password, "new-secret");
+    TEST_ASSERT_EQUAL(PROVISION_MQTT_PASSWORD_KEEP,
+                      provision_config_mqtt_password_rule(&existing, &update, true));
+
+    /* The merge is unchanged; the portal applies the rule around it. */
+    update = valid_config();
+    strcpy(update.mqtt_host, "other.example");
+    update.mqtt_password[0] = '\0';
+    provision_config_t merged = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, provision_config_merge_preserving_secrets(&existing, &update, &merged));
+    TEST_ASSERT_EQUAL_STRING("old-mqtt-secret", merged.mqtt_password);
 }
 
 void test_mqtt_verified_marker_follows_the_settings(void)
@@ -361,9 +384,9 @@ TEST_CASE("provision config blank secret fields preserve existing values", "[pro
     test_blank_secret_fields_preserve_existing_values();
 }
 
-TEST_CASE("provision config never sends stored mqtt password to a new server", "[provision_store]")
+TEST_CASE("provision config keeps a proven mqtt password off a new server", "[provision_store]")
 {
-    test_new_mqtt_server_never_receives_the_stored_password();
+    test_proven_mqtt_password_is_not_reused_for_a_new_server();
 }
 
 TEST_CASE("provision store mqtt verified marker follows the settings", "[provision_store]")
