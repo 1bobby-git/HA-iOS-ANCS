@@ -136,7 +136,7 @@ homeassistant/automation_ios_ancs_baemin_delivery_tts.yaml
 - Wi-Fi password, MQTT password, TLS CA 본문은 상태 API, Discovery, retained state, 보고서에 평문으로 노출하지 않습니다.
 - 빈 secret 입력은 저장된 기존 값을 보존합니다.
 - iOS 알림 제목, 본문, 앱 이름, 앱 ID는 MQTT 브로커와 Home Assistant에 게시될 수 있으므로 broker 접근 권한을 제한하세요.
-- Home Assistant에서 iOS ANCS 통합 항목을 삭제하면 통합이 저장해 둔 마지막 알림도 함께 지웁니다. 0.6.13 이하에서 삭제한 항목의 파일은 통합 항목이 하나라도 있으면 다음 시작 때 지웁니다. 통합 항목이 하나도 없으면 `.storage/ha_ios_ancs.*.last_notification` 파일을 직접 지우세요.
+- Home Assistant에서 iOS ANCS 통합 항목을 삭제하면 통합이 저장해 둔 마지막 알림도 함께 지웁니다. 0.6.13 이하에서 삭제한 항목의 파일은 활성화된 통합 항목이 하나라도 있으면 다음 시작 때, 또는 항목을 추가하거나 활성화할 때 지웁니다. 활성화된 항목이 없으면 `.storage/ha_ios_ancs.*.last_notification` 파일을 직접 지우세요.
 - 고정 PIN `123456`은 로컬 등록 창에서만 사용하고, 기기를 양도하기 전에는 전체 erase와 새 등록을 수행하세요.
 
 ## 개발자 참고

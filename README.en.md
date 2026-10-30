@@ -108,7 +108,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
 - Empty secret fields preserve already stored values.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
-- Deleting the iOS ANCS integration entry in Home Assistant also deletes the last notification the integration saved. Files left by entries deleted with 0.6.13 or earlier are deleted at the next start while at least one iOS ANCS entry exists; if none is left, delete the `.storage/ha_ios_ancs.*.last_notification` files yourself.
+- Deleting the iOS ANCS integration entry in Home Assistant also deletes the last notification the integration saved. Files left by entries deleted with 0.6.13 or earlier are deleted at the next start while at least one enabled iOS ANCS entry exists, or when you add or enable one; without an enabled entry, delete the `.storage/ha_ios_ancs.*.last_notification` files yourself.
 - Pairing uses the fixed PIN `123456` shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.
 
 ## Developer Reference
