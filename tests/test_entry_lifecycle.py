@@ -369,7 +369,7 @@ def test_removal_after_failed_unload_waits_for_write_in_progress(
             # wait for the write instead of deleting the file underneath it.
             await asyncio.wait({remove}, timeout=0.5)
             release_write.set()
-            await remove
+            await asyncio.wait_for(remove, 10)
             await hass.async_block_till_done()
         return storage_path(hass, entry.entry_id).exists()
 

@@ -177,14 +177,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_flush_notification() -> None:
         """Write a still-delayed save before reload or removal continues."""
 
-        registered = entry_stores.get(entry.entry_id)
-        if registered is not None and registered.store is store:
-            del entry_stores[entry.entry_id]
-        # async_save waits for a write in progress and cancels this Store's
-        # pending delayed and final writes, so a removed entry's file is not
-        # recreated and a reload restores the newest notification.
-        if latest_snapshot is not None:
-            await store.async_save(latest_snapshot)
+        try:
+            # async_save waits for a write in progress and cancels this Store's
+            # pending delayed and final writes, so a removed entry's file is not
+            # recreated and a reload restores the newest notification.
+            if latest_snapshot is not None:
+                await store.async_save(latest_snapshot)
+        finally:
+            # Keep the registration until the write is done, so a removal that
+            # starts while this flush is still writing waits for it as well.
+            registered = entry_stores.get(entry.entry_id)
+            if registered is not None and registered.store is store:
+                del entry_stores[entry.entry_id]
 
     entry_stores[entry.entry_id] = _EntryNotificationStore(
         store, async_flush_notification
