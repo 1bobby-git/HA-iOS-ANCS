@@ -235,6 +235,8 @@ async def setup_event_entity(
         scan_interval=timedelta(seconds=30),
         entity_namespace=None,
     )
+    # EntityComponent registers its platforms this way; unloading removes them.
+    platform.async_prepare()
 
     assert await platform.async_setup_entry(entry) is True
     hass.data[event_component.DATA_COMPONENT]._platforms[entry.entry_id] = platform

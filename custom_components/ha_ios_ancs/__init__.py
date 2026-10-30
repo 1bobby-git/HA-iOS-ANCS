@@ -91,16 +91,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime = _runtime_from_entry(hass, entry)
 
     restored_notification = runtime.restore_notification(stored_notification)
+    latest_snapshot: dict[str, Any] | None = None
 
     def persist_notification(notification: dict[str, Any]) -> None:
         """Persist accepted details without delaying entity updates."""
 
+        nonlocal latest_snapshot
         snapshot = dict(notification)
+        latest_snapshot = snapshot
         store.async_delay_save(
             lambda: snapshot,
             _STORAGE_SAVE_DELAY_SECONDS,
         )
 
+    async def async_flush_notification() -> None:
+        """Write a still-delayed save before reload or removal continues."""
+
+        # async_save cancels this Store's pending delayed and final writes, so
+        # a removed entry's file is not recreated and a reload restores it.
+        if latest_snapshot is not None:
+            await store.async_save(latest_snapshot)
+
+    entry.async_on_unload(async_flush_notification)
     runtime.async_add_notification_listener(
         persist_notification,
         replay_pending=False,
@@ -141,3 +153,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await runtime.async_stop()
     entry.runtime_data = None
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the saved last notification when the entry is deleted."""
+
+    await _notification_store(hass, entry).async_remove()

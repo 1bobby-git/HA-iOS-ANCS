@@ -129,6 +129,8 @@ async def async_setup_ancs_platform(
         scan_interval=timedelta(seconds=30),
         entity_namespace=None,
     )
+    # EntityComponent registers its platforms this way; unloading removes them.
+    platform.async_prepare()
     assert await platform.async_setup_entry(entry) is True
     hass.data[component.DATA_COMPONENT]._platforms[entry.entry_id] = platform
     await hass.async_block_till_done()

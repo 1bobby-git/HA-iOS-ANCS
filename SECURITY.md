@@ -1,21 +1,37 @@
 # Security Policy
 
-## Supported Versions
+## 지원 버전
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+보안 수정은 최신 GitHub 릴리스에만 제공합니다. 릴리스마다 Home Assistant 통합 버전과, 함께 배포하는 ESP32 펌웨어 버전이 제목에 있습니다(예: `iOS ANCS 0.6.14 / Firmware 0.3.9`).
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| 구성 요소 | 지원 |
+| --- | --- |
+| 최신 릴리스의 Home Assistant 통합 | 지원 |
+| 최신 릴리스에 포함된 펌웨어 | 지원 |
+| 그 이전 버전 | 지원하지 않음 |
 
-## Reporting a Vulnerability
+HACS는 통합만 업데이트합니다. 펌웨어는 [설치 페이지](https://1bobby-git.github.io/HA-iOS-ANCS/)에서 따로 설치해야 합니다.
 
-Use this section to tell people how to report a vulnerability.
+## 취약점 보고
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+이 저장소의 **Security** 탭에 **Report a vulnerability**(비공개 보고)가 보이면 그것을 사용해 주세요. 보이지 않으면 공개 이슈에는 재현 방법이나 공격 방법을 적지 말고, 영향받는 구성 요소(통합 또는 펌웨어)와 비공개 연락 요청만 남겨 주세요.
+
+보고에 넣어 주시면 좋은 내용:
+
+- 통합 버전, 펌웨어 버전, 보드 종류(ESP32 계열 칩)
+- Home Assistant 버전
+- 민감한 값을 지운 최소 재현 순서
+- 기대한 동작과 실제 동작
+
+보고에 넣지 말아야 하는 값:
+
+- Wi-Fi 비밀번호, MQTT 아이디·비밀번호, TLS CA·인증서·개인 키
+- 기기에서 읽은 플래시나 NVS 백업(Wi-Fi·MQTT 비밀번호와 Bluetooth 페어링 키가 들어 있습니다)
+- 실제 iPhone 알림 제목·본문, Home Assistant 토큰
+
+## 현재 보호 범위
+
+- 설치를 쉽게 하려고 설정 AP는 정해진 규칙을 씁니다. 이름은 `IOS-ANCS-SETUP-XXXXXX`이고 비밀번호는 같은 끝 6자리의 소문자인 `ancs-xxxxxx`입니다. 설정 AP는 처음 설치할 때, Wi-Fi 연결이 45초 넘게 끊겼을 때, BOOT 버튼을 3초 눌렀을 때 열립니다. 열려 있는 동안에는 근처에서 이 이름을 본 사람도 접속해 설정을 바꿀 수 있습니다.
+- iPhone 등록은 고정 PIN `123456`을 쓰며, 등록 창이 열려 있을 때만 새 기기를 받습니다.
+- 알림 제목, 본문, 앱 정보는 MQTT 브로커와 Home Assistant로 전달됩니다. 브로커 계정 권한을 이 기기의 토픽으로 제한하세요.
+- 장치가 예상과 달리 오프라인으로 바뀌면 설정 포털에서 Wi-Fi와 MQTT 서버 주소가 바뀌지 않았는지 확인하세요.

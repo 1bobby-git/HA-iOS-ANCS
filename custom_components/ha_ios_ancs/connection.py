@@ -6,10 +6,20 @@ from homeassistant.helpers.entity import Entity
 from .device import device_info
 from .diagnostics import USER_ACTIONS, connection_state
 
+# Values that change with every 60-second status sample or notification. They
+# stay in the live state; their history is already recorded on the firmware's
+# MQTT status entity, so recording them here only adds a row per minute.
+VOLATILE_DIAGNOSTIC_ATTRIBUTES = frozenset({
+    "uptime_seconds", "last_notification_uptime_ms", "accepted", "published_ack",
+    "dropped_offline", "dropped_enqueue", "dropped_policy",
+    "wifi_retry_in_ms", "mqtt_retry_in_ms", "enrollment_remaining_seconds",
+})
+
 
 class AncsConnectionEntity(Entity):
     _attr_has_entity_name = True
     _attr_should_poll = False
+    _unrecorded_attributes = VOLATILE_DIAGNOSTIC_ATTRIBUTES
 
     def __init__(self, entry, runtime, platform: str, key: str) -> None:
         self._runtime = runtime

@@ -76,7 +76,7 @@ Adding the HACS integration does not ask for an MQTT base topic. It uses the `La
 
 The `Notification` event entity and detail entities are registered on a separate `iOS ANCS (...)` device, not on the MQTT device and not through a `via_device` relationship. The MQTT and iOS ANCS devices remain independent even when they represent the same physical relay. The integration privately saves the last complete notification so detail sensors survive a Home Assistant restart even when the source MQTT notification is not retained. The event entity still emits only newly received notifications and never replays the saved details as a new event. Reconfiguring a legacy manual-topic entry preserves its entity IDs and history while moving its companion entities to the separate iOS ANCS device.
 
-The companion integration keeps MQTT Discovery entities unchanged and enabled. On the separate iOS ANCS device (`iOS ANCS (...)`), it adds the notification event, 23 purpose-specific sensors and 12 strict binary sensors, plus a diagnostic `Raw notification` sensor. The separate device also exposes a diagnostic BLE connection binary sensor. Its state is derived through the existing MQTT Discovery device-status entity in Home Assistant; MQTT devices and entities remain separate, enabled, and unmodified. This HACS update does not require an ESP32 firmware reflash. Text shown as a sensor state is limited to 255 characters; long values remain in the `full_value` attribute and the complete raw JSON remains in attributes. Notification titles and messages can be recorded by Home Assistant unless those entities are excluded from Recorder.
+The companion integration keeps MQTT Discovery entities unchanged and enabled. On the separate iOS ANCS device (`iOS ANCS (...)`), it adds the notification event, 23 purpose-specific sensors and 12 strict binary sensors, plus a diagnostic `Raw notification` sensor. The separate device also exposes a diagnostic BLE connection binary sensor. Its state is derived through the existing MQTT Discovery device-status entity in Home Assistant; MQTT devices and entities remain separate, enabled, and unmodified. This HACS update does not require an ESP32 firmware reflash. Text shown as a sensor state is limited to 255 characters; long values remain in the `full_value` attribute and the complete raw JSON remains in attributes. Notification titles and messages can be recorded by Home Assistant unless those entities are excluded from Recorder. The diagnostic `Connection recovery` and `Notification ready` entities do not record the uptime, notification counter and retry-wait attributes that change every minute; their current values remain visible, and the MQTT device-status entity keeps their history.
 
 Example automations:
 
@@ -108,6 +108,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 - Wi-Fi passwords, MQTT passwords, and TLS CA bodies are not exposed in status APIs, Discovery, retained state, or reports.
 - Empty secret fields preserve already stored values.
 - iOS notification title, body, app name, and app ID may be published to the MQTT broker and Home Assistant. Restrict broker access accordingly.
+- Deleting the iOS ANCS integration entry in Home Assistant also deletes the last notification the integration saved.
 - Pairing uses the fixed PIN `123456` shown in the setup portal while enrollment is open; open enrollment only on a trusted local network and fully erase plus re-enroll before handing the device to another user.
 
 ## Developer Reference
@@ -115,6 +116,7 @@ See [iOS Pairing Guide](docs/IOS_PAIRING.md) and [Troubleshooting](docs/TROUBLES
 ```powershell
 python -m pip install -r tools/requirements.txt
 python -m pytest tools/tests -q
+python -m pip install -r requirements_test.txt
 python -m pytest tests -q
 .\tools\build.ps1 -Target esp32c6
 .\tools\flash.ps1 -Port COMx
@@ -137,6 +139,6 @@ python -m pytest tests -q
 
 `automation_ios_ancs_baemin_delivery_tts.yaml` processes only complete new notifications where both the iOS app ID `com.jawebs.baedal` and app name `배달의민족` exactly match. A `곧 도착합니다!` title announces that the rider will arrive soon, while `문앞으로 배달이 완료되었습니다.` announces the doorstep delivery and prompt pickup message. Coupon and promotional notifications are ignored. Replace the event, TTS, and media-player entity IDs before enabling it.
 
-## Integration update 0.6.10
+## Changelog
 
-See [optimization notes](docs/OPTIMIZATION_2026-09-06.md) for changes, validation scope and rollback. Existing identifiers and public services are preserved. Firmware/bridge applications are unchanged. Live Home Assistant, account sessions and physical devices were not validated by this release job.
+Per-version changes, validation scope and the bundled firmware version are listed in [CHANGELOG.md](CHANGELOG.md) (Korean) and on [GitHub Releases](https://github.com/1bobby-git/HA-iOS-ANCS/releases).
