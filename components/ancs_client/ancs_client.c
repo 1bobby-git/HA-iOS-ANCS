@@ -40,6 +40,16 @@
 #define SCAN_RESPONSE_PENDING (1U << 1)
 #define CONTROL_REQUEST_MAX (CONFIG_ANCS_APP_ID_MAX + 3U)
 #define ADVERTISING_BACKOFF_MAX_MS 4000U
+/* Apple Accessory Design Guidelines: 20 ms for the first 30 s, then one of the
+ * recommended slow intervals (152.5 ms) so iOS background scanning finds us. */
+#define ADVERTISING_FAST_INTERVAL_UNITS 0x0020U /* 20 ms */
+#define ADVERTISING_SLOW_INTERVAL_UNITS 0x00F4U /* 152.5 ms */
+#define ADVERTISING_FAST_WINDOW_MS INT64_C(30000)
+#define ADVERTISING_REFRESH_MS INT64_C(60000)
+/* 30-45 ms interval, no latency, 6 s supervision timeout (Apple maximum). */
+#define CONNECTION_INTERVAL_MIN_UNITS 0x0018U
+#define CONNECTION_INTERVAL_MAX_UNITS 0x0024U
+#define CONNECTION_SUPERVISION_TIMEOUT_UNITS 600U
 #define DISCOVERY_BACKOFF_MAX_MS 5000U
 #define AUTH_FAILURE_REPAIR_THRESHOLD 3U
 #define AUTH_FAILURE_WINDOW_MS 120000LL
@@ -155,6 +165,8 @@ typedef struct {
     uint8_t advertising_attempt;
     uint8_t discovery_attempt;
     uint8_t adv_config_pending;
+    int64_t advertising_fast_until_ms;
+    int64_t advertising_refresh_due_ms;
 
     QueueHandle_t work_queue;
     TaskHandle_t worker_task;
@@ -227,6 +239,9 @@ static esp_ble_adv_params_t s_adv_params = {
 
 static void start_advertising(void);
 static void stop_advertising(void);
+static void begin_fast_advertising_window(void);
+static void note_advertising_stopped_by_controller(void);
+static void check_advertising_refresh(void);
 static void start_discovery(void);
 static int sync_existing_ble_bond(void);
 static esp_err_t open_replacement_window(void);
@@ -897,6 +912,7 @@ static void worker_task(void *argument)
 
     for (;;) {
         check_connection_deadline();
+        check_advertising_refresh();
         enroll_timeout_callback(NULL); /* Also covers lost/old timer wakeups. */
         const uint32_t generation = current_generation();
         if (s_worker.generation != generation) {
@@ -1118,6 +1134,15 @@ static void start_advertising(void)
         return;
     }
     s_client.advertising_starting = true;
+    const int64_t now = now_ms();
+    const bool fast = now < s_client.advertising_fast_until_ms;
+    const uint16_t interval = fast ? ADVERTISING_FAST_INTERVAL_UNITS
+                                   : ADVERTISING_SLOW_INTERVAL_UNITS;
+    s_adv_params.adv_int_min = interval;
+    s_adv_params.adv_int_max = interval;
+    /* Re-arm periodically: switches fast->slow and heals lost stack state. */
+    s_client.advertising_refresh_due_ms =
+        fast ? s_client.advertising_fast_until_ms : now + ADVERTISING_REFRESH_MS;
     taskEXIT_CRITICAL(&s_shared_state_lock);
     const esp_err_t error = esp_ble_gap_start_advertising(&s_adv_params);
     if (error != ESP_OK) {
@@ -1138,6 +1163,44 @@ static void stop_advertising(void)
     taskEXIT_CRITICAL(&s_shared_state_lock);
     if (active) {
         (void)esp_ble_gap_stop_advertising();
+    }
+}
+
+static void begin_fast_advertising_window(void)
+{
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    s_client.advertising_fast_until_ms = now_ms() + ADVERTISING_FAST_WINDOW_MS;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+}
+
+/* The controller stops legacy advertising on every incoming connection, even
+ * one we reject. Forget the stale flags so advertising can be started again. */
+static void note_advertising_stopped_by_controller(void)
+{
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    s_client.advertising = false;
+    s_client.advertising_starting = false;
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+}
+
+static void check_advertising_refresh(void)
+{
+    const int64_t now = now_ms();
+    taskENTER_CRITICAL(&s_shared_state_lock);
+    const bool wanted = !s_client.connected &&
+        s_client.adv_config_pending == 0U &&
+        ble_enroll_should_advertise(&s_enroll, now);
+    const bool armed = s_client.advertising || s_client.advertising_starting;
+    const bool due = wanted && armed &&
+        s_client.advertising_refresh_due_ms != 0 &&
+        now >= s_client.advertising_refresh_due_ms;
+    if (due) {
+        s_client.advertising_refresh_due_ms = 0;
+    }
+    taskEXIT_CRITICAL(&s_shared_state_lock);
+    if (due) {
+        stop_advertising();
+        start_advertising();
     }
 }
 
@@ -1559,6 +1622,18 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event,
             taskEXIT_CRITICAL(&s_shared_state_lock);
             (void)esp_timer_stop(s_client.enroll_timer);
             stop_advertising();
+            esp_ble_conn_update_params_t connection_params = {
+                .min_int = CONNECTION_INTERVAL_MIN_UNITS,
+                .max_int = CONNECTION_INTERVAL_MAX_UNITS,
+                .latency = 0,
+                .timeout = CONNECTION_SUPERVISION_TIMEOUT_UNITS,
+            };
+            memcpy(connection_params.bda,
+                   parameter->ble_security.auth_cmpl.bd_addr,
+                   sizeof(esp_bd_addr_t));
+            if (esp_ble_gap_update_conn_params(&connection_params) != ESP_OK) {
+                ESP_LOGW(TAG, "connection parameter update request failed");
+            }
             transition(ANCS_SIGNAL_BONDED);
             ESP_LOGI(TAG,
                      "encryption and bonding complete auth_mode=0x%x addr_type=%u",
@@ -1680,6 +1755,7 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
         s_client.gattc_if = gattc_if;
         taskEXIT_CRITICAL(&s_shared_state_lock);
         ESP_ERROR_CHECK(esp_ble_gap_set_device_name(s_client.device_name));
+        begin_fast_advertising_window();
         ESP_ERROR_CHECK(esp_ble_gap_config_local_privacy(true));
         break;
 
@@ -1687,6 +1763,8 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
         if (!connection_peer_allowed(parameter->connect.remote_bda)) {
             ESP_LOGW(TAG, "rejected connection from unauthorized peer");
             (void)esp_ble_gap_disconnect(parameter->connect.remote_bda);
+            note_advertising_stopped_by_controller();
+            schedule_advertising_retry();
             break;
         }
         taskENTER_CRITICAL(&s_shared_state_lock);
@@ -2062,6 +2140,8 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
                 parameter->disconnect.conn_id,
                 parameter->disconnect.remote_bda)) {
             ESP_LOGW(TAG, "ignored disconnect event from stale peer");
+            /* A rejected peer never became the session; resume advertising. */
+            schedule_advertising_retry();
             break;
         }
         ESP_LOGW(TAG,
@@ -2071,6 +2151,7 @@ static void handle_gattc_event(esp_gattc_cb_event_t event,
         s_client.last_disconnect_reason = parameter->disconnect.reason;
         taskEXIT_CRITICAL(&s_shared_state_lock);
         reset_connection_session();
+        begin_fast_advertising_window();
         transition(ANCS_SIGNAL_DISCONNECTED);
         taskENTER_CRITICAL(&s_shared_state_lock);
         const bool reopen = s_client.reopen_after_disconnect;
@@ -2539,6 +2620,7 @@ esp_err_t ancs_client_request_enroll(void)
         taskENTER_CRITICAL(&s_shared_state_lock);
         ble_enroll_close_window(&s_enroll);
         taskEXIT_CRITICAL(&s_shared_state_lock);
+        begin_fast_advertising_window();
         start_advertising();
         return ESP_OK;
     }
@@ -2566,6 +2648,7 @@ esp_err_t ancs_client_request_enroll(void)
         taskEXIT_CRITICAL(&s_shared_state_lock);
         return timer_error;
     }
+    begin_fast_advertising_window();
     start_advertising();
     return ESP_OK;
 }
